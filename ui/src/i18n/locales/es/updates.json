@@ -31,7 +31,8 @@
     "report_sub": "Abre un informe de error en GitHub y descarga un paquete de soporte con los registros de Klipper, Moonraker y Valve Oil. Adjunta el paquete a la incidencia.",
     "open_issue": "Abrir una incidencia",
     "support_error": "No se pudo descargar el paquete de soporte: {{error}}",
-    "last_checked": "Última búsqueda de actualizaciones: {{time}}"
+    "last_checked": "Última búsqueda de actualizaciones: {{time}}",
+    "checking": "Comprobando…"
   },
   "window": {
     "title": "Franja de actualización",

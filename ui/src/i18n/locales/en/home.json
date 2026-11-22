@@ -36,36 +36,14 @@
     "camera": "Camera",
     "layers": "Layers",
     "unavailable": "Camera unavailable",
-    "full_screen": "Full screen"
+    "full_screen": "Full screen",
+    "change": "Change camera, showing {{name}}",
+    "side_by_side": "Side by side",
+    "close_this": "Close this camera"
   },
   "box": {
-    "loaded": "{{slot}} loaded",
-    "nothing_loaded": "Nothing loaded",
-    "tools": "Tools",
     "tools_locked": "Tool mapping can be changed while the printer is idle",
-    "tools_hint": "Change which slot each tool loads",
-    "open": "Open the QIDI Box page",
-    "hint": "Click a slot for its actions, or a Box’s temperature for its heater."
-  },
-  "history": {
-    "last_weeks_one": "Last {{count}} week",
-    "last_weeks_other": "Last {{count}} weeks",
-    "done_one": "{{count}} done",
-    "done_other": "{{count}} done",
-    "failed_one": "{{count}} failed",
-    "failed_other": "{{count}} failed",
-    "day_one": "{{date}}: {{count}} done",
-    "day_other": "{{date}}: {{count}} done",
-    "day_failed_one": "{{date}}: {{count}} done, {{bad}} failed",
-    "day_failed_other": "{{date}}: {{count}} done, {{bad}} failed",
-    "print_time": "Print time",
-    "filament": "Filament",
-    "jobs": "Jobs"
-  },
-  "quick": {
-    "title": "Quick actions",
-    "lights_on": "Lights on",
-    "lights_off": "Lights off"
+    "filament_library": "Filament library"
   },
   "exclude": {
     "confirm_title": "Exclude {{name}}?",
@@ -104,5 +82,59 @@
     "part_fan": "Part fan",
     "aux_fan": "Aux fan",
     "exhaust_fan": "Exhaust fan"
+  },
+  "deck": {
+    "fine": "Fine",
+    "coarse": "Coarse",
+    "turbo": "Turbo",
+    "macro_category": "Macro category",
+    "macros_hidden": "Every macro is hidden. {{icon}} Organize picks which show here.",
+    "no_macros": "No macros. {{icon}} Organize picks which show here."
+  },
+  "toolhead": {
+    "locked_pause": "Locked while printing. Pause to move.",
+    "locked": "Locked while printing",
+    "moving_unhomed": "Moving without homing",
+    "more": "More toolhead actions",
+    "position_hint": "Type a position and press Enter to move {{axis}} there",
+    "position_unhomed": "{{axis}} isn't homed. Home it to move by position.",
+    "move_summary": "{{mode}} steps · {{small}} and {{big}} mm",
+    "step_size": "Step size",
+    "mode_title": "{{mode}}: {{small}} mm and {{big}} mm steps",
+    "home_again": "Home every axis again",
+    "unhomed_on_title": "Moving without homing: unhomed axes have no limits and the motors switch off after each move. Click to stop.",
+    "unhomed_off_title": "Move unhomed axes anyway, with no limits",
+    "unhomed": "Unhomed",
+    "no_homing": "No homing",
+    "motors_off_title": "Switch the motors off so the toolhead and bed move by hand. Every axis needs homing again afterwards.",
+    "bed_down": "Bed down",
+    "bed_up": "Bed up",
+    "z_plus": "Z+ {{step}} mm: the bed moves down",
+    "z_plus_capped": "Z+ {{step}} mm: the bed moves down. Z steps stop at {{max}} mm.",
+    "z_minus": "Z− {{step}} mm: the bed moves up",
+    "wait_last": "Wait for the printer to finish the last command.",
+    "unhomed_confirm_title": "Move without homing?",
+    "unhomed_confirm_body": "Unhomed axes will move with no limits, so the toolhead can hit the frame and the bed can hit the nozzle. After each move the motors switch off, so every axis needs homing again before printing.",
+    "unhomed_confirm": "Move without homing",
+    "tool_loaded": "T{{tool}} loaded",
+    "nozzle_temp": "Nozzle {{temp}}°",
+    "nozzle_below": "Nozzle below {{min}}°",
+    "retract_title": "Pull {{length}} mm back",
+    "extrude_title": "Push {{length}} mm through the nozzle",
+    "per_press": "{{length}} mm per press",
+    "heat_to_extrude": "Heat the nozzle to {{min}} °C to extrude",
+    "at_speed": "at {{speed}} mm/s",
+    "closer_title": "Lower the nozzle {{step}} mm toward the bed",
+    "closer": "Closer",
+    "farther_title": "Raise the nozzle {{step}} mm off the bed",
+    "farther": "Farther",
+    "save_menu": "Save…"
+  },
+  "temps": {
+    "hide_line": "Hide {{name}} on the chart",
+    "show_line": "Show {{name}} on the chart",
+    "power": "{{pct}}% power",
+    "target_hint": "Type a {{name}} target and press Enter. 0 turns it off.",
+    "fan_title": "{{name}}: fan {{pct}}%, target {{target}}°"
   }
 }

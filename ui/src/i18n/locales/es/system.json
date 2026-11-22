@@ -34,14 +34,6 @@
       "network": "Red",
       "virtualization": "Virtualización"
     },
-    "sd": {
-      "title": "Tarjeta SD",
-      "manufacturer": "Fabricante",
-      "manufactured": "Fecha de fabricación",
-      "product_name": "Nombre del producto",
-      "capacity": "Capacidad",
-      "serial": "Número de serie"
-    },
     "disk": {
       "title": "Uso del disco",
       "folder": "Carpeta",

@@ -36,14 +36,6 @@
       "network": "Сеть",
       "virtualization": "Виртуализация"
     },
-    "sd": {
-      "title": "SD-карта",
-      "manufacturer": "Производитель",
-      "manufactured": "Дата выпуска",
-      "product_name": "Название продукта",
-      "capacity": "Ёмкость",
-      "serial": "Серийный номер"
-    },
     "disk": {
       "title": "Использование диска",
       "folder": "Папка",

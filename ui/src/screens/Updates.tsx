@@ -317,14 +317,15 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
         <div className="min-w-0 flex-1">
           <div className="section-label">Valve Oil{view.printerName ? ` · ${view.printerName}` : ''}</div>
           <div className="mt-1 flex items-center gap-2.5 text-[22px] font-bold tracking-[-0.01em]">
-            {view.updating ? (
+            {view.updating || !s.fresh ? (
               <LoaderCircle size={22} className="spin flex-none text-accent-ink" />
             ) : view.waiting.length > 0 ? (
               <Download size={22} className="flex-none text-accent-ink" />
             ) : (
               <CircleCheck size={22} className="flex-none text-good" />
             )}
-            {view.updating ? t('updates.card.updating') : view.waiting.length > 0 ? t('updates.card.waiting') : t('updates.card.up_to_date')}
+            {/* Until this screen's own answer arrives, what the page has may be from when it loaded, so it says nothing either way. */}
+            {view.updating ? t('updates.card.updating') : !s.fresh ? t('updates.card.checking') : view.waiting.length > 0 ? t('updates.card.waiting') : t('updates.card.up_to_date')}
           </div>
         </div>
       </div>
@@ -359,7 +360,9 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2 py-1">
         <div className="min-w-[180px] flex-1">
           <div className="font-medium">{t('updates.card.waiting')}</div>
-          {view.waiting.length === 0 ? (
+          {!s.fresh ? (
+            <div className="text-[12.5px] text-ink-3">{t('updates.card.checking')}</div>
+          ) : view.waiting.length === 0 ? (
             <div className="text-[12.5px] text-ink-3">{t('updates.card.nothing_waiting')}</div>
           ) : (
             view.waiting.map((item) => (

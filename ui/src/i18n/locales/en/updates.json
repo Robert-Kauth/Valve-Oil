@@ -31,7 +31,8 @@
     "report_sub": "Opens a bug report on GitHub and downloads a support bundle with Klipper's, Moonraker's, and Valve Oil's logs. Attach the bundle to the issue.",
     "open_issue": "Open an issue",
     "support_error": "The support bundle couldn't be downloaded: {{error}}",
-    "last_checked": "Last checked for updates {{time}}"
+    "last_checked": "Last checked for updates {{time}}",
+    "checking": "Checking…"
   },
   "window": {
     "title": "Update window",

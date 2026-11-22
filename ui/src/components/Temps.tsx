@@ -10,7 +10,7 @@ import { t, type MessageKey } from '../i18n'
 // m106 is the fan's M106 P index on QIDI printers, so speed changes go through the printer's own fan macro.
 export type Tile = { obj: string; label: string; kind: 'heater' | 'sensor' | 'fan'; m106?: number }
 
-/** Heaters worth a tile: nozzle, bed, and any generic heater that isn't a Box heater (those live on the Box page). */
+/** Heaters worth a tile: nozzle, bed, and any generic heater that isn't a Box heater (those live on the Box card). */
 export function useTiles(): Tile[] {
   return usePrinter((s) => {
     const tiles: Tile[] = []

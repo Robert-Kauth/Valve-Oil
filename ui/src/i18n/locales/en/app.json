@@ -3,7 +3,6 @@
   "nav": {
     "home": "Home",
     "files": "Files",
-    "box": "Box",
     "control": "Control",
     "console": "Console",
     "tune": "Tune",
@@ -113,7 +112,6 @@
   "units": {
     "m": "{{n}} m",
     "g": "{{n}} g",
-    "h": "{{n}} h",
     "gb": "{{n}} GB"
   },
   "health": {
@@ -126,7 +124,9 @@
     "up_for": "Up for",
     "mcu_load": "MCU load",
     "mcu_load_hint": "How busy each microcontroller is",
-    "mainboard": "Mainboard"
+    "mainboard": "Mainboard",
+    "warn": "Printer health, a reading is high",
+    "bad": "Printer health, a reading is too high"
   },
   "temps": {
     "off": "off",
@@ -145,31 +145,8 @@
     "now": "now",
     "minutes_back": "−{{m}}m",
     "seconds_ago": "{{s}} s ago",
-    "aria": "Temperature history"
-  },
-  "motion": {
-    "title": "Toolhead",
-    "move_xy": "Move X and Y",
-    "move_z": "Move Z",
-    "home_xy": "Home X and Y",
-    "home_z": "Home Z",
-    "z_up": "Z+: the bed moves down",
-    "z_down": "Z−: the bed moves up",
-    "step": "Step (mm)",
-    "home_all": "Home all",
-    "motors_off": "Motors off",
-    "not_homed": "Not homed",
-    "axes_not_homed": "{{axes}} not homed",
-    "homed": "Homed",
-    "extruder": "Extruder (mm)",
-    "retract": "Retract",
-    "extrude": "Extrude",
-    "locked": "Moving the toolhead is locked while printing. Pause to move it.",
-    "home_first": "Home an axis before moving it. Z+ moves the bed down.",
-    "needs_hot": "Extruding needs the nozzle hot.",
-    "needs_hot_now": "Extruding needs the nozzle hot; it's {{temp}} °C.",
-    "z_hint": "Z+ moves the bed down, away from the nozzle.",
-    "more": "More controls"
+    "aria": "Temperature history",
+    "window_short": "{{m}}m"
   },
   "mini_console": {
     "title": "Console",

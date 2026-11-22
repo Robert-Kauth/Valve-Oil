@@ -2,16 +2,11 @@
   "external_spool": "External spool",
   "external_short": "Ext",
   "box_n": "Box {{n}}",
-  "slot_n": "Slot {{slot}}",
   "box_slot": "Box {{box}} · Slot {{slot}}",
   "empty": "Empty",
   "unknown_filament": "Unknown filament",
-  "humidity_rh": "{{h}}% RH",
   "screen": {
-    "slots": "Slots",
-    "filaments": "Filaments",
     "tool_mapping": "Tool mapping",
-    "tool_mapping_locked": "Tool mapping can be changed while the printer is idle",
     "settings": "Box settings",
     "filament_path": "Filament path"
   },
@@ -59,18 +54,10 @@
     "working_failed": "Working… failed",
     "unknown_failed": "Box step failed"
   },
-  "strip": {
-    "set_heater": "Set the Box {{n}} heater",
-    "reload_group": "Automatic reload group {{group}}: when one of these slots runs out, the Box switches to another.",
-    "not_loaded": "Not loaded",
-    "not_set": "not set"
-  },
   "units": {
     "status": {
       "loaded": "Loaded",
       "hub": "At hub",
-      "ready": "Ready",
-      "empty": "Empty",
       "reading": "Reading tag"
     },
     "humidity": {
@@ -78,17 +65,19 @@
       "slightly_high": "Slightly high humidity",
       "high": "High humidity"
     },
-    "humidity_rh": "{{h}}% <rh>RH</rh>",
     "from_tag": "Read from the spool's RFID tag",
     "unknown_type": "Unknown",
-    "tap_to_set": "Tap to set",
     "empty_title": "{{slot}} · Empty",
     "reload_group": "Auto-reload group {{group}}",
     "drying": "Drying at {{temp}} °C",
-    "dryer_off": "<wide>Dryer </wide>off",
-    "turning": "Turning {{slot}}",
     "dry": "Dry",
-    "not_set": "Not set"
+    "not_set": "Not set",
+    "drying_temp": "Drying {{temp}} °C",
+    "heating_temp": "Heating {{temp}} °C",
+    "dry_or_heat": "Dry or heat",
+    "heater_drying_title": "Drying: change or stop",
+    "heater_heating_title": "Heating: change or turn off",
+    "heater_off_title": "Dry the spools, or heat the Box"
   },
   "settings": {
     "enable_box": "Use QIDI Box",
@@ -156,23 +145,41 @@
     "no_color": "No color"
   },
   "heater": {
-    "title": "Box {{n}} dryer",
     "turn_off": "Turn off",
-    "dry_at": "Dry at {{temp}} °C",
-    "now": "Now",
-    "target": "Target",
-    "humidity": "Humidity",
-    "locked": "A filament loaded in this Box must not be heated in the Box.",
     "temperature": "Temperature",
-    "target_label": "Box heater target",
-    "up_to": "Up to {{max}} °C for the filaments loaded in Box {{n}}."
-  },
-  "loaded": {
-    "busy": "Box busy",
-    "toolhead": "Toolhead",
-    "loaded_slot": "Loaded {{slot}}",
-    "at_hub_slot": "At hub {{slot}}",
-    "none": "No Box filament loaded"
+    "dialog_title": "Box {{n}} heater",
+    "stop_drying": "Stop drying",
+    "heat_to": "Heat to {{temp}} °C",
+    "heating_to": "Heating to {{temp}} °C",
+    "spools_turn": "The spools turn every 5 minutes.",
+    "spools_still": "The spools stay still.",
+    "holds": "Holds until you turn it off.",
+    "holds_card": "Holds until you turn it off",
+    "change_to": "Change to",
+    "dry_for": "Dry {{hours}} h at {{temp}} °C",
+    "mode": "Heater mode",
+    "heat": "Heat",
+    "between_prints": "Between prints",
+    "during_prints": "During prints",
+    "not_during_print": "Not during a print",
+    "dry_rolls": "Set time, turning the spools",
+    "dry_timed": "Runs for a set time",
+    "time": "Time",
+    "hours": "{{h}} h",
+    "hours_unit": "h",
+    "drying_time": "Drying time",
+    "zero_limit": "QIDI's filament settings give {{types}} a Box heating limit of 0 °C, so Heat stays off while it's in {{where}}.",
+    "dry_instead": "To dry it, use Dry.",
+    "dry_after_print": "To dry it, use Dry after the print.",
+    "limit": "Up to {{max}} °C, QIDI's limit for {{types}} in {{where}}.",
+    "filament": "filament",
+    "in_box": "in the Box",
+    "humidity_label": "humidity",
+    "at_temp": "At {{temp}} °C",
+    "temp_of": "{{temp}} of {{target}} °C",
+    "time_left": "{{time}} left",
+    "ending": "Ending",
+    "ends": "ends {{time}}"
   },
   "slot": {
     "read_rfid": "Read RFID",
@@ -187,21 +194,20 @@
     "jog_out": "Out",
     "jog_in_title": "In {{mm}} mm",
     "jog_out_title": "Out {{mm}} mm",
-    "external_hint": "The external spool feeds the toolhead directly, so it has no Box controls. Load it by hand.",
     "printing_hint": "Loading and unloading are unavailable while printing.",
     "database_invalid": "The filament list qidi_filament_config/filament-0.4.json lists no filaments. Check it is valid JSON, then restart the printer.",
-    "nozzle_range": "Nozzle {{min}}–{{max}}°C",
-    "box_heating": "Box heating up to {{max}}°C",
     "reading": "Reading RFID…",
     "from_tag": "Set from the spool’s tag",
-    "no_tool": "no tool",
     "loaded": "loaded",
     "reload_off": "Automatic reload is off",
     "reload_none": "No auto-reload backup",
     "reload_with": "Auto-reload with {{slots}}",
     "stranded": "Filament is stopped between the hub and the toolhead. Unload pulls it back into the Box; Eject removes it from the Box.",
     "stranded_here": "{{slot}}'s filament is stopped between the hub and the toolhead. Unload pulls it back into the Box; Eject removes it from the Box.",
-    "stranded_elsewhere": "{{slot}}'s filament is stopped between the hub and the toolhead. Unload or eject {{slot}} first."
+    "stranded_elsewhere": "{{slot}}'s filament is stopped between the hub and the toolhead. Unload or eject {{slot}} first.",
+    "nozzle_temps": "Nozzle {{min}}–{{max}} °C",
+    "heat_up_to": "Heat up to {{temp}} °C",
+    "change_filament": "Change the material, brand, or color"
   },
   "tool_map": {
     "default": "Default",
@@ -212,15 +218,16 @@
   },
   "path": {
     "hub": "Hub",
-    "toolhead_sensor": "Toolhead sensor",
-    "extruder": "Extruder",
-    "nozzle": "Nozzle",
-    "external": "External",
-    "slot_here": "{{slot}} here",
-    "filament_here": "filament here",
-    "filament": "filament",
-    "empty": "empty",
-    "slot_loaded": "{{slot}} loaded"
+    "slot_loaded": "{{slot}} loaded",
+    "slot_at_hub": "{{slot}} at the hub",
+    "filament_at_hub": "Filament at the hub",
+    "external_bypasses": "The external spool bypasses the hub",
+    "nothing_at_hub": "Nothing at the hub",
+    "no_toolhead_reading": "No toolhead sensor reading",
+    "filament_at_toolhead": "Filament at the toolhead sensor",
+    "nothing_at_toolhead": "Nothing at the toolhead sensor",
+    "nothing_past_box": "Nothing past the Box",
+    "toolhead": "Toolhead"
   },
   "spool": {
     "reading": "Reading RFID tag"
@@ -285,7 +292,9 @@
       "changed": "Differs from the current list",
       "conflict": "Its ID {{id}} is already used by {{name}}",
       "none": "Every filament in this file is already in the list."
-    }
+    },
+    "library_title": "Filament library",
+    "back_home": "Back to Home"
   },
   "tag": {
     "title": "Write {{slot}}’s spool tag",
@@ -316,5 +325,15 @@
     "refusal_unknown": "The tag holds data Valve Oil doesn’t write over.",
     "written_toast": "{{slot}}’s spool tag now holds {{filament}}.",
     "failed_toast": "{{slot}}’s spool tag wasn’t written."
+  },
+  "scene": {
+    "sketch_ab": "A sketch of a QIDI Box with its lid open. Slot {{slot}}'s reader is on the divider between slots A and B, and the tag goes on the side of the spool facing it.",
+    "sketch_cd": "A sketch of a QIDI Box with its lid open. Slot {{slot}}'s reader is on the divider between slots C and D, and the tag goes on the side of the spool facing it.",
+    "replay": "Play again"
+  },
+  "dry_blocked": {
+    "printing": "Drying can't start during a print.",
+    "busy": "Wait for the Box to finish what it is doing.",
+    "fed": "Eject {{slots}} first. Drying turns every slot's motor, which would move filament fed into the Box. Leave the spools on the rollers."
   }
 }

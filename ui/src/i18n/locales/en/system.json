@@ -34,14 +34,6 @@
       "network": "Network",
       "virtualization": "Virtualization"
     },
-    "sd": {
-      "title": "SD card",
-      "manufacturer": "Manufacturer",
-      "manufactured": "Manufactured",
-      "product_name": "Product name",
-      "capacity": "Capacity",
-      "serial": "Serial number"
-    },
     "disk": {
       "title": "Disk usage",
       "folder": "Folder",

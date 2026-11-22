@@ -1,86 +1,74 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Box as BoxIcon, Camera, ChevronRight, Folder, History, Layers, Pause, Play, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
-import { Card, HoldButton, Segmented } from '../components/ui'
-import { LivePreview } from '../components/gcode-preview/LivePreview'
+import { Camera, ChevronRight, Folder, Layers, Pause, Play, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
+import { HoldButton } from '../components/ui'
 import { SpoolmanCard } from '../components/spoolman/SpoolmanCard'
-import { BoxStrip } from '../components/BoxStrip'
 import { FileRow } from '../components/FileCard'
 import { DropZone } from '../components/Upload'
 import { PrintDialog } from '../components/PrintDialog'
-import { TempChart } from '../components/TempChart'
 import { MiniConsole } from '../components/MiniConsole'
-import { Health, JobDetails, Thermals, fmtLength } from '../components/Panels'
+import { fmtLength } from '../components/Panels'
 import { TuneDialog } from '../components/printing/TunePanel'
 import { ExcludeObjectsButton } from '../components/printing/ExcludeObjects'
 import { PauseAtLayerButton } from '../components/printing/PauseAtLayer'
-import { Motion } from '../components/Motion'
-import { HeaterDialog, Operation, SlotActionButtons, ToolMapDialog } from './Box'
-import { Spool, slotTitle } from '../components/Spool'
+import { CameraDeck } from '../components/home-deck/CameraDeck'
+import { MacrosDeck, OutputsDeck } from '../components/home-deck/Deck'
+import { BoxDeck } from '../components/home-deck/BoxDeck'
+import { ToolheadCard } from '../components/home-deck/ToolheadCard'
+import { TempsCard } from '../components/home-deck/TempsCard'
 import { attempt } from '../components/toast'
 import { client, onKlippyReady, runGcode, usePrinter } from '../state/printer'
-import { slotByIndex, useBox, useBoxPresent } from '../state/box'
+import { useBoxPresent } from '../state/box'
 import { jobProgress, remainingSeconds, useJob } from '../state/job'
-import { thumbnailUrl, useFileMeta, useFiles, useHistory, useHistoryTotals, type HistoryJob } from '../state/files'
+import { thumbnailUrl, useFileMeta, useFiles, useHistory, type HistoryJob } from '../state/files'
 import { displayName, fmtAgo, fmtDuration, fmtEta } from '../lib/format'
 import { normalizeQidiColor } from '../qidi/qidi-box'
 import { href } from '../lib/router'
-import { locale, t } from '../i18n'
+import { t } from '../i18n'
 import { tr } from '../i18n/rich'
 
 const area = (name: string): CSSProperties => ({ gridArea: name })
 
 /**
- * Home is a cockpit: on a desktop it fills the screen in three columns (the job and heaters, the camera and
- * temperatures, the Box and console), and scrolls when a window is too short for them; on a tablet it's two columns
- * and on a phone one.
+ * Home, in four columns on a desktop. The camera spans the left two, in its own shape, with the Box and the fans and
+ * lights under it; then the toolhead over the temperatures; then the print, recent files, and the macros and console,
+ * folded until opened. The last card in each column stretches, so the columns end together. A tablet has two columns
+ * and a phone one.
  */
 export function HomeScreen() {
   const job = useJob()
-  const meta = useFileMeta(job.filename || null)
   const showJob = !!job.filename && job.state !== 'standby'
-  const boxPresent = useBoxPresent()
-  const camera = useWebcam()
   const jobs = useHistory(500)
+  const boxPresent = useBoxPresent()
   return (
-    <div className="cockpit">
-      <div className="col">
-        {showJob ? <JobCard style={area('job')} /> : <ReadyCard style={area('job')} jobs={jobs} />}
-        <div style={area('thermals')}>
-          <Thermals className="h-full" />
-        </div>
-        <RecentFiles jobs={jobs} />
-      </div>
-      <div className="col">
-        <CameraOrLayers cam={camera} />
-        <div style={area('chart')} className={camera ? 'h-[300px] wide:h-[290px] wide:flex-none' : 'grow h-[300px]'}>
-          <TempChart className="h-full" />
-        </div>
-        <div className="strip">
-          <div style={area('motion')}>
-            <Motion className="h-full" />
+    <div className="deck deck-4">
+      <div className="half">
+        <CameraDeck />
+        <div className="half-cols">
+          <div className="col">
+            {boxPresent && <BoxDeck />}
+            <SpoolmanCard />
           </div>
-          <div style={area('details')}>{showJob ? <JobDetails job={job} meta={meta} className="h-full" /> : <HistoryCard jobs={jobs} />}</div>
+          <div className="col">
+            <OutputsDeck />
+          </div>
         </div>
       </div>
       <div className="col">
-        {/* The Box and, when Moonraker has Spoolman, the spool in use share one cell, so neither leaves a gap when absent. */}
-        <div style={area('box')} className="grid content-start gap-3.5 empty:hidden">
-          {boxPresent && <BoxCard />}
-          <SpoolmanCard />
-        </div>
-        <div style={area('health')}>
-          <Health className="h-full" />
-        </div>
-        <div style={area('console')} className="grow">
-          <MiniConsole className="h-full" />
-        </div>
+        <ToolheadCard />
+        <TempsCard />
+      </div>
+      <div className="col">
+        {showJob ? <JobCard /> : <ReadyCard jobs={jobs} />}
+        <RecentFiles jobs={jobs} className="min-h-[240px]" />
+        <MacrosDeck grow fold="vo-home-macros-open" className="min-h-[260px]" />
+        <MiniConsole noMacros fold="vo-home-console-open" className="min-h-[320px]" />
       </div>
     </div>
   )
 }
 
 // ---- the current or last job ----
-function JobCard({ style }: { style?: CSSProperties }) {
+export function JobCard({ style }: { style?: CSSProperties }) {
   const job = useJob()
   const meta = useFileMeta(job.filename)
   const [tune, setTune] = useState(false)
@@ -208,7 +196,7 @@ function JobCard({ style }: { style?: CSSProperties }) {
 }
 
 // ---- between prints ----
-function ReadyCard({ style, jobs }: { style?: CSSProperties; jobs: HistoryJob[] | null }) {
+export function ReadyCard({ style, jobs }: { style?: CSSProperties; jobs: HistoryJob[] | null }) {
   const last = jobs?.[0]
   return (
     <section className="card grid content-start gap-3" style={style}>
@@ -231,12 +219,11 @@ function ReadyCard({ style, jobs }: { style?: CSSProperties; jobs: HistoryJob[] 
         )}
       </div>
       <DropZone className="py-3!" />
-      <QuickActions bare />
     </section>
   )
 }
 
-function RecentFiles({ jobs }: { jobs: HistoryJob[] | null }) {
+export function RecentFiles({ jobs, className = '' }: { jobs: HistoryJob[] | null; className?: string }) {
   const files = useFiles()
   const [open, setOpen] = useState<string | null>(null)
   const byFile = useMemo(() => {
@@ -254,7 +241,7 @@ function RecentFiles({ jobs }: { jobs: HistoryJob[] | null }) {
     return [...files].sort((a, b) => lastUsed(b.path, b.modified) - lastUsed(a.path, a.modified)).slice(0, 20)
   }, [files, byFile])
   return (
-    <section className="card grow" style={area('files')}>
+    <section className={`card grow ${className}`} style={area('files')}>
       <h3 className="card-title">
         <Folder size={14} /> {t('home.recent.title')}
         <a href={href('files')} className="aside inline-flex items-center gap-1">
@@ -294,62 +281,26 @@ function ReprintButton({ filename, small }: { filename: string; small?: boolean 
 }
 
 // ---- camera ----
-type Webcam = { name: string; enabled: boolean; service: string; stream_url: string; snapshot_url: string; flip_horizontal: boolean; flip_vertical: boolean; rotation: number }
+export type Webcam = { name: string; enabled: boolean; service: string; stream_url: string; snapshot_url: string; flip_horizontal: boolean; flip_vertical: boolean; rotation: number; aspect_ratio?: string }
 
-function useWebcam(): Webcam | null {
-  const [cam, setCam] = useState<Webcam | null>(null)
+/** Moonraker's enabled cameras that stream, in its order. */
+export function useWebcams(): Webcam[] {
+  const [cams, setCams] = useState<Webcam[]>([])
   const ready = usePrinter((s) => s.conn === 'open')
   useEffect(() => {
     if (!ready) return
     const load = () =>
       client
         .call<{ webcams: Webcam[] }>('server.webcams.list')
-        .then((r) => setCam(r.webcams.find((w) => w.enabled !== false && /mjpeg|uv4l|ipstream|stream/i.test(w.service + w.stream_url)) ?? null))
-        .catch(() => setCam(null))
+        .then((r) => setCams(r.webcams.filter((w) => w.enabled !== false && /mjpeg|uv4l|ipstream|stream/i.test(w.service + w.stream_url))))
+        .catch(() => setCams([]))
     load()
     const off = onKlippyReady(load)
     return () => {
       off()
     }
   }, [ready])
-  return cam
-}
-
-/**
- * The camera, and while a print runs, the file's current layer from the G-code preview as a second view. Without a
- * camera, the layer view takes the card on its own.
- */
-function CameraOrLayers({ cam }: { cam: Webcam | null }) {
-  const printing = usePrinter((s) => ['printing', 'paused'].includes(s.status.print_stats?.state))
-  const [view, setView] = useState<'camera' | 'layers'>(() => (localStorage.getItem('vo-home-view') === 'layers' ? 'layers' : 'camera'))
-  const pick = (v: 'camera' | 'layers') => {
-    setView(v)
-    try {
-      localStorage.setItem('vo-home-view', v)
-    } catch {}
-  }
-  if (!printing) return cam ? <CameraCard cam={cam} /> : null
-  const shown = cam ? view : 'layers'
-  const toggle = cam && (
-    <div className="absolute top-2.5 right-2.5 z-10">
-      <Segmented
-        label={t('home.camera.view')}
-        value={shown}
-        onChange={pick}
-        options={[
-          { value: 'camera', label: t('home.camera.camera') },
-          { value: 'layers', label: t('home.camera.layers') },
-        ]}
-      />
-    </div>
-  )
-  if (shown === 'camera') return <CameraCard cam={cam!} toggle={toggle} />
-  return (
-    <section className="card grow relative p-2.5! wide:min-h-[280px]" style={area('cam')}>
-      {toggle}
-      <LivePreview className="aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1" />
-    </section>
-  )
+  return cams
 }
 
 /** Full screen for the camera: the browser's, or where a page element can't have it (iPhone), the whole page. */
@@ -377,173 +328,55 @@ function useFullScreen() {
   return { box, page, full: native || page, toggle }
 }
 
-function CameraCard({ cam, toggle }: { cam: Webcam; toggle?: ReactNode }) {
+/** The camera's width over height: Moonraker's aspect_ratio ("4:3"), turned for a 90° or 270° rotation. */
+export function cameraRatio(cam: Webcam, measured?: number | null) {
+  const m = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(cam.aspect_ratio ?? '')
+  const r = measured ?? (m ? Number(m[1]) / Number(m[2]) : 16 / 9)
+  return cam.rotation % 180 ? 1 / r : r
+}
+
+/**
+ * One camera's stream with its name and Full screen. `fit` gives it the camera's own shape, and in a row of cameras a
+ * share of the width in proportion to that shape, so cameras side by side are the same height. `name` replaces the
+ * name tag, for a camera picker.
+ */
+export function CameraView({ cam, toggle, fit, name }: { cam: Webcam; toggle?: ReactNode; fit?: boolean; name?: ReactNode }) {
   const [failed, setFailed] = useState(false)
+  // The stream's own size, once its first frame arrives, so the card takes the camera's shape without letterboxing.
+  const [measured, setMeasured] = useState<number | null>(null)
+  const img = useRef<HTMLImageElement>(null)
+  useEffect(() => {
+    if (!fit) return
+    const t = setInterval(() => {
+      const el = img.current
+      if (el?.naturalWidth && el.naturalHeight) {
+        setMeasured(el.naturalWidth / el.naturalHeight)
+        clearInterval(t)
+      }
+    }, 250)
+    return () => clearInterval(t)
+  }, [fit, cam.stream_url])
   const fs = useFullScreen()
   const src = new URL(cam.stream_url, client.httpBase + '/').toString()
   const transform = [cam.flip_horizontal ? 'scaleX(-1)' : '', cam.flip_vertical ? 'scaleY(-1)' : '', cam.rotation ? `rotate(${cam.rotation}deg)` : ''].join(' ')
-  const size = fs.page ? 'fixed inset-0 z-80' : fs.full ? 'relative' : 'relative aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1'
+  const size = fs.page ? 'fixed inset-0 z-80' : fs.full ? 'relative' : fit ? 'relative min-w-0 rounded-[10px]' : 'relative aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1'
+  const ratio = cameraRatio(cam, measured)
   return (
-    <section className="card grow p-2.5! wide:min-h-[280px]" style={area('cam')}>
-      <div ref={fs.box} className={`overflow-hidden bg-[#14161b] ${size}`} onDoubleClick={fs.toggle}>
-        {!failed ? (
-          <img src={src} alt={cam.name} className="absolute inset-0 h-full w-full object-contain" style={{ transform }} onError={() => setFailed(true)} />
-        ) : (
-          <div className="grid h-full place-items-center text-[#9aa1ad]">
-            <span className="flex items-center gap-2">
-              <Camera size={16} /> {t('home.camera.unavailable')}
-            </span>
-          </div>
-        )}
-        <div className="absolute top-2.5 left-2.5 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur">
-          {cam.name}
-        </div>
-        <button className="absolute right-2.5 bottom-2.5 rounded-md border-0 bg-black/50 px-2 py-0.5 text-[11px] text-white" onClick={fs.toggle}>
-          {fs.full ? t('common.close') : t('home.camera.full_screen')}
-        </button>
-        {!fs.full && toggle}
-      </div>
-    </section>
-  )
-}
-
-function BoxCard() {
-  const box = useBox()
-  const [selected, setSelected] = useState<number | null>(null)
-  const [heater, setHeater] = useState<number | null>(null)
-  const [mapOpen, setMapOpen] = useState(false)
-  // Filament stuck between the hub and the toolhead selects its slot, as on the Box page.
-  useEffect(() => {
-    if (box.strandedSlot != null) setSelected(box.strandedSlot)
-  }, [box.strandedSlot])
-  const loaded = box.slots.find((s) => s.index === box.loadedSlot)
-  const slot = slotByIndex(box, selected)
-  return (
-    <section className="card">
-      <h3 className="card-title">
-        <BoxIcon size={14} />
-        <a href={href('box')}>QIDI Box</a>
-        <span className="aside flex items-center gap-1.5">
-          <span className="text-ink-3">{loaded ? t('home.box.loaded', { slot: loaded.label }) : t('home.box.nothing_loaded')}</span>
-          <button className="btn btn-sm px-2! py-0.5! text-[11.5px]" disabled={box.mappingLocked} onClick={() => setMapOpen(true)} title={box.mappingLocked ? t('home.box.tools_locked') : t('home.box.tools_hint')}>
-            {t('home.box.tools')}
-          </button>
-          <a href={href('box')} className="iconbtn h-6 w-6" title={t('home.box.open')} aria-label={t('home.box.open')}>
-            <ChevronRight size={14} />
-          </a>
-        </span>
-      </h3>
-      {box.task && (
-        <div className="mb-2.5">
-          <Operation box={box} bare />
-        </div>
-      )}
-      <BoxStrip box={box} size={38} compact selected={selected} onSelect={(i) => setSelected((s) => (s === i ? null : i))} onClimate={setHeater} />
-      {slot ? (
-        <div className="mt-2.5 rounded-[10px] bg-inset p-2.5 shadow-[inset_0_0_0_1px_var(--line)]">
-          <div className="mb-2 flex items-center gap-2">
-            <Spool slot={slot} size={22} label={false} />
-            <span className="min-w-0 flex-1 truncate">
-              <b>{slot.label}</b> <span className="text-ink-2">{slotTitle(slot)}</span>
-            </span>
-            <button className="iconbtn h-6 w-6" onClick={() => setSelected(null)} aria-label={t('common.close')}>
-              <X size={14} />
-            </button>
-          </div>
-          <SlotActionButtons box={box} slot={slot} withTagButtons />
-        </div>
+    <div ref={fs.box} className={`overflow-hidden bg-[#14161b] ${size}`} style={fit && !fs.full ? { aspectRatio: ratio, flex: `${ratio} 1 0` } : undefined} onDoubleClick={fs.toggle}>
+      {!failed ? (
+        <img ref={img} src={src} alt={cam.name} className="absolute inset-0 h-full w-full object-contain" style={{ transform }} onError={() => setFailed(true)} />
       ) : (
-        <div className="mt-1.5 text-[12px] text-ink-3">{t('home.box.hint')}</div>
-      )}
-      {heater != null && <HeaterDialog box={box} boxNumber={heater} onClose={() => setHeater(null)} />}
-      <ToolMapDialog box={box} open={mapOpen} onClose={() => setMapOpen(false)} />
-    </section>
-  )
-}
-
-function HistoryCard({ jobs }: { jobs: HistoryJob[] | null }) {
-  const totals = useHistoryTotals()
-  const weeks = 20
-  const cells = useMemo(() => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const start = new Date(today)
-    start.setDate(start.getDate() - (weeks * 7 - 1) - today.getDay())
-    const days = new Map<number, { ok: number; bad: number }>()
-    for (const j of jobs ?? []) {
-      const d = new Date(j.start_time * 1000)
-      d.setHours(0, 0, 0, 0)
-      const k = d.getTime()
-      const e = days.get(k) ?? { ok: 0, bad: 0 }
-      if (j.status === 'completed') e.ok++
-      else if (j.status !== 'cancelled' && j.status !== 'in_progress') e.bad++
-      days.set(k, e)
-    }
-    const out: { date: Date; ok: number; bad: number }[] = []
-    for (let i = 0; i < weeks * 7; i++) {
-      const d = new Date(start)
-      d.setDate(start.getDate() + i)
-      out.push({ date: d, ...(days.get(d.getTime()) ?? { ok: 0, bad: 0 }) })
-    }
-    return out
-  }, [jobs])
-  const done = (jobs ?? []).filter((j) => j.status === 'completed').length
-  const failed = (jobs ?? []).filter((j) => !['completed', 'cancelled', 'in_progress'].includes(j.status)).length
-  const max = Math.max(1, ...cells.map((c) => c.ok))
-  return (
-    <Card
-      className="h-full"
-      title={t('home.history.last_weeks', { count: weeks })}
-      icon={<History size={14} />}
-      aside={
-        <>
-          <span className="text-good">{t('home.history.done', { count: done })}</span> · <span className="text-bad">{t('home.history.failed', { count: failed })}</span>
-        </>
-      }
-    >
-      <div className="grid grid-flow-col grid-rows-7 gap-[3px] overflow-hidden" style={{ gridAutoColumns: '10px' }}>
-        {cells.map((c) => (
-          <i
-            key={c.date.getTime()}
-            title={t(c.bad ? 'home.history.day_failed' : 'home.history.day', { date: c.date.toLocaleDateString(locale()), count: c.ok, bad: c.bad })}
-            className="h-2.5 w-2.5 rounded-[2px]"
-            style={{
-              background: c.bad ? 'var(--red)' : c.ok ? `color-mix(in srgb, var(--green) ${Math.round(35 + (c.ok / max) * 65)}%, transparent)` : 'var(--inset)',
-              boxShadow: c.ok || c.bad ? undefined : 'inset 0 0 0 1px var(--line)',
-            }}
-          />
-        ))}
-      </div>
-      {totals && (
-        <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
-          <Stat label={t('home.history.print_time')} value={t('app.units.h', { n: Math.round(totals.total_print_time / 3600) })} />
-          <Stat label={t('home.history.filament')} value={t('app.units.m', { n: (totals.total_filament_used / 1000).toFixed(0) })} />
-          <Stat label={t('home.history.jobs')} value={String(totals.total_jobs)} />
+        <div className="grid h-full place-items-center text-[#9aa1ad]">
+          <span className="flex items-center gap-2">
+            <Camera size={16} /> {t('home.camera.unavailable')}
+          </span>
         </div>
       )}
-    </Card>
+      <div className="absolute top-2.5 left-2.5 z-10">{name ?? <span className="cam-tag">{cam.name}</span>}</div>
+      <button className="absolute right-2.5 bottom-2.5 rounded-md border-0 bg-black/50 px-2 py-0.5 text-[11px] text-white" onClick={fs.toggle}>
+        {fs.full ? t('common.close') : t('home.camera.full_screen')}
+      </button>
+      {!fs.full && toggle}
+    </div>
   )
-}
-
-function QuickActions({ bare }: { bare?: boolean }) {
-  const lights = usePrinter((s) => s.objects.filter((o) => o.startsWith('output_pin ') && /light|led/i.test(o)))
-  const lightValues = usePrinter((s) => lights.map((o) => (s.status[o]?.value as number | undefined) ?? 0))
-  const homed = usePrinter((s) => (s.status.toolhead?.homed_axes as string | undefined) ?? '')
-  const buttons = (
-      <div className="flex flex-wrap gap-1.5">
-        <button className="btn btn-sm" onClick={() => attempt(() => runGcode('G28'))}>
-          {t('app.motion.home_all')}
-          {homed === 'xyz' ? ' ✓' : ''}
-        </button>
-        <button className="btn btn-sm" onClick={() => attempt(() => runGcode('M84'))}>
-          {t('app.motion.motors_off')}
-        </button>
-        {lights.map((o, i) => (
-          <button key={o} className="btn btn-sm" onClick={() => attempt(() => runGcode(`SET_PIN PIN=${o.slice('output_pin '.length)} VALUE=${lightValues[i] > 0 ? 0 : 1}`))}>
-            {lightValues[i] > 0 ? t('home.quick.lights_off') : t('home.quick.lights_on')}
-          </button>
-        ))}
-      </div>
-  )
-  return bare ? buttons : <Card title={t('home.quick.title')}>{buttons}</Card>
 }

@@ -2,16 +2,11 @@
   "external_spool": "Bobina externa",
   "external_short": "Ext",
   "box_n": "Box {{n}}",
-  "slot_n": "Ranura {{slot}}",
   "box_slot": "Box {{box}} · Ranura {{slot}}",
   "empty": "Vacía",
   "unknown_filament": "Filamento desconocido",
-  "humidity_rh": "{{h}}% HR",
   "screen": {
-    "slots": "Ranuras",
-    "filaments": "Filamentos",
     "tool_mapping": "Asignación de herramientas",
-    "tool_mapping_locked": "La asignación de herramientas se puede cambiar cuando la impresora está inactiva",
     "settings": "Ajustes del Box",
     "filament_path": "Recorrido del filamento"
   },
@@ -59,18 +54,10 @@
     "working_failed": "Falló el paso en curso",
     "unknown_failed": "Falló un paso del Box"
   },
-  "strip": {
-    "set_heater": "Ajustar el calentador del Box {{n}}",
-    "reload_group": "Grupo de recarga automática {{group}}: cuando una de estas ranuras se queda sin filamento, el Box cambia a otra.",
-    "not_loaded": "Sin cargar",
-    "not_set": "sin definir"
-  },
   "units": {
     "status": {
       "loaded": "Cargada",
       "hub": "En el hub",
-      "ready": "Lista",
-      "empty": "Vacía",
       "reading": "Leyendo etiqueta"
     },
     "humidity": {
@@ -78,17 +65,19 @@
       "slightly_high": "Humedad algo alta",
       "high": "Humedad alta"
     },
-    "humidity_rh": "{{h}}% <rh>HR</rh>",
     "from_tag": "Leído de la etiqueta RFID de la bobina",
     "unknown_type": "Desconocido",
-    "tap_to_set": "Toca para definir",
     "empty_title": "{{slot}} · Vacía",
     "reload_group": "Grupo de recarga automática {{group}}",
     "drying": "Secando a {{temp}} °C",
-    "dryer_off": "<wide>Secador </wide>apagado",
-    "turning": "Girando {{slot}}",
     "dry": "Secar",
-    "not_set": "Sin definir"
+    "not_set": "Sin definir",
+    "drying_temp": "Secando {{temp}} °C",
+    "heating_temp": "Calentando {{temp}} °C",
+    "dry_or_heat": "Secar o calentar",
+    "heater_drying_title": "Secando: cambiar o detener",
+    "heater_heating_title": "Calentando: cambiar o apagar",
+    "heater_off_title": "Secar las bobinas o calentar el Box"
   },
   "settings": {
     "enable_box": "Usar QIDI Box",
@@ -156,23 +145,41 @@
     "no_color": "Sin color"
   },
   "heater": {
-    "title": "Secador del Box {{n}}",
     "turn_off": "Apagar",
-    "dry_at": "Secar a {{temp}} °C",
-    "now": "Ahora",
-    "target": "Objetivo",
-    "humidity": "Humedad",
-    "locked": "Un filamento cargado en este Box no debe calentarse en el Box.",
     "temperature": "Temperatura",
-    "target_label": "Objetivo del calentador del Box",
-    "up_to": "Hasta {{max}} °C para los filamentos cargados en el Box {{n}}."
-  },
-  "loaded": {
-    "busy": "Box ocupado",
-    "toolhead": "Cabezal",
-    "loaded_slot": "Cargada {{slot}}",
-    "at_hub_slot": "En el hub {{slot}}",
-    "none": "No hay filamento del Box cargado"
+    "dialog_title": "Calentador del Box {{n}}",
+    "stop_drying": "Detener el secado",
+    "heat_to": "Calentar a {{temp}} °C",
+    "heating_to": "Calentando a {{temp}} °C",
+    "spools_turn": "Las bobinas giran cada 5 minutos.",
+    "spools_still": "Las bobinas no se mueven.",
+    "holds": "Se mantiene hasta que lo apagues.",
+    "holds_card": "Se mantiene hasta que lo apagues",
+    "change_to": "Cambiar a",
+    "dry_for": "Secar {{hours}} h a {{temp}} °C",
+    "mode": "Modo del calentador",
+    "heat": "Calentar",
+    "between_prints": "Entre impresiones",
+    "during_prints": "Durante las impresiones",
+    "not_during_print": "No durante una impresión",
+    "dry_rolls": "Tiempo fijo, girando las bobinas",
+    "dry_timed": "Funciona durante un tiempo fijo",
+    "time": "Tiempo",
+    "hours": "{{h}} h",
+    "hours_unit": "h",
+    "drying_time": "Tiempo de secado",
+    "zero_limit": "Los ajustes de filamento de QIDI dan a {{types}} un límite de calentamiento del Box de 0 °C, así que Calentar queda desactivado mientras esté en {{where}}.",
+    "dry_instead": "Para secarlo, usa Secar.",
+    "dry_after_print": "Para secarlo, usa Secar después de la impresión.",
+    "limit": "Hasta {{max}} °C, el límite de QIDI para {{types}} en {{where}}.",
+    "filament": "filamento",
+    "in_box": "en el Box",
+    "humidity_label": "de humedad",
+    "at_temp": "A {{temp}} °C",
+    "temp_of": "{{temp}} de {{target}} °C",
+    "time_left": "Quedan {{time}}",
+    "ending": "Terminando",
+    "ends": "termina a las {{time}}"
   },
   "slot": {
     "read_rfid": "Leer RFID",
@@ -187,21 +194,20 @@
     "jog_out": "Sacar",
     "jog_in_title": "Entrar {{mm}} mm",
     "jog_out_title": "Sacar {{mm}} mm",
-    "external_hint": "La bobina externa alimenta directamente el cabezal, así que no tiene controles del Box. Cárgala a mano.",
     "printing_hint": "No se puede cargar ni descargar durante la impresión.",
     "database_invalid": "La lista de filamentos qidi_filament_config/filament-0.4.json no contiene filamentos. Comprueba que sea JSON válido y reinicia la impresora.",
-    "nozzle_range": "Boquilla {{min}}–{{max}}°C",
-    "box_heating": "Calentamiento del Box hasta {{max}}°C",
     "reading": "Leyendo RFID…",
     "from_tag": "Definido desde la etiqueta de la bobina",
-    "no_tool": "sin herramienta",
     "loaded": "cargada",
     "reload_off": "La recarga automática está desactivada",
     "reload_none": "Sin respaldo de recarga automática",
     "reload_with": "Recarga automática con {{slots}}",
     "stranded": "El filamento está detenido entre el hub y el cabezal. Descargar lo devuelve al Box; Expulsar lo saca del Box.",
     "stranded_here": "El filamento de {{slot}} está detenido entre el hub y el cabezal. Descargar lo devuelve al Box; Expulsar lo saca del Box.",
-    "stranded_elsewhere": "El filamento de {{slot}} está detenido entre el hub y el cabezal. Primero descarga o expulsa {{slot}}."
+    "stranded_elsewhere": "El filamento de {{slot}} está detenido entre el hub y el cabezal. Primero descarga o expulsa {{slot}}.",
+    "nozzle_temps": "Boquilla {{min}}–{{max}} °C",
+    "heat_up_to": "Calentar hasta {{temp}} °C",
+    "change_filament": "Cambiar el material, la marca o el color"
   },
   "tool_map": {
     "default": "Predeterminada",
@@ -212,15 +218,16 @@
   },
   "path": {
     "hub": "Hub",
-    "toolhead_sensor": "Sensor del cabezal",
-    "extruder": "Extrusor",
-    "nozzle": "Boquilla",
-    "external": "Externa",
-    "slot_here": "{{slot}} aquí",
-    "filament_here": "filamento aquí",
-    "filament": "filamento",
-    "empty": "vacío",
-    "slot_loaded": "{{slot}} cargada"
+    "slot_loaded": "{{slot}} cargada",
+    "slot_at_hub": "{{slot}} en el hub",
+    "filament_at_hub": "Filamento en el hub",
+    "external_bypasses": "La bobina externa no pasa por el hub",
+    "nothing_at_hub": "Nada en el hub",
+    "no_toolhead_reading": "Sin lectura del sensor del cabezal",
+    "filament_at_toolhead": "Filamento en el sensor del cabezal",
+    "nothing_at_toolhead": "Nada en el sensor del cabezal",
+    "nothing_past_box": "Nada más allá del Box",
+    "toolhead": "Cabezal"
   },
   "spool": {
     "reading": "Leyendo la etiqueta RFID"
@@ -285,7 +292,9 @@
       "changed": "Difiere de la lista actual",
       "conflict": "Su ID {{id}} ya lo usa {{name}}",
       "none": "Todos los filamentos de este archivo ya están en la lista."
-    }
+    },
+    "library_title": "Biblioteca de filamentos",
+    "back_home": "Volver a Inicio"
   },
   "tag": {
     "title": "Escribir la etiqueta de la bobina de {{slot}}",
@@ -316,5 +325,15 @@
     "refusal_unknown": "La etiqueta contiene datos que Valve Oil no sobrescribe.",
     "written_toast": "La etiqueta de la bobina de {{slot}} ahora contiene {{filament}}.",
     "failed_toast": "No se escribió la etiqueta de la bobina de {{slot}}."
+  },
+  "scene": {
+    "sketch_ab": "Un boceto de un QIDI Box con la tapa abierta. El lector de la ranura {{slot}} está en el separador entre las ranuras A y B, y la etiqueta va en el lado de la bobina que mira hacia él.",
+    "sketch_cd": "Un boceto de un QIDI Box con la tapa abierta. El lector de la ranura {{slot}} está en el separador entre las ranuras C y D, y la etiqueta va en el lado de la bobina que mira hacia él.",
+    "replay": "Reproducir de nuevo"
+  },
+  "dry_blocked": {
+    "printing": "El secado no puede empezar durante una impresión.",
+    "busy": "Espera a que el Box termine lo que está haciendo.",
+    "fed": "Primero expulsa {{slots}}. El secado gira el motor de cada ranura, lo que movería el filamento introducido en el Box. Deja las bobinas sobre los rodillos."
   }
 }

@@ -36,36 +36,14 @@
     "camera": "Cámara",
     "layers": "Capas",
     "unavailable": "Cámara no disponible",
-    "full_screen": "Pantalla completa"
+    "full_screen": "Pantalla completa",
+    "change": "Cambiar de cámara, mostrando {{name}}",
+    "side_by_side": "Lado a lado",
+    "close_this": "Cerrar esta cámara"
   },
   "box": {
-    "loaded": "{{slot}} cargada",
-    "nothing_loaded": "Nada cargado",
-    "tools": "Herramientas",
     "tools_locked": "La asignación de herramientas se puede cambiar con la impresora inactiva",
-    "tools_hint": "Cambiar qué ranura carga cada herramienta",
-    "open": "Abrir la página del QIDI Box",
-    "hint": "Haz clic en una ranura para ver sus acciones, o en la temperatura de un Box para su calentador."
-  },
-  "history": {
-    "last_weeks_one": "Última {{count}} semana",
-    "last_weeks_other": "Últimas {{count}} semanas",
-    "done_one": "{{count}} completada",
-    "done_other": "{{count}} completadas",
-    "failed_one": "{{count}} fallida",
-    "failed_other": "{{count}} fallidas",
-    "day_one": "{{date}}: {{count}} completada",
-    "day_other": "{{date}}: {{count}} completadas",
-    "day_failed_one": "{{date}}: {{count}} completada, {{bad}} con error",
-    "day_failed_other": "{{date}}: {{count}} completadas, {{bad}} con error",
-    "print_time": "Tiempo de impresión",
-    "filament": "Filamento",
-    "jobs": "Trabajos"
-  },
-  "quick": {
-    "title": "Acciones rápidas",
-    "lights_on": "Encender luces",
-    "lights_off": "Apagar luces"
+    "filament_library": "Biblioteca de filamentos"
   },
   "exclude": {
     "confirm_title": "¿Excluir {{name}}?",
@@ -104,5 +82,59 @@
     "part_fan": "Ventilador de pieza",
     "aux_fan": "Ventilador aux.",
     "exhaust_fan": "Ventilador de extracción"
+  },
+  "deck": {
+    "fine": "Fino",
+    "coarse": "Grueso",
+    "turbo": "Turbo",
+    "macro_category": "Categoría de macros",
+    "macros_hidden": "Todas las macros están ocultas. {{icon}} En Organizar eliges cuáles se muestran aquí.",
+    "no_macros": "No hay macros. {{icon}} En Organizar eliges cuáles se muestran aquí."
+  },
+  "toolhead": {
+    "locked_pause": "Bloqueado durante la impresión. Pausa para moverlo.",
+    "locked": "Bloqueado durante la impresión",
+    "moving_unhomed": "Moviendo sin homing",
+    "more": "Más acciones del cabezal",
+    "position_hint": "Escribe una posición y pulsa Enter para mover {{axis}} allí",
+    "position_unhomed": "{{axis}} no tiene homing. Haz home para moverlo por posición.",
+    "move_summary": "Pasos: {{mode}} · {{small}} y {{big}} mm",
+    "step_size": "Tamaño del paso",
+    "mode_title": "{{mode}}: pasos de {{small}} mm y {{big}} mm",
+    "home_again": "Volver a hacer home en todos los ejes",
+    "unhomed_on_title": "Moviendo sin homing: los ejes sin home no tienen límites y los motores se apagan tras cada movimiento. Haz clic para parar.",
+    "unhomed_off_title": "Mover igualmente los ejes sin home, sin límites",
+    "unhomed": "Ejes sin home",
+    "no_homing": "Sin homing",
+    "motors_off_title": "Apaga los motores para mover el cabezal y la cama a mano. Después, todos los ejes necesitan volver a hacer home.",
+    "bed_down": "Cama abajo",
+    "bed_up": "Cama arriba",
+    "z_plus": "Z+ {{step}} mm: la cama baja",
+    "z_plus_capped": "Z+ {{step}} mm: la cama baja. Los pasos en Z son de {{max}} mm como máximo.",
+    "z_minus": "Z− {{step}} mm: la cama sube",
+    "wait_last": "Espera a que la impresora termine el último comando.",
+    "unhomed_confirm_title": "¿Mover sin homing?",
+    "unhomed_confirm_body": "Los ejes sin home se moverán sin límites, así que el cabezal puede chocar con el marco y la cama con la boquilla. Tras cada movimiento los motores se apagan, así que todos los ejes necesitan volver a hacer home antes de imprimir.",
+    "unhomed_confirm": "Mover sin homing",
+    "tool_loaded": "T{{tool}} cargado",
+    "nozzle_temp": "Boquilla {{temp}}°",
+    "nozzle_below": "Boquilla por debajo de {{min}}°",
+    "retract_title": "Retraer {{length}} mm",
+    "extrude_title": "Empujar {{length}} mm por la boquilla",
+    "per_press": "{{length}} mm por pulsación",
+    "heat_to_extrude": "Calienta la boquilla a {{min}} °C para extruir",
+    "at_speed": "a {{speed}} mm/s",
+    "closer_title": "Bajar la boquilla {{step}} mm hacia la cama",
+    "closer": "Más cerca",
+    "farther_title": "Alejar la boquilla {{step}} mm de la cama",
+    "farther": "Más lejos",
+    "save_menu": "Guardar…"
+  },
+  "temps": {
+    "hide_line": "Ocultar {{name}} en el gráfico",
+    "show_line": "Mostrar {{name}} en el gráfico",
+    "power": "{{pct}}% de potencia",
+    "target_hint": "Escribe un objetivo para {{name}} y pulsa Enter. 0 lo apaga.",
+    "fan_title": "{{name}}: ventilador {{pct}}%, objetivo {{target}}°"
   }
 }

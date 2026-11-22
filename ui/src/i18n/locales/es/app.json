@@ -3,7 +3,6 @@
   "nav": {
     "home": "Inicio",
     "files": "Archivos",
-    "box": "Box",
     "control": "Control",
     "console": "Consola",
     "tune": "Afinar",
@@ -113,7 +112,6 @@
   "units": {
     "m": "{{n}} m",
     "g": "{{n}} g",
-    "h": "{{n}} h",
     "gb": "{{n}} GB"
   },
   "health": {
@@ -126,7 +124,9 @@
     "up_for": "En marcha",
     "mcu_load": "Carga de MCU",
     "mcu_load_hint": "Lo ocupado que está cada microcontrolador",
-    "mainboard": "Placa base"
+    "mainboard": "Placa base",
+    "warn": "Estado de la impresora: una lectura está alta",
+    "bad": "Estado de la impresora: una lectura está demasiado alta"
   },
   "temps": {
     "off": "apagado",
@@ -145,31 +145,8 @@
     "now": "ahora",
     "minutes_back": "−{{m}} min",
     "seconds_ago": "hace {{s}} s",
-    "aria": "Historial de temperaturas"
-  },
-  "motion": {
-    "title": "Cabezal",
-    "move_xy": "Mover X e Y",
-    "move_z": "Mover Z",
-    "home_xy": "Hacer home en X e Y",
-    "home_z": "Hacer home en Z",
-    "z_up": "Z+: la cama baja",
-    "z_down": "Z−: la cama sube",
-    "step": "Paso (mm)",
-    "home_all": "Home de todo",
-    "motors_off": "Apagar motores",
-    "not_homed": "Sin home",
-    "axes_not_homed": "{{axes}} sin home",
-    "homed": "Con home",
-    "extruder": "Extrusor (mm)",
-    "retract": "Retraer",
-    "extrude": "Extruir",
-    "locked": "El cabezal no se puede mover mientras imprime. Pausa para moverlo.",
-    "home_first": "Haz home en un eje antes de moverlo. Z+ baja la cama.",
-    "needs_hot": "Para extruir, la boquilla tiene que estar caliente.",
-    "needs_hot_now": "Para extruir, la boquilla tiene que estar caliente; está a {{temp}} °C.",
-    "z_hint": "Z+ baja la cama, alejándola de la boquilla.",
-    "more": "Más controles"
+    "aria": "Historial de temperaturas",
+    "window_short": "{{m}} min"
   },
   "mini_console": {
     "title": "Consola",

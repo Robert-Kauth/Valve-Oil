@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Cable, Cpu, Database, HardDrive, MemoryStick, RefreshCw, RotateCcw, Server, Trash2, TriangleAlert, Usb } from 'lucide-react'
+import { Cable, Cpu, Database, HardDrive, RefreshCw, RotateCcw, Server, Trash2, TriangleAlert, Usb } from 'lucide-react'
 import { Card, Dialog, Empty, Segmented, Spinner, confirm } from '../ui'
 import { attempt, toast } from '../toast'
 import { client, usePrinter } from '../../state/printer'
@@ -12,16 +12,19 @@ import { tr } from '../../i18n/rich'
 export function Overview() {
   const { system } = useSystemInfo()
   return (
-    <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-2">
+    // Four columns on a wide screen: the usage charts across two, the host, disk, and database in the third, and the
+    // MCUs in the fourth; two columns on a laptop, with the charts across both; one on a phone.
+    <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-2 2xl:grid-cols-4">
+      <div className="min-w-0 lg:col-span-2">
+        <UsageCard cores={system?.cpu_info?.cpu_count || 1} />
+      </div>
       <div className="grid min-w-0 grid-cols-1 gap-3.5">
         <WarningsCard />
         <HostCard />
-        <SdCard info={system} />
         <DiskCard />
         <DatabaseCard />
       </div>
       <div className="grid min-w-0 grid-cols-1 gap-3.5">
-        <UsageCard cores={system?.cpu_info?.cpu_count || 1} />
         <McuCards />
       </div>
     </div>
@@ -115,20 +118,6 @@ function HostCard() {
         </div>
       )}
       <DevicesDialog open={devices} onClose={() => setDevices(false)} />
-    </Card>
-  )
-}
-
-function SdCard({ info }: { info: SystemInfo | null }) {
-  const sd = info?.sd_info
-  if (!sd || !Object.keys(sd).length) return null
-  return (
-    <Card title={t('system.overview.sd.title')} icon={<MemoryStick size={15} />}>
-      <Row k={t('system.overview.sd.manufacturer')}>{sd.manufacturer}</Row>
-      <Row k={t('system.overview.sd.manufactured')}>{sd.manufacturer_date}</Row>
-      <Row k={t('system.overview.sd.product_name')}>{sd.product_name ? `${sd.product_name} ${sd.product_revision ?? ''}`.trim() : undefined}</Row>
-      <Row k={t('system.overview.sd.capacity')}>{sd.capacity}</Row>
-      <Row k={t('system.overview.sd.serial')}>{sd.serial_number}</Row>
     </Card>
   )
 }
