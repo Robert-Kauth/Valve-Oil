@@ -2,13 +2,17 @@ import { useMemo, useState } from 'react'
 import { Maximize2, Terminal } from 'lucide-react'
 import { usePrinter } from '../state/printer'
 import { href } from '../lib/router'
+import { t } from '../i18n'
 import { ConsoleOutput } from './console/ConsoleOutput'
 import { CommandInput } from './console/CommandInput'
 import { fillCommand, useConsoleEntries, useConsoleSettings, useGcodeHelp } from './console/store'
 import './console/console.css'
+import { FoldTitle, useFold } from './home-deck/fold'
 
 /** Recent printer messages with the Console screen's filters, its command line, and the printer's macros. */
-export function MiniConsole({ className = '' }: { className?: string }) {
+export function MiniConsole({ className = '', noMacros, fold }: { className?: string; noMacros?: boolean; fold?: string }) {
+  const [unfolded, toggle] = useFold(fold ?? 'vo-home-console-open')
+  const folded = !!fold && !unfolded
   const { shown } = useConsoleEntries()
   const { flip } = useConsoleSettings()
   const { help, known } = useGcodeHelp()
@@ -23,23 +27,44 @@ export function MiniConsole({ className = '' }: { className?: string }) {
   const filteredMacros = macros.filter((m) => !macroFilter || m.includes(macroFilter.toUpperCase()))
   const input = <CommandInput compact dropUp={!flip} />
 
+  const title = (
+    <>
+      <Terminal size={14} /> {t('app.mini_console.title')}
+    </>
+  )
+  if (folded)
+    return (
+      <section className="card folded">
+        <h3 className="card-title m-0!">
+          <FoldTitle open={false} onToggle={toggle}>
+            {title}
+          </FoldTitle>
+        </h3>
+      </section>
+    )
   return (
     <section className={`card grow flex flex-col gap-2.5 ${className}`}>
       <h3 className="card-title m-0!">
-        <Terminal size={14} /> Console
-        <a href={href('console')} className="iconbtn -my-1.5 ml-auto h-7 w-7" title="Open the console" aria-label="Open the console">
+        {fold ? (
+          <FoldTitle open onToggle={toggle}>
+            {title}
+          </FoldTitle>
+        ) : (
+          title
+        )}
+        <a href={href('console')} className="iconbtn -my-1.5 ml-auto h-7 w-7" title={t('app.mini_console.open')} aria-label={t('app.mini_console.open')}>
           <Maximize2 size={14} />
         </a>
       </h3>
       {flip && input}
       <ConsoleOutput entries={recent} known={known} flip={flip} showTime={false} className="grow-body min-h-[160px] flex-1 max-md:h-[300px] max-md:flex-none md:max-wide:h-0" />
       {!flip && input}
-      {macros.length > 0 && (
+      {!noMacros && macros.length > 0 && (
         <div className="grid gap-1.5">
           <div className="flex items-center gap-2">
-            <span className="lbl">Macros</span>
-            <span className="text-[11px] text-ink-3">click to put in the command line</span>
-            {macros.length > 12 && <input className="field ml-auto w-28 px-2! py-0.5! text-[11.5px]" placeholder="Filter" value={macroFilter} onChange={(e) => setMacroFilter(e.target.value)} aria-label="Filter macros" />}
+            <span className="lbl">{t('app.mini_console.macros')}</span>
+            <span className="text-[11px] text-ink-3">{t('app.mini_console.macros_hint')}</span>
+            {macros.length > 12 && <input className="field ml-auto w-28 px-2! py-0.5! text-[11.5px]" placeholder={t('app.mini_console.filter')} value={macroFilter} onChange={(e) => setMacroFilter(e.target.value)} aria-label={t('app.mini_console.filter_macros')} />}
           </div>
           <div className="flex max-h-[68px] flex-wrap gap-1 overflow-auto">
             {filteredMacros.map((m) => (

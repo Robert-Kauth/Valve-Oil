@@ -6,6 +6,7 @@ import { Card } from '../ui'
 import { attempt } from '../toast'
 import { boxCommands, useBox, type BoxState } from '../../state/box'
 import { runGcode, usePrinter } from '../../state/printer'
+import { t } from '../../i18n'
 
 function useToolButtons(box: BoxState) {
   const commands = usePrinter((s) => s.commands)
@@ -30,27 +31,25 @@ export function BoxTools({ box: given }: { box?: BoxState }) {
           type="button"
           disabled={disabled}
           aria-pressed={active}
-          title={`${slot.label} · ${slot.present ? slot.name || 'Unknown filament' : 'Empty'}`}
+          title={`${slot.label} · ${slot.present ? slot.name || t('box.unknown_filament') : t('box.empty')}`}
           onClick={() => attempt(() => runGcode(boxCommands.tool(tool)))}
-          className={`btn relative overflow-hidden px-1.5! ${active ? 'btn-primary disabled:opacity-100!' : ''}`}
+          className={`btn px-1.5! ${active ? 'tool-on disabled:opacity-100!' : ''}`}
         >
-          {slot.present && slot.color && <span className="h-3.5 w-3.5 flex-none rounded-full" style={{ background: slot.color, boxShadow: `inset 0 0 0 1px ${active ? 'rgb(0 0 0 / 0.35)' : 'rgb(128 128 128 / 0.6)'}` }} />}
+          {slot.present && slot.color && <span className="h-3.5 w-3.5 flex-none rounded-full" style={{ background: slot.color, boxShadow: 'inset 0 0 0 1px rgb(128 128 128 / 0.6)' }} />}
           T{tool}
-          {/* Disabled buttons fade while printing, so the active tool also gets a bar that stays. */}
-          {active && <span className="absolute inset-x-0 bottom-0 h-[3px] bg-on-accent/40" />}
         </button>
       ))}
     </div>
   )
 }
 
-/** BoxTools in a card titled Tools, for the Control and Box screens. Renders nothing when there are no tools. */
+/** BoxTools in a card titled Tools, for the Control screen. Renders nothing when there are no tools. */
 export function BoxToolsCard({ box, className = '' }: { box?: BoxState; className?: string }) {
   const own = useBox()
   const b = box ?? own
   if (useToolButtons(b).length === 0) return null
   return (
-    <Card title="Tools" className={className} aside={b.printState === 'printing' ? 'Unavailable while printing' : undefined}>
+    <Card title={t('box.tools.title')} className={className} aside={b.printState === 'printing' ? t('box.tools.unavailable_printing') : undefined}>
       <BoxTools box={b} />
     </Card>
   )
