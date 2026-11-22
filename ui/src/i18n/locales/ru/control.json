@@ -141,10 +141,10 @@
   },
   "outputs": {
     "fan_names": {
-      "part_fan": "Вентилятор обдува модели",
-      "auxiliary_cooling_fan": "Вспомогательный вентилятор",
-      "auxiliary_cooling_fan2": "Вспомогательный вентилятор 2",
-      "chamber_circulation_fan": "Вытяжка"
+      "part_fan": "Обдув модели",
+      "auxiliary_cooling_fan": "Вспомогательный",
+      "auxiliary_cooling_fan2": "Вспомогательный 2",
+      "chamber_circulation_fan": "Вытяжной"
     },
     "fans": "Вентиляторы",
     "run_by_klipper": "Управляется Klipper",
