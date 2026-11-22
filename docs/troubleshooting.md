@@ -141,6 +141,8 @@ Restore a specific backup:
 cd ~/valve-oil && ./restore.sh --backup /home/qidi/printer_data/<backup-name>.zip
 ```
 
+Restore refuses while a print is running or paused, or a heater is on. It stops Klipper, puts the backup's files back, and starts Klipper again, so Klipper loads the restored `saved_variables.cfg` instead of writing its own values back over it. Stopping Klipper needs `sudo`: restore uses QIDI's default password, `qiditech`, and asks for yours if it has been changed. If Klipper can't be stopped, nothing is restored.
+
 If restore completed and the recovery sentinel is still present, clear it with:
 
 ```bash
@@ -199,11 +201,11 @@ A filament change ran while the print was inside a part you'd cancelled, and Kli
 
 While printing, the Box feeds filament on its own whenever its buffer asks, timing the slot motor itself. When print start, or `MCB_AUTO_START`, turns that feeding back on while the Box is feeding, the Box keeps the slot motor's timing off from Klipper's, by up to 51 seconds, for the rest of the print. An unload's pull-back then runs that slot's motor late or in bursts, and the toolhead sensor never clears. Diagnostics names the slot and how many seconds it's off.
 
-Valve Oil 26.11.22.2 and later line the slot motor's timing back up before each unload, so this needs nothing from you. On an earlier release, update Valve Oil; until then, restarting Klipper clears it until the next print start.
+Valve Oil 26.11.22.2 and later line the slot motor's timing back up before each unload, so this needs nothing from you. Valve Oil now also stops a running feed, and lets the Box put the slot motor's timing back, before QIDI's code turns feeding back on, so the timing no longer goes off at print start. On an earlier release, update Valve Oil; until then, restarting Klipper clears it until the next print start.
 
 ### The Box fed a slot during a Valve Oil move
 
-The Box fed a slot, or switched its motor off, while Valve Oil was moving that slot itself: a [jog](qidi-box.md#moving-a-slot-by-hand), a spool turn, a spool tag read, or a Box load or unload move. The slot's filament may not be where either expected. Check the slot before its next load, and [report it](#reporting-a-problem) with the support bundle so it can be fixed.
+The Box fed a slot, or switched its motor off, while Valve Oil was moving that slot itself: a [jog](qidi-box.md#moving-a-slot-by-hand), a spool turn, a spool tag read, or a Box load or unload move. The slot's filament may not be where either expected. Check the slot before its next load, and [report it](#reporting-a-problem) with the support bundle so it can be fixed. Valve Oil now stops the Box's feeding on a slot before it jogs, turns, or reads that slot, so this shouldn't happen on those moves any more.
 
 ### Box unload stopped with filament at the toolhead
 

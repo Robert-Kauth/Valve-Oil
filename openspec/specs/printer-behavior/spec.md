@@ -141,6 +141,12 @@ OrcaSlicer and QIDI Studio packs SHALL implement the same functional print-start
 - **THEN** vendor loading and rear purge/cleanup actions are skipped
 - **AND** common temperature waits, tilt, selected mesh preparation, offset, and sensor preparation still run
 
+#### Scenario: Retained material identity compares saved filament IDs as text
+- **WHEN** retained-filament reuse compares the slot's saved filament ID with the retained one
+- **THEN** both compare as trimmed text, so string IDs such as `QFA94` and `QFA00` stay distinct and numeric IDs keep matching themselves
+- **AND** end-print retention saves the filament ID as a string
+- **AND** a retained filament ID that is not a string, such as one saved by an earlier release, does not prove reuse
+
 #### Scenario: Fresh Box filament retains vendor ownership
 - **WHEN** the Box is enabled and retained reuse is not proven
 - **THEN** start delegates feeder, cutter, retry, runout, RFID, and vendor cleaning ownership to the Box stack
@@ -594,6 +600,12 @@ Valve Oil's configuration SHALL provide a console command that moves one USB QID
 - **WHEN** a print is paused, or a vendor Box task is paused at a failed step, such as an unload that stopped with filament caught
 - **THEN** the slot moves as for an idle jog and the motor is handed back afterwards, so `RESUME` or `FLOW_RETRY` carries on from the sensors
 
+#### Scenario: A jog of the slot auto-feed is set up on
+- **WHEN** a slot move of this command, an RFID spool turn, or a stranded-filament pull-back moves the slot the vendor's auto-feed is set up on
+- **THEN** auto-feed on that slot's Box is stopped and the slot's step clock reset before the move, so no feed steps the slot during it
+- **AND** when the vendor had auto-feed armed on that slot, it is armed again afterwards with the vendor's last arguments for it, except after a stranded-filament pull-back, and saved vendor Box state is unchanged
+- **AND** a move of another slot leaves auto-feed as it is
+
 #### Scenario: A jog changes the hub sensor
 - **WHEN** a jog starts with the hub sensor clear and ends with filament at it, or ends with it clear
 - **THEN** the hub record updates as it does for the slot's own vendor motion
@@ -741,6 +753,7 @@ Valve Oil's configuration SHALL let the extruder pull at most 20 mm past a vendo
 #### Scenario: Filament caught at the toolhead outside a tool change
 - **WHEN** the sensor still detects filament 20 mm past the pull-back, in an unload that is not a print's tool change
 - **THEN** no further extruder pull or Box pull runs, a vendor Box flow is paused on its unload step, and the console reports the error and says that `FLOW_RETRY` retries the unload and `FLOW_STOP` ends it
+- **AND** before the error, the slot is untied from the extruder and its motor switched off in Klipper with the vendor's own methods, as the vendor's unload does after its pull-back and on its own failure
 - **AND** when the extruder moved for the pulls, the error says something at the toolhead or in the Box holds the filament and to free it
 - **AND** once the filament is free, `FLOW_RETRY` unloads it
 
@@ -761,7 +774,7 @@ Valve Oil's configuration SHALL let the extruder pull at most 20 mm past a vendo
 - **THEN** the unload stops once those pulls reach 20 mm with the sensor still detecting filament, the same as with 10 mm pulls
 
 ### Requirement: QIDI Box slot step clock before an unload's pull-back
-Valve Oil's configuration SHALL reset a Box slot motor's step clock, as a homing move does, after the vendor unload from the toolhead has stopped auto-feed and before it ties the slot to the extruder for the pull-back, with auto-feed aborted again, all moves finished, and the slot idle, wherever the vendor Box code has auto-feed and that unload path.
+Valve Oil's configuration SHALL reset a Box slot motor's step clock, as a homing move does, after the vendor unload from the toolhead has stopped auto-feed and before it ties the slot to the extruder for the pull-back, with all moves finished and auto-feed stopped on the Box that drives that slot, wherever the vendor Box code has auto-feed and that unload path.
 
 #### Scenario: Auto-feed left the slot's step clock off
 - **WHEN** print start re-armed auto-feed while a feed was running, so the Box kept a step clock for the slot that is off from Klipper's
@@ -770,6 +783,19 @@ Valve Oil's configuration SHALL reset a Box slot motor's step clock, as a homing
 #### Scenario: Every unload from the toolhead
 - **WHEN** a vendor unload from the toolhead ties a slot to the extruder
 - **THEN** the reset happens once, before the first pull-back, and `klippy.log` says so, and the vendor's tie to the extruder and pull-backs then run unchanged
+
+#### Scenario: A feed running or just ended when the unload starts
+- **WHEN** the slot's Box is feeding it, is in the moments after a feed with the buffer still asking for one, or has auto-feed set up on the other Box's slot by the vendor code last
+- **THEN** that Box is told the buffer wants no feed and its auto-feed is aborted twice, waiting after each abort for a stopped feed's step clock to be put back, so no feed steps the slot when it is tied to the extruder and its step clock is Klipper's
+- **AND** the vendor's record of the buffer switch is left as the switch set it, so the vendor's next arm of auto-feed sends that state
+
+### Requirement: QIDI Box auto-feed arms stop a running feed first
+Valve Oil's configuration SHALL stop auto-feed on the Box that drives a slot, as for an unload's step clock reset, before each vendor arm of auto-feed on that slot (`box_autofeed.auto_start`), and SHALL then run the vendor's arm unchanged, wherever the vendor Box code has auto-feed. It SHALL call whatever was installed on that method before it. Where Klipper cannot wait, such as outside Klipper's main thread, the vendor's arm SHALL run unchanged and `klippy.log` SHALL say so.
+
+#### Scenario: Print start re-arms auto-feed during a feed
+- **WHEN** the vendor arms auto-feed on a slot while its Box is feeding it, or in the moments after a feed
+- **THEN** the feed is stopped and the slot's step clock put back first, the slot's step clock stays Klipper's, and auto-feed is armed on the slot with the buffer switch's state
+- **AND** when Valve Oil's Box watcher had a feed running, `klippy.log` says the feed was stopped first
 
 ### Requirement: Filament changes and pauses move inside cancelled parts
 Valve Oil's configuration SHALL let moves through Klipper's object exclusion during a print from `TOOL_CHANGE_START` to `TOOL_CHANGE_END`, while the vendor tool change `T_MANAGER` runs, and while the print is paused, on every printer and whatever slicer wrote the file. A cancelled part's own lines outside those times SHALL still be dropped.
@@ -922,6 +948,12 @@ On printers with QIDI's closed-loop X/Y drivers, the X/Y homing guard SHALL stop
 - **WHEN** the repeated X touch is stopped the same way, the Y touch after X homed is stopped, or a repeated Y touch is stopped after X homed during this Y home
 - **THEN** homing fails with an error that names the axis, says it happened twice or again after homing X, and asks to check for obstructions and belt tension
 
+#### Scenario: Failed touch leaves the drivers in working mode
+- **WHEN** a closed-loop X or Y touch, or arming the drivers for it, raises an error, whether from the guard, a missing trigger, or anything else
+- **THEN** homing runs QIDI's recover script (`SET_HOMING_STATE` 2 and `SET_HOMING_MODE` 2 on both X/Y drivers) before the error propagates
+- **AND** an error from the recover script is logged and the touch's own error is the one reported
+- **AND** a touch that succeeds runs the recover script once, as QIDI's homing does
+
 #### Scenario: Drivers stop answering during a touch
 - **WHEN** the guard is on and two position-error queries in a row go unanswered during an X or Y homing move
 - **THEN** the guard triggers the move's endstop trsync from the host
@@ -935,6 +967,11 @@ On printers with QIDI's closed-loop X/Y drivers, the X/Y homing guard SHALL stop
 #### Scenario: Guard off or unsupported
 - **WHEN** the saved variable `vo_homing_guard` is false, the move homes Z or probes, or the printer has no QIDI closed-loop X/Y drivers
 - **THEN** the guard sends the drivers nothing and homing behaves as without it
+
+#### Scenario: Motor firmware upgrade running
+- **WHEN** QIDI's `cl_interface` reports a closed-loop motor firmware upgrade in progress (`is_any_upgrading()`) as an X or Y homing move starts, or before any position-error query during the move
+- **THEN** the guard sends the drivers nothing more during that move and doesn't stop it for unanswered queries
+- **AND** `klippy.log` gets one line for the move saying the guard isn't watching it because a motor upgrade is running
 
 ### Requirement: QIDI RS-485 device evidence
 Valve Oil's configuration SHALL detect QIDI RS-485 Boxes, buffers, and racks, and evidence that one was attached, without changing how QIDI's code talks to them. Once detected, it SHALL record RS-485 frames in both directions, QIDI's RS-485 log lines, and status changes outside `klippy.log`, keep a shareable report current, and ask once per Klipper start for an issue. Chip ids and USB serial numbers SHALL be salted hashes. `VO_RS_BOX_REPORT` SHALL write the report on demand.

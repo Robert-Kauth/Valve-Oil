@@ -160,6 +160,7 @@ The QIDI Box card in Fluidd has **In** and **Out** buttons that jog the selected
 - The slot moves whatever its sensors read and whatever the printer has recorded as loaded. QIDI's saved Box state, such as which slot is loaded, isn't changed.
 - The extruder doesn't turn during a jog, so jogging the filament that's in the extruder pushes or pulls against its gears.
 - A jog is refused while a print is printing or the Box is moving filament. It works while a print is paused and while a failed Box step waits for `FLOW_RETRY` or `FLOW_STOP`, for example to work filament free after [an unload stops](#filament-caught-at-the-toolhead).
+- The Box keeps feeding the loaded slot on its own while a print is paused. A jog, spool turn, or spool tag read of the slot the Box feeds stops that feeding first, so the Box doesn't move the filament during it, and turns it back on afterwards. Pulling [stuck filament](#stuck-box-loads) back out of the hub leaves it off, as QIDI's unload does.
 - Jogging out until the slot's inlet sensor no longer sees filament takes the filament out of the slot's feeder, and jogging in won't grab it again. Push it back into the inlet by hand, and the Box loads it as it does any newly inserted filament. With long tubes to the hub, that can take well over a meter of jogging.
 - A jog that brings filament to the Box hub, or clears it, updates the printer's record of which slot is at the hub, as for [stuck Box loads](#stuck-box-loads).
 
@@ -276,7 +277,9 @@ The unload now stops once the extruder has pulled 20 mm past the pull-back witho
 - During a print, **Resume** tries the tool change again.
 - Otherwise, **Retry** (`FLOW_RETRY`) repeats the unload, or **Stop** (`FLOW_STOP`) ends it.
 
-Before 26.11.22.2, this also happened with nothing caught, on the first unload after a long run on one slot, with the Box clicking. While printing, the Box feeds filament on its own whenever the buffer asks for it. When print start turned that feeding back on in the second a feed was running, the Box lost the slot motor's timing for the rest of the print, and the unload's pull-back, which runs the slot motor with the extruder, ran it up to 25 seconds late or in bursts. The unload now lines the slot motor's timing up before it pulls back, as a load does.
+The stopped unload lets the slot go from the extruder and switches its motor off, as QIDI's own failed unload does, so the extruder turns on its own and the slot can be jogged until then.
+
+Before 26.11.22.2, this also happened with nothing caught, on the first unload after a long run on one slot, with the Box clicking. While printing, the Box feeds filament on its own whenever the buffer asks for it. When print start turned that feeding back on in the second a feed was running, the Box lost the slot motor's timing for the rest of the print, and the unload's pull-back, which runs the slot motor with the extruder, ran it up to 25 seconds late or in bursts. The unload now lines the slot motor's timing up before it pulls back, as a load does, after stopping the feeding on that slot's Box even when QIDI's code has set it up on the other Box. Valve Oil also stops a running feed before QIDI's code turns feeding back on, so print start no longer throws the timing off.
 
 The slot can be [jogged](#moving-a-slot-by-hand) while the print or the failed unload is paused, for example `VO_BOX_SLOT_JOG SLOT=2 DISTANCE=-20` to pull 1C back, or the **Out** button on the Box card in Valve Oil UI.
 
