@@ -161,6 +161,12 @@ OrcaSlicer and QIDI Studio packs SHALL implement the same functional print-start
 - **THEN** the prime line uses available room ahead of first-layer bounds or a fixed safe fallback
 - **AND** nozzle-temperature Z compensation is applied from a known absolute reference after mesh and offset application
 
+#### Scenario: Prime line retract is put back at the first part
+- **WHEN** compatible slicer start G-code finishes the prime line's tapered end
+- **THEN** it calls `_VO_PRIME_RETRACT`, which retracts 0.8 mm before the nozzle lifts off and travels to the first part
+- **AND** the next G0, G1, G2 or G3 that extrudes, after that travel, first extrudes the same 0.8 mm back, once, without changing the G-code E position
+- **AND** a print that ends before anything extrudes puts nothing back, and G0 through G3 go straight to Klipper again either way
+
 ### Requirement: Optional minimum chamber startup temperature
 Optimized print start SHALL accept a chamber startup minimum independently of the chamber heating target, with compatible slicer G-code for OrcaSlicer 2.4.2 and later.
 
@@ -717,6 +723,34 @@ Optimized configuration SHALL run the vendor tool change, `T_MANAGER` as called 
 - **WHEN** a step of the vendor tool change raises an error during a print, such as `Communication timeout during homing` from a Box motor move, and Klipper has not shut down
 - **THEN** the print pauses instead of ending, the tool-change flow is paused on that step, and the console names the tool, the step, and the error
 - **AND** `RESUME` runs the vendor's resume, which finishes the tool change before printing continues
+
+#### Scenario: The vendor tool change fails after a slot runs out
+- **WHEN** the vendor tool change raises its `'loaded_stepper'` `AttributeError` after the loaded slot ran out, with `last_load_slot` naming a Box slot
+- **THEN** the print pauses as above, and the console names the slot that ran out, says `RESUME` loads the new tool's slot, and says to put filament in the slot that ran out before the print needs it again
+
+### Requirement: QIDI Box unload with filament caught at the toolhead
+Optimized configuration SHALL let the extruder pull at most 20 mm past a vendor unload's pull-back, its first two extruder pulls, while the toolhead sensor detects filament. When the vendor asks for another pull with the sensor still detecting filament, the unload SHALL stop before the Box pulls, with an error that names the slot, says how far the extruder pulled, and says to free the filament at the toolhead.
+
+#### Scenario: The sensor clears within two pulls
+- **WHEN** the toolhead sensor clears during the pull-back or within 20 mm past it
+- **THEN** the vendor unload carries on unchanged, and the Box pulls the filament back
+
+#### Scenario: Filament caught at the toolhead outside a tool change
+- **WHEN** the sensor still detects filament 20 mm past the pull-back, in an unload that is not a print's tool change
+- **THEN** no further extruder pull or Box pull runs, a vendor Box flow is paused on its unload step, and the console reports the error and says that `FLOW_RETRY` retries the unload and `FLOW_STOP` ends it
+- **AND** once the filament is free, `FLOW_RETRY` unloads it
+
+#### Scenario: Filament caught at the toolhead in a tool change
+- **WHEN** the same happens during a print's tool change
+- **THEN** the print pauses as for a tool-change step that raises, and the console says `RESUME` tries the tool change again
+
+#### Scenario: Every unload from the toolhead is logged
+- **WHEN** a vendor unload from the toolhead ends, however it ends
+- **THEN** `klippy.log` records the toolhead and hub sensors before and after it, how far the extruder pulled, and where the toolhead sensor cleared
+
+#### Scenario: Box code with other pulls
+- **WHEN** the vendor Box code pulls past the pull-back in steps other than 10 mm, or at another speed
+- **THEN** the unload stops once those pulls reach 20 mm with the sensor still detecting filament, the same as with 10 mm pulls
 
 ### Requirement: Spoolman spools follow the loaded QIDI Box slot
 Optimized configuration SHALL keep an operator-assigned Spoolman spool for each QIDI Box slot and the external spool, and SHALL make the loaded slot's spool Moonraker's active spool whenever the slot recorded as loaded changes.
