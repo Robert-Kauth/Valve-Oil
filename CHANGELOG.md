@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.11.22.1
+- Valve Oil UI is now in Spanish and Russian as well as English. It starts in your browser's language and **Settings → General → Language** picks another, kept in that browser. Messages from the printer, such as Klipper's, the console's, printer warnings, and update and install steps, stay in English. See [Language](docs/valve-oil-ui.md#language).
+
 ## 26.11.20.1
 - On every printer, a THR flash that something interrupts is now finished by Valve Oil instead of leaving Klipper and the touchscreen stopped and every installer command refusing to run until the board was recovered by hand. While the installer runs, it resends what the THR missed, or puts QIDI's THR firmware back and verifies it. If the installer is stopped, the SSH session closes, or the printer restarts or loses power, turning the printer off and on finishes the flash before Klipper and the touchscreen start, and so does the next install or update. This covers a power cut during the flash too, as long as the printer starts quickly enough for Valve Oil to reach the THR within the 4 to 10 seconds its bootloader listens after power-on; a Max 4 and a Smart 5 take about 3.3, and a Plus 5 about 3.9. A THR that isn't reached in time, after its old firmware was erased, needs a programmer. See [If a THR flash is interrupted](docs/firmware.md#if-a-thr-flash-is-interrupted).
 - THRs with bootloader `0302f39c…`, found on a Max 4 (issue #346), now get Valve Oil's THR firmware. It is the `31f8344d…` bootloader with one byte different, which only matters when a flash is interrupted, so Valve Oil never lets such a flash wait on it.
