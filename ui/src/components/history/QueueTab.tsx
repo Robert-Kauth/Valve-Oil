@@ -171,7 +171,7 @@ export function QueueTab() {
                 </span>
                 <MenuButton
                   button={<Ellipsis size={16} />}
-                  label={`${t('history.jobs.job_actions')} — ${displayName(j.filename)}`}
+                  label={t('history.jobs.job_actions_named', { name: displayName(j.filename) })}
                   items={[
                     i > 0 && { label: t('history.queue.jump'), icon: <ArrowUpToLine size={15} />, onSelect: () => attempt(() => queueActions.jump(j.job_id)) },
                     { label: t('history.queue.multiply'), icon: <Copy size={15} />, onSelect: () => setMultiply([j]) },

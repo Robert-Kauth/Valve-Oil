@@ -3,6 +3,8 @@ import { X } from 'lucide-react'
 import { t } from '../i18n'
 
 const dialogStack: HTMLElement[] = []
+// Everything Tab can land on inside a dialog, for keeping Tab within it.
+const FOCUSABLE = 'a[href], area[href], button, input, select, textarea, summary, iframe, audio[controls], video[controls], [contenteditable]:not([contenteditable="false"]), [tabindex]'
 
 export function Card({ title, icon, aside, children, className = '' }: { title?: ReactNode; icon?: ReactNode; aside?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -75,7 +77,7 @@ export function Dialog({ open, onClose, title, children, footer, size }: { open:
     const dialog = dialogRef.current
     if (!dialog) return
     dialogStack.push(dialog)
-    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter((el) => !el.matches(':disabled') && !el.hasAttribute('hidden') && el.getClientRects().length > 0)
+    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => !el.matches(':disabled') && el.getAttribute('tabindex') !== '-1' && !el.hasAttribute('hidden') && el.getClientRects().length > 0)
     if (!dialog.contains(document.activeElement)) (focusable()[0] ?? dialog).focus()
     const onKey = (e: KeyboardEvent) => {
       if (dialogStack[dialogStack.length - 1] !== dialog) return
@@ -84,7 +86,8 @@ export function Dialog({ open, onClose, title, children, footer, size }: { open:
         onCloseRef.current()
         return
       }
-      if (e.key !== 'Tab') return
+      // A control that uses Tab itself (the code editor's indent) has already handled it.
+      if (e.key !== 'Tab' || e.defaultPrevented) return
       const controls = focusable()
       if (!controls.length) {
         e.preventDefault()
@@ -103,8 +106,13 @@ export function Dialog({ open, onClose, title, children, footer, size }: { open:
     return () => {
       window.removeEventListener('keydown', onKey)
       dialogStack.splice(dialogStack.lastIndexOf(dialog), 1)
-      triggerRef.current?.isConnected && triggerRef.current.focus()
-      triggerRef.current = null
+      // StrictMode re-runs this effect with the dialog still on the page; only a real close returns focus to the opener.
+      queueMicrotask(() => {
+        if (dialog.isConnected) return
+        const trigger = triggerRef.current
+        triggerRef.current = null
+        if (trigger?.isConnected) trigger.focus()
+      })
     }
   }, [open])
 
@@ -290,6 +298,8 @@ export function Spinner({ size = 16, className = '' }: { size?: number; classNam
 export function MenuButton({ button, items, align = 'right', className = 'iconbtn', label }: { button: ReactNode; items: ({ label: ReactNode; icon?: ReactNode; onSelect: () => void; danger?: boolean; disabled?: boolean } | null | false)[]; align?: 'left' | 'right'; className?: string; label?: string }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  // An item's dialog takes its opener from the focused element, and the item itself goes when the menu closes.
+  const buttonRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     if (!open) return
     const close = (e: Event) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false)
@@ -300,7 +310,7 @@ export function MenuButton({ button, items, align = 'right', className = 'iconbt
   }, [open])
   return (
     <div className="relative inline-flex" ref={ref}>
-      <button type="button" className={className} aria-haspopup="menu" aria-expanded={open} aria-label={label} onClick={() => setOpen((o) => !o)}>
+      <button ref={buttonRef} type="button" className={className} aria-haspopup="menu" aria-expanded={open} aria-label={label} onClick={() => setOpen((o) => !o)}>
         {button}
       </button>
       {open && (
@@ -308,7 +318,7 @@ export function MenuButton({ button, items, align = 'right', className = 'iconbt
           {items.filter(Boolean).map((it, i) => {
             const item = it as Exclude<typeof it, null | false>
             return (
-              <button key={i} type="button" role="menuitem" disabled={item.disabled} className={item.danger ? 'danger' : ''} onClick={() => (setOpen(false), item.onSelect())}>
+              <button key={i} type="button" role="menuitem" disabled={item.disabled} className={item.danger ? 'danger' : ''} onClick={() => (buttonRef.current?.focus(), setOpen(false), item.onSelect())}>
                 {item.icon}
                 {item.label}
               </button>

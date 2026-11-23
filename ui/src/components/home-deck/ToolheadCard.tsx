@@ -297,7 +297,7 @@ function ExtrudeBody() {
   }
   const off = printing || !ready || speed <= 0
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-2.5">
+    <div className="th-extrude-fold grid min-w-0 grid-cols-1 gap-2.5">
       <BoxTools />
       <div className="th-extrude">
         <button className="btn" disabled={off} onClick={() => send(extrudeGcode(-len, speed, clientMacro))} title={t('home.toolhead.retract_title', { length: len })}>

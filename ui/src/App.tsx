@@ -295,7 +295,7 @@ function SaveConfigButton() {
   const sections = Object.keys(items ?? {})
   return (
     <button
-      className="btn btn-sm btn-primary order-2 sm:order-none"
+      className="btn btn-sm btn-primary mr-auto sm:mr-0"
       disabled={printing}
       title={printing ? t('app.save_config.waits') : undefined}
       onClick={async () => {
@@ -324,7 +324,7 @@ function TopBar() {
   // The model the installer detected (QIDI Max 4, Plus 5, or Smart 5), from Valve Oil's status service.
   const name = useStore(valveOil, (s) => s.status?.printer.name ?? null)
   return (
-    <div className="flex flex-wrap items-center gap-3 border-b border-line px-3.5 py-2.5 pt-[max(10px,env(safe-area-inset-top))] sm:flex-nowrap md:px-[18px]" style={{ background: 'var(--page)' }}>
+    <div className="relative flex flex-wrap items-center gap-3 border-b border-line px-3.5 py-2.5 pt-[max(10px,env(safe-area-inset-top))] sm:flex-nowrap md:px-[18px]" style={{ background: 'var(--page)' }}>
       <a href={href('home')} className="flex items-center gap-2.5 md:hidden">
         <LogoMark height={30} />
       </a>
@@ -338,9 +338,10 @@ function TopBar() {
       )}
       <StatusPill />
       <div className="order-1 flex-1 sm:order-none" />
-      <SaveConfigButton />
-      <MiniTemps />
+      {/* On phones this is the top bar's second row, under the logo and E-stop; the Health and Notifications popups open below it. */}
       <div className="order-2 flex w-full items-center justify-end gap-3 sm:contents">
+        <SaveConfigButton />
+        <MiniTemps />
         <HealthButton />
         <NotificationsButton />
         <button className="iconbtn" onClick={toggleTheme} aria-label={t('app.topbar.switch_theme')} title={t('app.topbar.switch_theme')}>

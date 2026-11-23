@@ -58,6 +58,8 @@ function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; sl
   const group = box.reloadGroups[slot.index]?.letter
   const loaded = box.loadedSlot === slot.index
   const title = slot.present ? [slot.label, slot.vendor, slot.name, loaded ? t('box.slot.loaded') : null].filter(Boolean).join(' · ') : t('box.units.empty_title', { slot: slot.label })
+  // The slot's one control for keyboards and screen readers: everything the tile shows, the type and hub or tag state included.
+  const label = [title, slot.present ? (slot.type ?? t('box.units.unknown_type')) : null, box.fromTag[slot.index] ? t('box.units.from_tag') : null, status ? t(status.textKey) : null].filter(Boolean).join(' · ')
   return (
     <div
       className={`tile box-selectable flex! flex-col items-center gap-0.5! px-1! pt-1.5! pb-2! text-center ${selected ? 'bg-accent-tint!' : ''}`}
@@ -65,7 +67,8 @@ function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; sl
     >
       {/* The slot, its tag mark, then its tools and auto-reload group, all on the top line. */}
       <div className="flex w-full min-w-0 flex-wrap items-center gap-0.5 pl-1">
-        <button type="button" aria-label={title} aria-pressed={selected} title={title} onClick={() => onSelect(slot.index)} className="flex min-h-6 items-center gap-0.5 border-0 bg-transparent p-0 text-inherit">
+        {/* A second tap target for the same slot; the button below is the one keyboards and screen readers use. */}
+        <button type="button" tabIndex={-1} aria-hidden="true" title={title} onClick={() => onSelect(slot.index)} className="flex min-h-6 items-center gap-0.5 border-0 bg-transparent p-0 text-inherit">
           <span className="text-[11px] font-bold text-ink-3">{slot.label}</span>
           {box.fromTag[slot.index] && <Tag size={11} className="ml-0.5 text-ink-3" aria-label={t('box.units.from_tag')} />}
         </button>
@@ -88,7 +91,7 @@ function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; sl
           </span>
         )}
       </div>
-      <button type="button" aria-label={title} aria-pressed={selected} title={title} onClick={() => onSelect(slot.index)} className="flex w-full min-w-0 flex-1 flex-col items-center gap-0.5 border-0 bg-transparent p-0 text-center text-inherit">
+      <button type="button" aria-label={label} aria-pressed={selected} title={title} onClick={() => onSelect(slot.index)} className="flex w-full min-w-0 flex-1 flex-col items-center gap-0.5 border-0 bg-transparent p-0 text-center text-inherit">
         <Spool slot={slot} size={50} label={false} loaded={loaded} />
         {slot.present && (
           <>
