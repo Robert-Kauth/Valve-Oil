@@ -5,6 +5,7 @@ import json
 import os
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from installer.runtime import earlier_names, valve_oil_status
 from installer.runtime.cli import resolve_runtime_paths
@@ -150,6 +151,26 @@ class EarlierNamesTests(unittest.TestCase):
         self.assertEqual(sorted(removed), ["/etc/systemd/system/tltg-status.service", "/home/qidi/tltg-fluidd"])
         self.assertTrue(foreign.exists())
         self.assertTrue(served.exists())
+
+    def test_an_active_earlier_auto_update_parent_is_removed_only_after_it_exits(self) -> None:
+        host = self.root.parent / "host"
+        unit = host / "etc/systemd/system/tltg-optimized-auto-update.service"
+        unit.parent.mkdir(parents=True)
+        unit.write_text("# tltg-optimized:auto-update-service\n[Unit]\n", encoding="utf-8")
+
+        with mock.patch.object(earlier_names, "_active", return_value=True):
+            removed = earlier_names.retire_earlier_host_files(
+                root=host, sudo_password=None, folders=False,
+            )
+        self.assertEqual(removed, [])
+        self.assertTrue(unit.exists())
+
+        with mock.patch.object(earlier_names, "_active", return_value=False):
+            removed = earlier_names.retire_earlier_host_files(
+                root=host, sudo_password=None, folders=False,
+            )
+        self.assertEqual(removed, ["/etc/systemd/system/tltg-optimized-auto-update.service"])
+        self.assertFalse(unit.exists())
 
 
 if __name__ == "__main__":

@@ -324,6 +324,9 @@ EARLIER_UNITS: tuple[tuple[str, bool], ...] = (
     ("tltg-firmware-update.service", False),
     ("tltg-zram-swap.service", False),
 )
+EARLIER_PARENT_UNITS = frozenset(
+    {"tltg-optimized-auto-update.service", "tltg-firmware-update.service"}
+)
 SYSTEMD_DIR = "/etc/systemd/system"
 # Other package-created files under earlier names. Each carries a package marker, and nothing else is removed.
 EARLIER_FILES: tuple[str, ...] = (
@@ -385,7 +388,7 @@ def retire_earlier_host_files(
     for unit, stop in units:
         if stop:
             _sudo(["systemctl", "stop", unit], root=root, run=run, password=sudo_password)
-        if unit == "tltg-firmware-update.service" and _active(unit, root=root, run=run):
+        if unit in EARLIER_PARENT_UNITS and _active(unit, root=root, run=run):
             continue
         _sudo(["systemctl", "disable", unit], root=root, run=run, password=sudo_password)
         _remove(f"{SYSTEMD_DIR}/{unit}", root=root, run=run, password=sudo_password)

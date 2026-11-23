@@ -250,6 +250,13 @@ class PrinterSpec:
     firmware_key_prefix: str = ""
     # QIDI's update folder for each package of each listed firmware, in name order (installer/usb/).
     restore_sets: tuple[RestoreSet, ...] = ()
+    # "official" or "community": releases may ship without being tested on a community printer; the installer
+    # says so and the README lists it apart (docs/community-printers.md).
+    support: str = "official"
+
+    @property
+    def community_supported(self) -> bool:
+        return self.support == "community"
 
     def firmware_key(self, soc_version: str) -> str:
         return self.firmware_key_prefix + soc_version
@@ -448,6 +455,19 @@ class SystemRockchipRootSyncSpec:
 
 
 @dataclass(frozen=True)
+class SystemKlipperTreeSpec:
+    # QIDI's compiled Klipper modules Valve Oil's Klipper was checked with, by firmware key: paths under klippy/, each
+    # with its size and sha256. Valve Oil's Klipper is installed only on these firmware.
+    qidi_modules: tuple[tuple[str, tuple[tuple[str, ImagePin], ...]], ...] = ()
+
+    def modules_for(self, firmware: str) -> dict[str, ImagePin] | None:
+        for key, modules in self.qidi_modules:
+            if key == firmware:
+                return dict(modules)
+        return None
+
+
+@dataclass(frozen=True)
 class SystemOptimizationsSpec:
     enabled_by_default: bool
     dns: SystemDnsSpec
@@ -465,6 +485,7 @@ class SystemOptimizationsSpec:
     klipper_print_stats_manager: SystemMoonrakerMetadata3mfSpec
     fluidd_filament_config: SystemFluiddFilamentConfigSpec
     rockchip_root_sync: SystemRockchipRootSyncSpec
+    klipper_tree: SystemKlipperTreeSpec = SystemKlipperTreeSpec()
 
 
 @dataclass(frozen=True)

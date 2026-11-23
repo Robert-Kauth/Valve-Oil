@@ -24,6 +24,12 @@ If you want to help support content like this, consider subscribing on YouTube, 
 | QIDI Plus 5 | `01.01.02.01` |
 | QIDI Smart 5 | `01.01.02.01` |
 
+### Community-supported printers
+
+These printers are supported by their owners and releases may ship without being tested on them. The installer tells you when your printer is one of them. [What community support means, and how to add a printer →](docs/community-printers.md)
+
+None yet.
+
 
 ## Install
 
@@ -86,6 +92,11 @@ No computer handy? [Install from a USB drive](docs/install.md#install-from-a-usb
 - This project's own web interface at `http://<your printer's ip>/valve-oil/`, alongside Fluidd, in Valve Oil's look, with everything Fluidd does on these printers plus Valve Oil's updates, in English, Spanish, or Russian.
 
 [Valve Oil UI →](docs/valve-oil-ui.md)
+
+### Newer Klipper
+- Optional: upstream Klipper v0.14 with QIDI's changes, installed beside QIDI's Klipper and off until you choose it, with a switch back at any time.
+
+[Valve Oil's Klipper →](docs/klipper.md)
 
 ### Fixes for QIDI bugs
 - The real error instead of a bare `MCU shutdown`.

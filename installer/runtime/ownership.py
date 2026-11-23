@@ -16,7 +16,7 @@ RunFn = Callable[..., subprocess.CompletedProcess]
 # Valve Oil's names, and the names releases before 26.11.22.3 used, which an install moves to Valve Oil's.
 EARLIER_PREFIXES = ("tltg", ".tltg")
 INSTALLER_PREFIXES = ("vo_", "vo-", ".vo_", ".vo-", *EARLIER_PREFIXES)
-HOME_NAMES = ("vo-fluidd", "vo-valve-oil-ui", "vo-moonraker-speedups", "vo-addons")
+HOME_NAMES = ("vo-fluidd", "vo-valve-oil-ui", "vo-moonraker-speedups", "vo-addons", "vo-klipper")
 HOME_PREFIXES = (f".{BUNDLE_ROOT_NAME}.", ".vo-update-", *(f"{name}." for name in HOME_NAMES))
 CHOWN_BATCH = 200
 

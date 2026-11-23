@@ -117,6 +117,12 @@ import webhooks
 from . import fan, heaters, output_pin, probe, stepper_enable, tmc
 
 try:
+    # Klipper 0.14 and later
+    from . import motion_queuing as _motion_queuing_module
+except ImportError:
+    _motion_queuing_module = None
+
+try:
     import msgspec
 except ImportError:
     msgspec = None
@@ -851,6 +857,11 @@ class KlipperFixes:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.heaters = []
+        if _motion_queuing_module is not None:
+            # Klipper 0.14 and later: Valve Oil's Klipper already has these.
+            logging.info("vo_klipper_fixes: not needed; this Klipper has "
+                         "these fixes")
+            return
         fixes = [
             ("homing endstop sync", lambda: _replace(
                 mcu.MCU_trsync, "start", "MCU_trsync.start", _trsync_start)),

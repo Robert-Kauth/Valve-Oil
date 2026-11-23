@@ -1195,6 +1195,21 @@ The package's Moonraker fixes module SHALL run the TLS handshake of the vendor M
 - **WHEN** the vendor MQTT component lacks the attributes the module was written for
 - **THEN** the module changes nothing and Moonraker's log says the fix was not applied
 
+### Requirement: Moonraker starts when its D-Bus startup checks go unanswered
+The package's Moonraker fixes module SHALL bound each D-Bus call the vendor D-Bus component makes while it starts, such as its checks that the touchscreen app and Klipper answer, to 5 seconds, and SHALL give a call that times out the error result the vendor code returns for a failed call. Calls the vendor component makes after it has started SHALL keep the vendor's wait.
+
+#### Scenario: Klipper does not answer
+- **WHEN** Moonraker starts while Klipper holds its D-Bus name and does not answer the vendor startup check
+- **THEN** Moonraker finishes starting within seconds, and its log names the service that did not answer
+
+#### Scenario: Calls after startup
+- **WHEN** the vendor D-Bus component calls another service after Moonraker has started
+- **THEN** the call waits for its answer as the vendor code does
+
+#### Scenario: Unrecognized vendor D-Bus code
+- **WHEN** the vendor D-Bus component lacks the methods the module was written for
+- **THEN** the module changes nothing and Moonraker's log says the fix was not applied
+
 ### Requirement: LAN-only mode stops the cloud MQTT retries
 When a vendor config update turns LAN-only mode on (`general.lan_mode` `"1"`) while the vendor MQTT component is not connected, the package's Moonraker fixes module SHALL, after the vendor handler succeeds, send that component its own disconnect request and clear Moonraker's MQTT warning and failed `mqtt` component.
 
@@ -1587,6 +1602,11 @@ On a USB Box running the Valve Oil Box firmware, Valve Oil configuration SHALL, 
 #### Scenario: Blank tag is written
 - **WHEN** an operator asks to write a slot's filament and a spool with a blank MIFARE Classic 1K or NTAG213/215/216 tag comes past the slot's reader
 - **THEN** the tag holds the filament and colors, the read-back confirms it, and QIDI's next read of that spool sets the slot from it
+
+#### Scenario: Tag in QIDI's layout is written
+- **WHEN** an operator asks to write a slot's filament to a tag holding QIDI's original material, color, and maker codes padded with zeros or `0xFF`, as QIDI's spools and other tag apps write them, opened with the default key or QIDI's `D3F7D3F7D3F7`
+- **THEN** the tag holds the filament and colors, the read-back confirms it, and QIDI's next read of that spool sets the slot from it
+- **AND** a tag whose QIDI block sits beside other data is not written
 
 #### Scenario: Empty slot's spool is turned
 - **WHEN** the slot is empty and its spool sits on the rollers with no filament fed

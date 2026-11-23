@@ -39,6 +39,27 @@ The installer SHALL identify the printer from its detected supported firmware, s
 - **THEN** migration requires an idle printer and a validated stock snapshot for the detected firmware
 - **AND** vendor-managed, user-specific, and sensitive configuration remains preserved
 
+### Requirement: Community-supported printers are named at install
+Each printer in `installer/package.yaml` SHALL be officially supported or community-supported, declared with `support: community`, whose releases may ship without being tested on it. A community-supported printer SHALL install, update, and uninstall with the same admission, backup, rollback, and firmware safeguards as an officially supported one. Every supported printer, of either kind, SHALL run QIDI's Python 3.9.
+
+#### Scenario: A terminal install on a community-supported printer says so first
+- **WHEN** an install or update started over SSH detects a community-supported printer
+- **THEN** it says the printer is community-supported and releases may ship without being tested on it, before its first question
+- **AND** its summary says the same
+
+#### Scenario: A touchscreen install on a community-supported printer says so first
+- **WHEN** the USB installer's first screen or update screen shows a community-supported printer
+- **THEN** the printer's row is marked community-supported
+- **AND** a new install shows a screen saying releases may ship without being tested on the printer before its first question, and Back returns to the first screen
+
+#### Scenario: Officially supported printers show no notice
+- **WHEN** an install or update detects an officially supported printer
+- **THEN** neither front end shows the community notice
+
+#### Scenario: A printer without Python 3.9 stops at once
+- **WHEN** the release's `install.sh` runs on a printer whose `python3` is older than 3.9
+- **THEN** it names the Python it found and that Valve Oil needs 3.9, and exits before the runtime starts
+
 ### Requirement: Runs as root match runs as the printer's user
 Every installer launcher, including the release download, automatic updates, restore, and the THR and Box firmware tools, SHALL leave the same file owners and modes whether it is started as root or as the user who owns `printer_data`, and SHALL return installer-created files that an earlier run left owned by another user to that user.
 
@@ -271,6 +292,7 @@ Every install and update SHALL apply the host OS optimizations, leaving only whe
 - **AND** an earlier run's saved-variable check that no longer matches Klipper is reported and cleared, while the run that saved the values still fails on a mismatch
 - **AND** a host journal that can't be read or acted on is set aside unchanged, and one whose rollback fails is retried by the next runs and set aside after the third attempt, leaving the host as it is
 - **AND** an invalid legacy ledger migration journal is dropped without removing anything it names
+- **AND** while migrating names from before 26.11.22.3, an active earlier automatic-update or firmware-update service that started the installer is left in place until it exits; inactive earlier service files are retired
 
 #### Scenario: Uninstall follows the operator's host-state decision
 - **WHEN** uninstall finds host restore preimages
@@ -909,6 +931,48 @@ Normal install and update SHALL replace a reviewed build of QIDI's Klipper C hel
 - **WHEN** `scripts/build_klipper_chelper.py` builds upstream Klipper at QIDI's snapshot, unpatched and with the patches in `chelper/`
 - **THEN** the unpatched build is QIDI's library byte for byte and the patched build is the package's
 
+### Requirement: Valve Oil's Klipper beside QIDI's
+Normal install and update SHALL install the package's Klipper tree (`klipper/`, upstream Klipper v0.14 with QIDI's changes) as its own directory beside QIDI's untouched `~/klipper`, for printer firmware whose QIDI compiled modules are listed in the manifest, and SHALL start it in place of QIDI's Klipper only when the operator has chosen it and every launch check passes. It is off by default, independently of optional OS optimization policy.
+
+#### Scenario: The tree is installed for supported firmware
+- **WHEN** install or update runs on firmware listed under `system_optimizations.klipper_tree.qidi_modules` and QIDI's live compiled modules match that list
+- **THEN** it stages the tree with the printer's overlay, every package extra module, copies of QIDI's compiled modules, and the prebuilt C helper library as the newest file in its directory, writes the tree's marker last, and moves it into place, keeping the replaced tree until the host transaction ends
+- **AND** it installs the launcher and the `klipper.service` drop-in that starts Klipper through it
+- **AND** QIDI's `~/klipper` is left unchanged
+
+#### Scenario: Compiled copies of the tree's own modules are passed over
+- **WHEN** QIDI's `~/klipper/klippy` also holds an unlisted compiled module whose import name the tree has its own Python module for, such as `extras/heater_feng.cpython-39-aarch64-linux-gnu.so` beside the tree's `extras/heater_feng.py`
+- **THEN** install, update, and every Klipper start treat QIDI's modules as matching, whatever that file holds, and it isn't copied into the tree or named as not listed in the report
+- **AND** an unlisted compiled module the tree has no module of its own for still counts as a difference
+
+#### Scenario: Other firmware or unrecognized units leave QIDI's Klipper in use
+- **WHEN** the firmware has no module list, QIDI's live modules differ from it, the tree directory exists without the package marker, or `klipper.service` doesn't start Klipper as `~/klippy-env/bin/python $KLIPPER_ARGS`
+- **THEN** the outcome is recorded without failing the install, no drop-in overrides the unit, and QIDI's Klipper runs
+
+#### Scenario: QIDI's modules that differ are reported for an issue
+- **WHEN** install or update finds QIDI's live compiled modules differ from the list for a firmware that has one
+- **THEN** it writes a report to Klipper's log folder naming the pinned modules missing or changed, the compiled modules not listed, and every compiled module found, each with its size and SHA-256
+- **AND** the output names that report and gives a link to the printer-support issue form with the printer, firmware, printer details, and the differences filled in, asking the operator to attach the report
+- **AND** a later install or update whose modules match, or on firmware without a list, removes the report
+
+#### Scenario: Each Klipper start picks a tree
+- **WHEN** Klipper starts through the launcher
+- **THEN** it runs the package tree only when the operator's choice is Valve Oil's Klipper, no QIDI firmware update is pending, and the firmware, QIDI's compiled modules, and the tree's files still match the tree's marker, and fewer than three starts in a row on it went without a ready acknowledgement
+- **AND** otherwise, or on any error in the launcher, it runs QIDI's original command unchanged and records why in a status file the operator sees
+
+#### Scenario: The operator switches both ways
+- **WHEN** the operator chooses QIDI's or Valve Oil's Klipper in Valve Oil UI or with `VO_KLIPPER USE=`
+- **THEN** the status service writes the choice and restarts Klipper through Moonraker
+- **AND** it refuses while a print is running or paused, or while an installer run is in progress, and refuses Valve Oil's Klipper while it isn't available or a QIDI firmware update is pending
+
+#### Scenario: Uninstall returns to QIDI's Klipper
+- **WHEN** uninstall runs
+- **THEN** it removes the drop-in first, then the launcher, then the tree and the choice, status, and acknowledgement files, so QIDI's Klipper starts
+
+#### Scenario: The tree's C helper library is reproducible
+- **WHEN** `scripts/build_klipper_chelper.py` builds `klipper/klippy/chelper` with the printers' toolchain
+- **THEN** the library and the digest of its sources match the package's pinned build
+
 ### Requirement: Klipper and Moonraker come back after exiting outside systemd
 Normal install and update SHALL make systemd start Klipper and Moonraker again when their processes exit without systemd stopping them, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
 
@@ -1342,6 +1406,7 @@ Every installer run SHALL first move what releases before 26.11.22.3 named `tltg
 - **AND** the earlier units stop before their replacements start, except the update check's service, which may be the run that started the install, and zram swap, whose replacement keeps swap that is on
 - **AND** the earlier Fluidd, Valve Oil UI, and speedups folders are removed once nothing serves or imports them
 - **AND** what the package wrote into QIDI's and Moonraker's files under the earlier names is recognized as the package's and rewritten
+- **AND** an update whose host changes fail, or whose rollback a later run replays, puts those files back as the earlier release wrote them
 - **AND** pages loaded before the update reach `/tltg-status/`, `/tltg-addons/`, and `/tltg-screen/` at their `vo` routes
 
 #### Scenario: An earlier release's update check runs the install
