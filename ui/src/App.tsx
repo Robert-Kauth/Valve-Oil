@@ -33,6 +33,8 @@ import { useUiSetting } from './components/settings/fluidd'
 import { HomeScreen } from './screens/Home'
 import { DONT_POWER_OFF, UpdatesScreen } from './screens/Updates'
 import { useUpdateRunning, valveOil } from './state/valve-oil'
+import { useUninstallShown } from './state/uninstall'
+import { UninstallScreen } from './components/updates/Uninstall'
 import { useStore } from './lib/store'
 import { installStepText, installTitle } from './components/updates/Install'
 import { fluiddUrl } from './lib/links'
@@ -89,6 +91,8 @@ export function App() {
   const klippy = usePrinter((s) => s.klippy)
   const boxPresent = useBoxPresent()
   const shown: Route = route === 'filaments' && !boxPresent && klippy === 'ready' ? 'home' : route
+  // Uninstalling removes Valve Oil UI itself, so nothing else on the page is used until it ends.
+  const uninstalling = useUninstallShown()
 
   let body: ReactNode
   // Updates talks to Valve Oil's status service, not Moonraker, so it stays up while an update restarts Moonraker.
@@ -98,6 +102,7 @@ export function App() {
   else body = <Suspense fallback={<Loading className="py-16" size={24} />}>{SCREENS[shown]()}</Suspense>
 
   const cockpit = shown === 'home' && conn === 'open' && klippy === 'ready'
+  if (uninstalling) return <UninstallScreen />
   return (
     <div className="flex h-full">
       <aside className="rail hidden md:flex">

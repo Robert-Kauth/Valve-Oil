@@ -268,7 +268,7 @@ Forbidden patterns:
 
 Condition: `all Valve Oil starts`
 
-Source: `installer/klipper/macros/filament.cfg:207-262`
+Source: `installer/klipper/macros/filament.cfg:213-268`
 
 Direct visible macro calls in branch slice:
 
@@ -291,7 +291,7 @@ Forbidden patterns:
 
 Condition: `USB Box stack loaded, Box enabled, and the start tool's slot is on no connected USB Box (prints from the external spool); a later start on a Box slot or normal end turns the Box back on`
 
-Source: `installer/klipper/macros/filament.cfg:232-258`
+Source: `installer/klipper/macros/filament.cfg:238-264`
 
 Direct visible macro calls in branch slice:
 
@@ -319,7 +319,7 @@ Forbidden patterns:
 
 Condition: `vo_keep_loaded_between_prints == 1 and retained physical state is proven`
 
-Source: `installer/klipper/macros/filament.cfg:263-301`
+Source: `installer/klipper/macros/filament.cfg:269-307`
 
 Direct visible macro calls in branch slice:
 
@@ -368,7 +368,7 @@ Forbidden patterns:
 
 Condition: `box_enabled and retention is disabled or retained physical state is not proven`
 
-Source: `installer/klipper/macros/filament.cfg:302-345`
+Source: `installer/klipper/macros/filament.cfg:308-351`
 
 Direct visible macro calls in branch slice:
 
@@ -420,7 +420,7 @@ Forbidden patterns:
 
 Condition: `!box_available || !enable_box || start tool on no connected USB Box`
 
-Source: `installer/klipper/macros/filament.cfg:346-382`
+Source: `installer/klipper/macros/filament.cfg:352-388`
 
 Direct visible macro calls in branch slice:
 
@@ -592,7 +592,7 @@ Forbidden patterns:
 
 Condition: `PATTERN=MIXED selects the print-start pre-scrape wipe; omitted or other values select the fast silicone wipe; both release waste through Valve Oil's chute drop`
 
-Source: `installer/klipper/macros/filament.cfg:168-174`
+Source: `installer/klipper/macros/filament.cfg:174-180`
 
 Direct visible macro calls in branch slice:
 
@@ -691,7 +691,7 @@ Forbidden patterns:
 
 Condition: `external-spool start, with optional vendor chute cleanup guarded by Box object availability`
 
-Source: `installer/klipper/macros/filament.cfg:188-203`
+Source: `installer/klipper/macros/filament.cfg:194-209`
 
 Direct visible macro calls in branch slice:
 
@@ -727,7 +727,7 @@ Forbidden patterns:
 
 Condition: `fresh Box or external-spool scrape complete and vendor chute cleanup object available`
 
-Source: `installer/klipper/macros/filament.cfg:178-183`
+Source: `installer/klipper/macros/filament.cfg:184-189`
 
 Direct visible macro calls in branch slice:
 
@@ -752,7 +752,7 @@ Forbidden patterns:
 
 Condition: `PRE_SCRAPE=1 selects mixed-speed start wiping; omitted or zero retains fast non-start cleanup`
 
-Source: `installer/klipper/macros/filament.cfg:540-586`
+Source: `installer/klipper/macros/filament.cfg:546-592`
 
 Direct visible macro calls in branch slice:
 

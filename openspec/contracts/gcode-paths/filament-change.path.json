@@ -114,6 +114,7 @@
         "_VO_CUT_FILAMENT_MOTION",
         "{% else %}",
         "SET_GCODE_VARIABLE MACRO=OPTIMIZED_MOVE_TO_TRASH VARIABLE=vendor_cut_handoff_time VALUE={printer.toolhead.estimated_print_time}",
+        "SET_GCODE_VARIABLE MACRO=OPTIMIZED_CUT_FILAMENT VARIABLE=change_y VALUE={printer.gcode_move.position.y}",
         "{% endif %}"
       ],
       "must_not_include": [
@@ -136,6 +137,28 @@
         "{% endif %}"
       ],
       "must_not_include": [
+        "G1 "
+      ]
+    },
+    {
+      "name": "chute_move_when_vendor_flow_stayed",
+      "source_macro": "M109.0",
+      "condition": "right after a slicer filament change's T[n]; QIDI's flow returned without moving the toolhead from where the cut was handed to it (Box off, no Box, or the same slot kept)",
+      "slice": {
+        "start": "{% set position = printer.gcode_move.position %}"
+      },
+      "must_include_order": [
+        "printer.toolhead.estimated_print_time - change.change_time < 30",
+        "(position.x - change.change_x)|abs < 0.01",
+        "(position.y - change.change_y)|abs < 0.01",
+        "SET_GCODE_VARIABLE MACRO=OPTIMIZED_CUT_FILAMENT VARIABLE=change_time VALUE=-1",
+        "{% if vendor_flow_stayed %}",
+        "_VO_MOVE_TO_TRASH_MOTION",
+        "{% endif %}",
+        "TEMPERATURE_WAIT"
+      ],
+      "must_not_include": [
+        "_VO_CUT_FILAMENT_MOTION",
         "G1 "
       ]
     },

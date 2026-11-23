@@ -1567,6 +1567,24 @@ Every install, whether started from a USB drive, over SSH, or as an automatic up
 - **WHEN** the package is uninstalled
 - **THEN** the published progress is removed with the status file
 
+### Requirement: Uninstall from the browser
+The status service SHALL start the installed bundle's uninstall when the operator asks from Valve Oil UI, with every question answered by the request, and SHALL refuse while the uninstall would refuse or stop at once. The uninstall SHALL run detached from the service, so it goes on when it stops and removes the service.
+
+#### Scenario: Operator uninstalls from Valve Oil UI
+- **WHEN** a marked, same-origin request asks to uninstall, keeping or undoing the OS optimizations
+- **THEN** the service runs `~/valve-oil`'s uninstall without questions, undoing the OS optimizations unless kept, and authorizes the host reboot only when it undoes them
+- **AND** it reports the run as the service's one job, so Update now and another uninstall are refused while it runs
+
+#### Scenario: The printer can't be uninstalled now
+- **WHEN** a print is running or paused, a heater has a target, Moonraker can't say, another installer run holds its lock, a QIDI firmware update hasn't finished, a recovery is recorded, or the installer is missing
+- **THEN** the service reports uninstall as unavailable with every reason and refuses the request with them
+- **AND** a Klipper halted on an error doesn't stop it, as the uninstall's own idle check lets one through
+
+#### Scenario: The uninstall removes Valve Oil UI
+- **WHEN** the status service has stopped answering and Valve Oil UI's version file is no longer served
+- **THEN** Valve Oil UI says Valve Oil is uninstalled and leads to Fluidd
+- **AND** while the service still answers, Valve Oil UI shows the uninstall's output, and its reason when it stopped
+
 ### Requirement: Installer runs keep a log
 Every install, update, and uninstall run SHALL write a log of what it detected, decided, and did to the printer's log folder, where it can be downloaded without SSH. A run started from a USB drive SHALL also save that log to the drive when it finishes or fails.
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 import struct
 import unittest
@@ -98,6 +99,17 @@ class BootLogoTests(unittest.TestCase):
                 self.assertEqual(self.step(boot_logo.install), image)
                 self.assertIn("Kept QIDI's boot logo", self.output.getvalue())
                 self.assertFalse(boot_logo.record_path(self.paths).exists())
+
+    def test_uninstall_finds_the_backup_the_rename_moved(self):
+        # Releases 26.11.22.3 to 26.11.23.1 moved the backup folder to its vo_ name and left the record naming the old.
+        self.step(boot_logo.install)
+        record_file = boot_logo.record_path(self.paths)
+        record = json.loads(record_file.read_text(encoding="utf-8"))
+        record["backup"] = record["backup"].replace(boot_logo.BACKUP_DIR, "tltg_optimized_system_backups")
+        record_file.write_text(json.dumps(record), encoding="utf-8")
+        self.assertEqual(self.step(boot_logo.uninstall), self.original)
+        self.assertFalse(record_file.exists())
+        self.assertFalse(any((self.paths.printer_data_root / boot_logo.BACKUP_DIR).iterdir()))
 
     def test_uninstall_leaves_a_partition_changed_since_valve_oil_wrote_it(self):
         self.step(boot_logo.install)

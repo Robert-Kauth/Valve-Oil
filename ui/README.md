@@ -47,6 +47,7 @@ It also stands in for Valve Oil's status service at `/vo-status/api`, which feed
 | `reinstall` | Valve Oil's installed files are missing or changed, so the installed release waits to be installed again |
 | `dev` | A dev prerelease whose update check failed, which the screen leaves out |
 | `absent` | No status service (404), as on a printer without it |
+| `uninstall-fails` | The next **Uninstall** stops partway with its output. Any other scenario's uninstall runs for about 15 seconds, with the service gone for 6 of them, then answers the status service and `version.json` with Fluidd's page, as nginx does once Valve Oil UI is removed |
 
 Every scenario sends `update_now`, `check.next_at`, `job.run_id`, `run.firmware_update` and `run.can_continue`, `pending[].reinstall`, and `boards[].waiting_for_firmware_update`, `release.channel` and `release.commit`, and `support.issue_url` as the service does, answers `GET /vo-status/api/support-bundle` with an empty zip, and the printer warnings Klipper would report for it (with **Details** and **Open a support issue** links).
 

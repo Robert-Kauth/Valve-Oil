@@ -161,6 +161,7 @@ describe('parseVoStatus', () => {
       busy: false,
       printer_busy: false,
       update_now: null,
+      uninstall: null,
       support_issue_url: null,
       klipper: null
     })
@@ -259,8 +260,10 @@ describe('parseVoStatus', () => {
 })
 
 describe('parseVoStatusJob', () => {
-  it('reads the job Update now started', () => {
-    expect(parseVoStatusJob({ job })).toEqual(job)
+  it('reads the job Update now or Uninstall started', () => {
+    // A service from before Uninstall ran only Update now.
+    expect(parseVoStatusJob({ job })).toEqual({ ...job, kind: 'update_now' })
+    expect(parseVoStatusJob({ job: { ...job, kind: 'uninstall' } })?.kind).toBe('uninstall')
     expect(parseVoStatusJob({ error: 'An update is already running.' })).toBeNull()
   })
 })
@@ -615,6 +618,10 @@ describe('voStatusView update', () => {
     const status = parseVoStatus({ ...base, ...changes })
 
     expect(status && voStatusView(status, now).update).toMatchObject(expected)
+  })
+
+  it('does not show an uninstall as an update', () => {
+    expect(view({ job: { ...job, kind: 'uninstall', state: 'failed' } }).update).toBeNull()
   })
 
   it.each([

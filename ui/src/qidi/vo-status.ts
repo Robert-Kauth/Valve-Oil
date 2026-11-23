@@ -33,6 +33,8 @@ export type VoJobState = 'running' | 'succeeded' | 'failed'
 
 /** Which run an update result came from: Update now, the automatic update, or the installer run by hand. */
 export type VoRunKind = 'update_now' | 'automatic' | 'install' | 'other'
+/** What the status service ran for a browser: Update now, or Uninstall. */
+export type VoJobKind = 'update_now' | 'uninstall'
 
 /**
  * Where the update window's timezone came from: looked up from the printer's public address by the installer, this or
@@ -162,6 +164,8 @@ export interface VoStatusRun {
 
 export interface VoStatusJob {
   id: string;
+  /** update_now from a service that doesn't say. */
+  kind: VoJobKind;
   state: VoJobState;
   started_at: string | null;
   finished_at: string | null;
@@ -248,6 +252,8 @@ export interface VoStatus {
   printer_busy: boolean;
   /** null from a printer whose service doesn't say; voStatusView then works it out from busy and printer_busy. */
   update_now: VoStatusUpdateNow | null;
+  /** Whether Uninstall would start now, in the same shape; null from a service without it. */
+  uninstall: VoStatusUpdateNow | null;
   /** The prefilled support issue, for the support bundle to be attached to; null from a service without the bundle. */
   support_issue_url: string | null;
   /** Which Klipper runs; null from a service without Valve Oil's Klipper. */
@@ -731,6 +737,7 @@ const parseJob = (value: unknown): VoStatusJob | null => {
 
   return {
     id: text(value.id),
+    kind: value.kind === 'uninstall' ? 'uninstall' : 'update_now',
     state: value.state as VoJobState,
     started_at: optionalText(value.started_at),
     finished_at: optionalText(value.finished_at),
@@ -805,12 +812,13 @@ export const parseVoStatus = (value: unknown): VoStatus | null => {
     busy: value.busy === true || run?.state === 'running' || job?.state === 'running' || progress?.state === 'running',
     printer_busy: value.printer_busy === true,
     update_now: parseUpdateNow(value.update_now),
+    uninstall: parseUpdateNow(value.uninstall),
     support_issue_url: voIssueUrlValid(support.issue_url) ? support.issue_url : null,
     klipper: parseKlipper(value.klipper)
   }
 }
 
-/** Reads the job an Update now request started. */
+/** Reads the job an Update now or Uninstall request started. */
 export const parseVoStatusJob = (value: unknown): VoStatusJob | null => (
   isRecord(value)
     ? parseJob(value.job)
@@ -840,7 +848,9 @@ const canContinueRun = (run: VoStatusRun): boolean => run.state === 'failed' && 
  * its run once the run has begun; before that, or for an older service, their times match them.
  */
 const updateView = (status: VoStatus): VoUpdateView | null => {
-  const { run, job } = status
+  const { run } = status
+  // An uninstall isn't an update; it has a screen of its own.
+  const job = status.job?.kind === 'uninstall' ? null : status.job
   const jobStarted = time(job?.started_at ?? null)
   const jobFinished = time(job?.finished_at ?? null)
   const runStarted = time(run?.started_at ?? null)
