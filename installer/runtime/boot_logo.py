@@ -231,6 +231,13 @@ def _backup_path(paths, sha256: str) -> Path:
     return paths.printer_data_root / BACKUP_DIR / f"boot-partition-{sha256[:16]}.img"
 
 
+def _record_backup(paths, record: dict) -> Path:
+    """Where the record's backup is: the path it names, or, once that's gone, where this release keeps a backup of the
+    original. Releases before 26.11.23.2 moved the backup folder to its vo_ name without changing the record."""
+    recorded = Path(record["backup"])
+    return recorded if recorded.is_file() else _backup_path(paths, record["original"])
+
+
 def _logo_rows() -> list[bytes]:
     return update_screen.decode_png(boot_screen.BOOT_LOGO_IMAGE.read_bytes())
 
@@ -267,6 +274,8 @@ def apply(paths, partition: Partition, *, reporter) -> bool:
         if _sha256(backup.read_bytes()) != _sha256(current):
             raise BootLogoError("The boot partition's backup could not be verified.")
         record = {"original": _sha256(current), "backup": str(backup)}
+    else:
+        record = {**record, "backup": str(_record_backup(paths, record))}
     reporter.line("  Writing Valve Oil's boot logo...")
     runs = changed_blocks(current, desired)
     partition.write(desired, runs)
@@ -283,7 +292,7 @@ def restore(paths, partition: Partition, *, reporter) -> None:
     record = _load_record(paths)
     if record is None:
         return
-    backup = Path(record["backup"])
+    backup = _record_backup(paths, record)
     if partition.exists():
         current = partition.read()
         if _sha256(current) == record["written"]:
@@ -334,7 +343,7 @@ def uninstall(paths, *, reporter, environ, input_stream=None, run=subprocess.run
             restore(paths, partition, reporter=reporter)
     except (InstallerError, SudoError, OSError, subprocess.SubprocessError) as exc:
         reporter.line(f"  QIDI's boot logo could not be put back ({getattr(exc, 'message', None) or exc}); the "
-                      f"partition QIDI shipped is saved in {_load_record(paths)['backup']}.")
+                      f"partition QIDI shipped is saved in {_record_backup(paths, _load_record(paths))}.")
 
 
 def dry_run_line() -> str:

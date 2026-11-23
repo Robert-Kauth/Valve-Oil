@@ -287,6 +287,8 @@ Or fetch the latest installer and uninstall with it:
 /bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/valve-oil/releases/latest/download/install-latest.sh)" -- --uninstall
 ```
 
+Valve Oil UI's [Updates](valve-oil-ui.md#updates) screen also has **Uninstall**, which runs the same uninstall without the questions: it undoes the OS optimizations unless you turn that off, and then restarts the printer if undoing them needs it.
+
 Uninstall always puts back everything an install changes in QIDI's own files: Fluidd goes back to QIDI's Fluidd, the Printer screen service is removed, QIDI's Moonraker and Klipper files are restored, and QIDI's touchscreen app is put back, so the touchscreen offers and installs QIDI's firmware updates again. It removes the update check and turns automatic updates off. It asks whether to also undo the [OS optimizations](#os-optimizations); `--keep-system-optimizations` keeps them without asking. When undoing them needs a reboot, it also asks, with the other questions, whether to restart the printer at the end; `--reboot-host` answers yes. Every question comes before anything is removed. Files you changed after installing are left alone and listed.
 
 Uninstall can't run while a [QIDI firmware update](#qidi-firmware-updates) is unfinished. It doesn't change firmware: the QIDI firmware and the board firmware stay as they are. To put QIDI's board firmware back, see [Board firmware](firmware.md). Installing again after an uninstall counts as a new install, which reads every board first.

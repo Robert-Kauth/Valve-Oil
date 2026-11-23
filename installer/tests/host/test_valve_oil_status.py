@@ -77,13 +77,15 @@ class StatusServiceTests(unittest.TestCase):
         server.log = lambda message: None
         cls.processes: list[_Process] = []
         cls.jobs: list[str] = []
+        cls.commands: list[tuple[str, ...]] = []
 
-        def start(output, job_id):
+        def start(output, job_id, command):
             cls.jobs.append(job_id)
+            cls.commands.append(command)
             cls.processes.append(_Process())
             return cls.processes[-1]
 
-        server.start_update_now = start
+        server.start_job = start
         # Valve Oil's Klipper: the launcher's check, the Klipper Moonraker knows of, and the restart it's asked for.
         server.KLIPPER_CHOICE_FILE = cls.paths.printer_data_root / ".vo_klipper.json"
         server.KLIPPER_STATUS_FILE = cls.paths.printer_data_root / ".vo_klipper_status.json"
@@ -381,6 +383,55 @@ class StatusServiceTests(unittest.TestCase):
         self.assertEqual((status["job"]["run_id"], status["run"]["id"]), (handed_off.id, handed_off.id))
         status_file.finish_run(self.paths, handed_off.id, state=status_file.SUCCEEDED)
         self.processes[0].released.set()
+
+    def test_uninstall_runs_the_installed_bundles_uninstall_once_the_printer_allows_it(self) -> None:
+        def codes() -> list[str]:
+            return [item["code"] for item in self.request("/api/status", method="GET")[1]["uninstall"]["blocked_by"]]
+
+        record = self.server.FIRMWARE_UPDATE_RECORD
+        started = len(self.commands)
+        try:
+            # A print, or a QIDI firmware update that hasn't finished, comes first; a halted Klipper doesn't, as
+            # uninstalling may be what lets it start.
+            type(self).live = ("printing",)
+            record.write_text('{"schema": 1, "id": "fw-1", "state": "failed"}')
+            self.assertEqual(codes(), ["printing", "firmware_update_pending"])
+            refused = self.request("/api/uninstall", headers=self.GOOD)
+            self.assertEqual((refused[0], [item["code"] for item in refused[1]["blocked_by"]]),
+                             (409, ["printing", "firmware_update_pending"]))
+            record.unlink()
+            type(self).live = ("klipper_not_ready",)
+            self.assertEqual(codes(), [])
+            # Only marked same-origin posts with known options start it.
+            self.assertEqual(self.request("/api/uninstall", headers={**self.GOOD, "X-Valve-Oil": "x"})[0], 403)
+            for body in (b'{"keep_system_optimizations": "yes"}', b'{"reboot": true}'):
+                self.assertEqual(self.request("/api/uninstall", headers=self.GOOD, body=body)[0], 400)
+            self.assertEqual(len(self.commands), started)
+
+            # Kept optimizations need no restart; undoing them restarts the printer only if they need it.
+            for body, flag in ((b'{"keep_system_optimizations": true}', "--keep-system-optimizations"), (b"{}", "--reboot-host")):
+                status, answer = self.request("/api/uninstall", headers=self.GOOD, body=body)
+                self.assertEqual((status, answer["job"]["kind"], answer["job"]["state"]), (202, "uninstall", "running"))
+                self.assertEqual(self.commands[-1][-4:], ("uninstall", "--yes", "--plain", flag))
+                self.assertTrue(str(self.commands[-1][-5]).endswith("installer/runtime/bootstrap.py"))
+                # One run at a time, whichever it is.
+                status = self.request("/api/status", method="GET")[1]
+                self.assertEqual((status["busy"], status["job"]["kind"]), (True, "uninstall"))
+                self.assertEqual(codes(), ["run_in_progress"])
+                self.assertEqual(self.request("/api/update-now", headers=self.GOOD)[0], 409)
+                self.processes[-1].released.set()
+                for _ in range(500):
+                    if not self.request("/api/status", method="GET")[1]["busy"]:
+                        break
+                    time.sleep(0.01)
+            # An uninstall that stopped without an exit status says so.
+            job = self.request("/api/status", method="GET")[1]["job"]
+            self.assertEqual((job["state"], job["message"]), ("failed", "The uninstall stopped before it finished."))
+        finally:
+            type(self).live = ()
+            record.unlink(missing_ok=True)
+            for path in (self.server.JOB_FILE, self.server.JOB_LOG, self.server.JOB_RC):
+                path.unlink(missing_ok=True)
 
     def test_volatile_reasons_and_update_now_are_read_live(self) -> None:
         marker = self.server.ENROLLMENT_FILE

@@ -62,6 +62,11 @@ class EarlierNamesTests(unittest.TestCase):
             if module.name not in ALREADY_VO:
                 module.rename(extras / ("tltg_" + module.name[len("vo_"):]))
         (root / ".tltg_box485_salt").write_text("salt\n", encoding="utf-8")
+        (root / "tltg_optimized_system_backups").mkdir(exist_ok=True)
+        (root / "tltg_optimized_system_backups/boot-partition-0123456789abcdef.img").write_bytes(b"qidi")
+        (root / ".tltg_boot_logo.json").write_text(json.dumps(
+            {"original": "0123456789abcdef", "written": "fedcba9876543210",
+             "backup": str(root / "tltg_optimized_system_backups/boot-partition-0123456789abcdef.img")}), encoding="utf-8")
         (root / "..tltg_optimized_host_reboot_required.5kooz5tg").write_text("", encoding="utf-8")
         (root / ".tltg-optimized-macros-before-optimize-01.01.07.01-26.11.18.2-20261120T161421Z.eyajtevj.zip").write_bytes(b"")
         (root / "logs").mkdir(exist_ok=True)
@@ -82,6 +87,8 @@ class EarlierNamesTests(unittest.TestCase):
         self.assertNotIn(earlier_names.EARLIER_INCLUDE, printer_cfg)
         self.assertEqual(load_installed_state(self.root / "config/vo_state.yaml").managed_tree.root, "config/vo-macros")
         self.assertEqual((self.root / ".vo_box485_salt").read_text(encoding="utf-8"), "salt\n")
+        # The boot logo's record names the backup where it now is.
+        self.assertTrue(Path(json.loads((self.root / ".vo_boot_logo.json").read_text(encoding="utf-8"))["backup"]).is_file())
         self.assertTrue((self.root / "logs/vo_box_firmware_box2.json").is_file())
         self.assertTrue((self.root / "config/vo_bed_soak/20261110-195948-bed100-chamber50.jsonl").is_file())
         # Nothing left to move: the next run leaves printer_data alone.
