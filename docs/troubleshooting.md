@@ -119,6 +119,12 @@ Then press **Restart Firmware** on the touchscreen, or run `FIRMWARE_RESTART` fr
 
 Before 26.11.18.1, a cut with the nozzle below 135 °C, such as `OPTIMIZED_CUT_FILAMENT` run from Fluidd's macros or a cut while a print was paused, stopped with `Extrude below minimum temp` while the toolhead was pressed against the cutter. Homing doesn't move the toolhead off the cutter first, so after a restart homing Y can catch on it. Turn the motors off with `M84`, or turn the printer off, slide the toolhead away from the cutter by hand, then home. On the Max 4 and Plus 5 the cutter is at the front left, so slide the toolhead right; on the Smart 5 it's at the front right, so slide it left.
 
+## A filament change without a QIDI Box doesn't stop for a new spool
+
+A filament change you add in the slicer, such as OrcaSlicer's **Change filament** on a layer, switches to another tool. With no USB Box, or with **Use QIDI Box** off, nothing loads the new tool's filament, so the printer purges at the chute and goes on printing the filament already loaded, as with QIDI's own G-code. To swap the spool by hand partway through a print, add a pause at that layer instead (OrcaSlicer's **Add pause**). When the print pauses, unload and load from the touchscreen, Fluidd, or Valve Oil UI, then resume.
+
+Before 26.11.23.2, such a filament change skipped the move to the chute and heated the nozzle over the print. The Plus 5 purged there, and the Max 4 drove straight to the back of the printer from where it was printing, which could knock the print out of place (issue #397).
+
 ## The camera doesn't show in Fluidd
 
 At boot, QIDI's `makerbase-webcam.service` writes the camera into `~/printer_data/config/crowsnest.conf`. It could run before the camera's device link existed and write an empty `device:` line instead, and then crowsnest, which streams the camera, doesn't start and Fluidd shows no camera. The package makes it wait for the camera, so the next reboot fills the line in again.
