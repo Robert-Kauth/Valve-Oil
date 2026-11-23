@@ -61,6 +61,7 @@ The fake is split by feature: `dev/fake-moonraker.mjs` is the core (printer stat
 | `--addons <state>`, `VO_ADDONS NAME=<state>` | The add-ons service: `none`, `installed`, `linking`, `busy`, `foreign`, `failed`, `absent` |
 | `--diagnostics <scenario>`, `VO_DIAGNOSTICS NAME=<scenario>` | System → Diagnostics' fault check (`/vo-status/api/diagnostics`): `found` (the default: a Box step clock the installed release fixes and a QIDI error code), `clean`, `partial` (only the newest part of a large log read), `failed`, `idle` (no check run yet), `absent` (404, an older Valve Oil). A check runs for about 3 seconds |
 | `--lan-mode 0\|1\|none` | QIDI's LAN only mode off, on, or missing |
+| `--klipper <state>`, `VO_KLIPPER_STATE NAME=<state>` | Which Klipper runs, for **Settings → Klipper**: `off` (QIDI's, the default), `on` (Valve Oil's), `fallback` (Valve Oil's chosen, QIDI's running with the printer warning; trying again fails again), `not-installed`, `absent` (a status service without it). Switching, from the screen or with `VO_KLIPPER USE=VALVE_OIL\|QIDI`, restarts Klipper for 4 seconds and is refused during a print |
 | `--spoolman` | Loads Moonraker's `spoolman` component with made-up spools |
 | `VO_KLIPPY_SHUTDOWN [SECONDS=30]` | Shuts Klipper down for a while, for the stop screen |
 | `--install ssh\|usb\|automatic`, `VO_INSTALL ORIGIN=<origin>` | Runs an install's steps, as the installer publishes them, for the Updates screen's steps, the banner, and the installer logs |

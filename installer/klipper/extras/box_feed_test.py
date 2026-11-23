@@ -52,6 +52,12 @@ import time
 import chelper
 from . import force_move
 
+try:
+    # Klipper 0.14 and later
+    from . import motion_queuing as _motion_queuing_module
+except ImportError:
+    _motion_queuing_module = None
+
 CSV_NAME = "vo_box_feed_test.csv"
 SENSOR_NAME = "filament_switch_sensor filament_switch_sensor"
 ENABLE_SETTLE = 0.100
@@ -88,7 +94,15 @@ class BoxFeedTest:
         self.settle_time = config.getfloat(
             "sensor_settle_time", 0.100, minval=0.020, maxval=1.0)
         ffi_main, ffi_lib = chelper.get_ffi()
-        self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
+        # Klipper 0.14 and later expire every motion queue through
+        # motion_queuing; older Klipper leaves that to the queue's owner.
+        if _motion_queuing_module is not None:
+            motion_queuing = self.printer.load_object(config,
+                                                      "motion_queuing")
+            self.trapq = motion_queuing.allocate_trapq()
+        else:
+            self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(),
+                                     ffi_lib.trapq_free)
         self.sk = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b"x"),
                               ffi_lib.free)
         self.trapq_append = ffi_lib.trapq_append
