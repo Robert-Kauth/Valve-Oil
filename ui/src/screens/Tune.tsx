@@ -23,7 +23,7 @@ export function TuneScreen() {
   useEffect(() => () => meshPreview.set(null), [])
 
   return (
-    <div className="grid min-w-0 gap-3.5">
+    <div className="grid min-w-0 grid-cols-1 gap-3.5">
       <PageHeader title={t('tune.screen.title')}>
         <Segmented
           label={t('tune.screen.title')}

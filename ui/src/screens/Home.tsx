@@ -222,7 +222,7 @@ export function JobCard({ style }: { style?: CSSProperties }) {
 export function ReadyCard({ style, jobs }: { style?: CSSProperties; jobs: HistoryJob[] | null }) {
   const last = jobs?.[0]
   return (
-    <section className="card grid content-start gap-3" style={style}>
+    <section className="card grid grid-cols-1 content-start gap-3" style={style}>
       <div>
         <div className="lbl">{t('home.ready.title')}</div>
         {last ? (
