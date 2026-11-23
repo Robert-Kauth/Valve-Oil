@@ -292,6 +292,7 @@ Every install and update SHALL apply the host OS optimizations, leaving only whe
 - **AND** an earlier run's saved-variable check that no longer matches Klipper is reported and cleared, while the run that saved the values still fails on a mismatch
 - **AND** a host journal that can't be read or acted on is set aside unchanged, and one whose rollback fails is retried by the next runs and set aside after the third attempt, leaving the host as it is
 - **AND** an invalid legacy ledger migration journal is dropped without removing anything it names
+- **AND** while migrating names from before 26.11.22.3, an active earlier automatic-update or firmware-update service that started the installer is left in place until it exits; inactive earlier service files are retired
 
 #### Scenario: Uninstall follows the operator's host-state decision
 - **WHEN** uninstall finds host restore preimages
