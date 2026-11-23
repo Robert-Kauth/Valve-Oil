@@ -4,8 +4,9 @@
 Reports the installed Valve Oil release, the printer's QIDI firmware, each board's firmware, and the work waiting for
 the printer, from the pending-work status file the update check and update runs write, and switches automatic updates
 on or off by writing or removing only the enrollment marker, and saves the update window and its timezone. "Update now" starts the installer's update-now run in its
-own session; it records its result in files, so it finishes and is reported even if this service restarts. nginx
-authorizes every request through Moonraker before it reaches this loopback-only server.
+own session, and "Uninstall" the installed bundle's uninstall; each records its result in files, so it finishes and is
+reported even if this service restarts, or, for an uninstall, is removed. nginx authorizes every request through
+Moonraker before it reaches this loopback-only server.
 
 API, under nginx's /vo-status/ prefix (schema 1; see STATUS_SCHEMA):
   GET  api/status       the status
@@ -13,6 +14,10 @@ API, under nginx's /vo-status/ prefix (schema 1; see STATUS_SCHEMA):
                         "timezone": "<IANA name>"}; answers with the status. A timezone posted here is the browser's.
   POST api/update-now   {}; answers 202 with {"job": ...}, or 409 with {"error", "blocked_by"} when update_now.allowed
                         is false
+  POST api/uninstall    {"keep_system_optimizations": true|false (optional, false)}; runs ~/valve-oil's uninstall
+                        without questions, undoing the OS optimizations unless kept and then restarting the printer if
+                        undoing them needs it; answers 202 with {"job": ...}, or 409 with {"error", "blocked_by"} when
+                        uninstall.allowed is false
   GET  api/support-bundle  a zip of what a support issue needs (see support_bundle), named in Content-Disposition;
                         409 while another is being made
   GET  api/diagnostics  the last Diagnostics check (see Diagnostics)
@@ -27,8 +32,9 @@ The status: {schema, updated_at, release: {installed, channel, commit}, printer:
 auto_update: {enabled, scheduled, window: {start, end} | null, timezone, timezone_source, in_window}, check: {at, result, message, next_at}, pending: [{kind, version, current, board,
 reinstall, blocked_by: [{code, message}]}], boards: [{id, state, name, firmware, build, pinned, bootloader, report,
 detail, checked_at, issue_url, waiting_for_firmware_update}], run: {id, kind, state, step, step_label, started_at,
-finished_at, message, resumed, firmware_update, can_continue} | null, job: {id, state, started_at, finished_at, log,
-message, run_id} | null, busy, printer_busy, update_now: {allowed, blocked_by: [{code, message}]},
+finished_at, message, resumed, firmware_update, can_continue} | null, job: {id, kind, state, started_at, finished_at,
+log, message, run_id} | null, busy, printer_busy, update_now: {allowed, blocked_by: [{code, message}]},
+uninstall: {allowed, blocked_by: [{code, message}]},
 support: {issue_url}, klipper: {available, unavailable_reason, selected, running, fallback_reason, version, restart_error,
 switch: {to, allowed, blocked_by: [{code, message}]}}}.
 - release.channel and release.commit: "release" or "dev", and the commit, of the bundle that installed the installed
@@ -50,11 +56,15 @@ switch: {to, allowed, blocked_by: [{code, message}]}}}.
 - run.firmware_update: the run is a QIDI firmware update (or update now continuing one). run.can_continue: that
   update's pending record is kept, failed, and this release can carry it on, so Update now or ./install.sh continues
   it (update_now.blocked_by still says when something must run first, such as a board's rescue).
-- job.run_id: the status run this update now started or continued, once it has begun; run is that run while it is the
-  latest.
+- job.kind: "update_now" or "uninstall". job.run_id: the status run this update now started or continued, once it
+  has begun; run is that run while it is the latest. An uninstall runs no status run; a running one makes busy true,
+  and once it succeeds this service is gone.
 - update_now: whether POST api/update-now would start a run now, and if not, every reason, read live: run_in_progress
   (an update runs), installer_busy (another installer run holds its lock, such as the hourly check), printing,
   heaters_on, printer_state_unknown, recovery_required (its message says what to run), installer_missing.
+- uninstall: whether POST api/uninstall would start one now, and if not, every reason, read live: run_in_progress,
+  installer_busy, printing, heaters_on, printer_state_unknown, firmware_update_pending, recovery_required, and
+  installer_missing. A Klipper halted on an error doesn't stop it, as uninstalling may be what lets Klipper start.
 - boards[].issue_url: a prefilled link to this project's support form; one too long to pass on is replaced by the bare
   form.
 - support.issue_url: this project's bug report form, with the printer, its details (printer_details), and how Valve
@@ -115,6 +125,12 @@ BUNDLE = HOME / "valve-oil"
 # scripts/build_installer_bundle.py: the bundle's version, channel ("release" or "dev"), and commit.
 RELEASE_METADATA = BUNDLE / "RELEASE_METADATA.yaml"
 UPDATE_NOW = (sys.executable or "/usr/bin/python3", "-I", "-S", str(BUNDLE / "installer/runtime/bootstrap.py"), "update-now", "--plain")
+# The installed bundle's uninstall, with every question answered (installer/runtime/cli.py): --yes undoes the OS
+# optimizations unless --keep-system-optimizations is added, and --reboot-host restarts the printer at the end when
+# undoing them needs it. KillMode=process keeps it running when it stops and removes this service.
+UNINSTALL = (sys.executable or "/usr/bin/python3", "-I", "-S", str(BUNDLE / "installer/runtime/bootstrap.py"), "uninstall", "--yes",
+             "--plain")
+JOB_KINDS = ("update_now", "uninstall")
 # installer/runtime/update_now.py: the run records this job id in the status file's run.
 JOB_ENV = "VO_STATUS_JOB"
 # installer/runtime/locking.py and safety.py: an installer run holds the lock; these records mean recovery comes first,
@@ -222,6 +238,10 @@ UPDATE_NOW_BLOCKERS = {
     "installer_busy": "another installer run is in progress",
     "installer_missing": "Valve Oil's installer is not in " + str(BUNDLE),
 }
+UNINSTALL_BLOCKERS = {
+    **UPDATE_NOW_BLOCKERS,
+    "firmware_update_pending": "a QIDI firmware update hasn't finished; finish it with Update now or ./install.sh first",
+}
 
 
 def log(message: str) -> None:
@@ -241,7 +261,7 @@ class RequestError(Exception):
 
 
 class Jobs:
-    """The update-now run this service started last: one at a time, its output kept in JOB_LOG.
+    """The update-now or uninstall run this service started last: one at a time, its output kept in JOB_LOG.
 
     The job file outlives a reboot, so a job is running only while its process is, in the boot it started in: after a
     power cut its process ID can belong to something else, which would leave the printer updating for good."""
@@ -271,6 +291,7 @@ class Jobs:
         lines = _tail(JOB_LOG, LOG_LINES)
         return {
             "id": job.get("id"),
+            "kind": job.get("kind") if job.get("kind") in JOB_KINDS else "update_now",
             "state": job.get("state"),
             "started_at": job.get("started_at"),
             "finished_at": job.get("finished_at"),
@@ -283,7 +304,7 @@ class Jobs:
         job = self._read()
         return bool(job and job.get("state") == "running" and _job_this_boot(job) and _alive(job.get("pid")))
 
-    def start(self, status: dict) -> dict:
+    def start(self, status: dict, kind: str = "update_now", command: tuple[str, ...] = UPDATE_NOW) -> dict:
         with self._lock:
             if self.busy() or (status.get("run") or {}).get("state") == "running":
                 raise Conflict("An update is already running.")
@@ -292,14 +313,14 @@ class Jobs:
             job_id = uuid.uuid4().hex
             try:
                 with JOB_LOG.open("w", encoding="utf-8") as output:
-                    process = start_update_now(output, job_id)
+                    process = start_job(output, job_id, command)
             except OSError as exc:
-                log(f"Update now failed to start: {exc}")
+                log(f"{JOB_NAMES[kind]} failed to start: {exc}")
                 raise RequestError(HTTPStatus.INTERNAL_SERVER_ERROR, "Valve Oil's installer could not be started.") from exc
-            self._write({"id": job_id, "state": "running", "started_at": _now(), "finished_at": None, "pid": process.pid,
-                         "boot_id": _boot_id(), "run_id": None})
+            self._write({"id": job_id, "kind": kind, "state": "running", "started_at": _now(), "finished_at": None,
+                         "pid": process.pid, "boot_id": _boot_id(), "run_id": None})
             threading.Thread(target=self._wait, args=(job_id, process), daemon=True).start()
-            log("Started update now")
+            log(f"Started {JOB_NAMES[kind].lower()}")
             return self.current()
 
     def _wait(self, job_id: str, process: subprocess.Popen) -> None:
@@ -323,11 +344,12 @@ class Jobs:
                 code = None
             job["state"] = "succeeded" if code == 0 else "failed"
             job["finished_at"] = _now()
+            kind = job.get("kind") if job.get("kind") in JOB_KINDS else "update_now"
             if code is None:
                 with JOB_LOG.open("a", encoding="utf-8") as output:
-                    output.write("The update stopped before it finished.\n")
+                    output.write(JOB_STOPPED[kind] + "\n")
             self._write(job)
-            log(f"Finished update now: {job['state']}")
+            log(f"Finished {JOB_NAMES[kind].lower()}: {job['state']}")
 
     def _read(self) -> dict | None:
         data = _read_json(JOB_FILE)
@@ -420,11 +442,16 @@ def run_diagnostics(since: str, installed: str | None) -> dict:
     return result
 
 
-def start_update_now(output, job_id: str) -> subprocess.Popen:
-    # The fixed command line runs in its own session, so it outlives this request and a restart of this service; the
+JOB_NAMES = {"update_now": "Update now", "uninstall": "Uninstall"}
+JOB_STOPPED = {"update_now": "The update stopped before it finished.",
+               "uninstall": "The uninstall stopped before it finished."}
+
+
+def start_job(output, job_id: str, command: tuple[str, ...]) -> subprocess.Popen:
+    # A fixed command line runs in its own session, so it outlives this request and a restart of this service; the
     # shell only records its exit status.
     return subprocess.Popen(
-        ["/bin/sh", "-c", '"$@"; echo $? > "$VO_STATUS_RC"', "sh", *UPDATE_NOW],
+        ["/bin/sh", "-c", '"$@"; echo $? > "$VO_STATUS_RC"', "sh", *command],
         cwd=str(BUNDLE),
         stdin=subprocess.DEVNULL,
         stdout=output,
@@ -562,6 +589,7 @@ def status_body(jobs: Jobs) -> dict:
         "busy": busy,
         "printer_busy": live is not None and "printing" in live,
         "update_now": _update_now(busy, live),
+        "uninstall": _uninstall(busy, live),
         "klipper": klipper_body(live, busy),
     }
     body["support"] = {"issue_url": support_issue_url(body)}
@@ -1050,6 +1078,26 @@ def _update_now(busy: bool, live: tuple[str, ...] | None) -> dict:
     return {"allowed": not blocked, "blocked_by": blocked}
 
 
+def _uninstall(busy: bool, live: tuple[str, ...] | None) -> dict:
+    """Whether POST api/uninstall starts one now: every reason it would refuse, or the uninstall would stop at once."""
+    codes = []
+    if busy:
+        codes.append("run_in_progress")
+    elif installer_lock_held():
+        codes.append("installer_busy")
+    # The uninstall's own check lets a Klipper halted on an error through (safety.ensure_printer_idle allow_halted).
+    codes.extend(code for code in (live if live is not None else ("printer_state_unknown",)) if code != "klipper_not_ready")
+    if FIRMWARE_UPDATE_RECORD.exists():
+        codes.append("firmware_update_pending")
+    blocked = [{"code": code, "message": LIVE_BLOCKERS.get(code) or UNINSTALL_BLOCKERS[code]} for code in codes]
+    recovery = [message for path, message in RECOVERY_FILES.items() if path.exists()]
+    if recovery:
+        blocked.append({"code": "recovery_required", "message": "; ".join(recovery)})
+    if not (BUNDLE / "installer/runtime/bootstrap.py").is_file():
+        blocked.append({"code": "installer_missing", "message": UNINSTALL_BLOCKERS["installer_missing"]})
+    return {"allowed": not blocked, "blocked_by": blocked}
+
+
 def installer_lock_held() -> bool:
     """Whether an installer run holds its lock, from the kernel's lock table, without taking the lock."""
     try:
@@ -1319,7 +1367,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send_support_bundle()
         elif route == "diagnostics":
             self._send(HTTPStatus.OK, self.diagnostics.current())
-        elif route in ("auto-update", "update-now", "klipper"):
+        elif route in ("auto-update", "update-now", "uninstall", "klipper"):
             self._send(HTTPStatus.METHOD_NOT_ALLOWED, {"error": "Use POST."}, allow="POST")
         else:
             self._send(HTTPStatus.NOT_FOUND, {"error": "Not found."})
@@ -1340,6 +1388,18 @@ class Handler(BaseHTTPRequestHandler):
                     raise Conflict("Update now can't start: " + "; ".join(item["message"] for item in blocked) + ".",
                                    blocked)
                 self._send(HTTPStatus.ACCEPTED, {"job": self.jobs.start(status)})
+            elif route == "uninstall":
+                keep = body.get("keep_system_optimizations", False)
+                if not set(body) <= {"keep_system_optimizations"} or not isinstance(keep, bool):
+                    raise RequestError(HTTPStatus.BAD_REQUEST,
+                                       'Expected {} or {"keep_system_optimizations": true}.')
+                status = status_body(self.jobs)
+                blocked = status["uninstall"]["blocked_by"]
+                if blocked:
+                    raise Conflict("Uninstall can't start: " + "; ".join(item["message"] for item in blocked) + ".",
+                                   blocked)
+                command = UNINSTALL + (("--keep-system-optimizations",) if keep else ("--reboot-host",))
+                self._send(HTTPStatus.ACCEPTED, {"job": self.jobs.start(status, "uninstall", command)})
             elif route == "klipper":
                 use, source = body.get("use"), body.get("source", "ui")
                 if not set(body) <= {"use", "source"} or use not in KLIPPER_CHOICES or source not in KLIPPER_SOURCES:
@@ -1417,8 +1477,8 @@ class Handler(BaseHTTPRequestHandler):
     def _route(self) -> str | None:
         # nginx strips its /vo-status/ prefix; the API is exactly api/<name>.
         parts = self.path.split("?", 1)[0].split("/")
-        if len(parts) == 3 and parts[0] == "" and parts[1] == "api" and parts[2] in ("status", "auto-update", "update-now", "support-bundle",
-                                                                                     "diagnostics", "klipper"):
+        if len(parts) == 3 and parts[0] == "" and parts[1] == "api" and parts[2] in (
+                "status", "auto-update", "update-now", "uninstall", "support-bundle", "diagnostics", "klipper"):
             return parts[2]
         return None
 

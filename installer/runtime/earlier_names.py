@@ -120,6 +120,7 @@ CONTENT_FILES = (
     ".vo_thr_firmware_pending.json",
     ".vo_mainboard_firmware_pending.json",
     ".vo_box_firmware_pending.json",
+    ".vo_boot_logo.json",
 )
 # A QIDI firmware update an earlier release started; its own service finishes it with that release.
 EARLIER_FIRMWARE_UPDATE_RECORD = ".tltg_firmware_update_pending.json"

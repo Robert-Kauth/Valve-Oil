@@ -3,7 +3,8 @@
 //
 //   node dev/fake-moonraker.mjs [--port 7125] [--scenario printing|idle|box-busy|box-failed|stranded|no-box]
 //                               [--updates none|release-off|firmware-printing|boards|running|failed|interrupted|refused|
-//                                          firmware-failed|firmware-rescue|closed-loop|thr-waiting|reinstall|dev|absent]
+//                                          firmware-failed|firmware-rescue|closed-loop|thr-waiting|reinstall|dev|absent|
+//                                          uninstall-fails]
 //
 // Serves the Moonraker websocket and file endpoints the UI uses, plus ui/dist at /valve-oil/ (same origin, like the
 // printer's nginx). Run `npm run build` first to use /valve-oil/, or point `npm run dev` at it with
@@ -754,7 +755,7 @@ setInterval(() => {
 // Pick a starting state with --updates, or switch at runtime with `VO_UPDATES NAME=<scenario>`. Update now runs a
 // simulated update; with QIDI or board firmware waiting it takes Moonraker and this API away for a while, as the real
 // one restarts them.
-const UPDATE_SCENARIOS = ['none', 'release-off', 'firmware-printing', 'boards', 'running', 'failed', 'interrupted', 'refused', 'firmware-failed', 'firmware-rescue', 'closed-loop', 'thr-waiting', 'reinstall', 'dev', 'absent']
+const UPDATE_SCENARIOS = ['none', 'release-off', 'firmware-printing', 'boards', 'running', 'failed', 'interrupted', 'refused', 'firmware-failed', 'firmware-rescue', 'closed-loop', 'thr-waiting', 'reinstall', 'dev', 'absent', 'uninstall-fails']
 const ISSUE_URL =
   'https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml&title=Box+1+bootloader+not+supported&printer=QIDI+Max+4&firmware=01.01.07.01&board=box1'
 // vo_status.py support_issue_url: the bug report form with what the printer knows filled in.
@@ -842,6 +843,9 @@ function applyUpdates(name) {
     installerBusyUntil: 0,
     recovery: false,
     continueFirmware: false,
+    // Uninstall: the next one stops partway (uninstall-fails); once one finishes, Valve Oil UI and the service are gone.
+    failUninstall: false,
+    uninstalled: false,
   }
   const release = { kind: 'release', version: '26.11.12.1', current: '26.11.11.3', board: null, reinstall: false }
   const firmware = { kind: 'firmware', version: '01.01.07.01', current: '01.01.06.02', board: null, reinstall: false }
@@ -881,6 +885,8 @@ function applyUpdates(name) {
     vo.pending = [firmware]
     vo.boards[0] = board('thr', 'needs_image', '1.0.2', 'stock', { pinned: '1.0.4', ...WAITING_FOR_FIRMWARE })
     vo.boards[1] = board('mcu', 'needs_image', '1.0.5', 'stock', { pinned: '1.0.6', ...WAITING_FOR_FIRMWARE })
+  } else if (name === 'uninstall-fails') {
+    vo.failUninstall = true
   } else if (name === 'reinstall') {
     // QIDI's firmware package emptied the config folder: the installed release has to be installed again.
     vo.pending = [{ kind: 'release', version: vo.release, current: vo.release, board: null, reinstall: true }]
@@ -996,8 +1002,53 @@ function voStatusBody() {
     busy: running || vo.progress?.state === 'running',
     printer_busy: voPrinterBusy(),
     update_now: { allowed: refusal.length === 0, blocked_by: refusal.map((code) => ({ code, message: BLOCKERS[code] })) },
+    // vo_status.py _uninstall: Update now's reasons, and a QIDI firmware update that hasn't finished.
+    uninstall: voUninstallOffer(running, live),
     support: { issue_url: SUPPORT_ISSUE_URL },
   }
+}
+
+const UNINSTALL_BLOCKERS = { ...BLOCKERS, firmware_update_pending: "a QIDI firmware update hasn't finished; finish it with Update now or ./install.sh first" }
+
+function voUninstallOffer(running, live) {
+  const codes = [running ? 'run_in_progress' : Date.now() < vo.installerBusyUntil ? 'installer_busy' : null, ...live, vo.continueFirmware ? 'firmware_update_pending' : null, vo.recovery ? 'recovery_required' : null].filter(Boolean)
+  return { allowed: codes.length === 0, blocked_by: codes.map((code) => ({ code, message: UNINSTALL_BLOCKERS[code] })) }
+}
+
+// installer/runtime/uninstall.py, run by the status service: Moonraker and the service restart partway, and Valve Oil
+// UI and the service are gone at the end, when nginx answers their paths with QIDI's Fluidd.
+function startUninstall(keep) {
+  const generation = voGeneration
+  const fail = vo.failUninstall
+  vo.failUninstall = false
+  const steps = [
+    'Checking the printer',
+    'Backing up your configuration',
+    'Restoring QIDI files',
+    'Removing Valve Oil services',
+    ...(keep ? [] : ['Undoing the OS optimizations']),
+    'Restarting Klipper',
+  ]
+  vo.job = { id: `job-${Date.now()}`, kind: 'uninstall', state: 'running', started_at: iso(), finished_at: null, log: ['Starting the Valve Oil uninstall…'] }
+  let i = -1
+  const next = () => {
+    if (generation !== voGeneration) return
+    i++
+    if (fail && i === 2) {
+      vo.job.log.push('Klipper started printing, so the uninstall stopped. Nothing was removed.')
+      Object.assign(vo.job, { state: 'failed', finished_at: iso() })
+      return
+    }
+    if (i >= steps.length) {
+      vo.uninstalled = true
+      return
+    }
+    vo.job.log.push(steps[i])
+    if (steps[i] === 'Removing Valve Oil services') moonrakerOutage(6)
+    setTimeout(next, 3000)
+  }
+  next()
+  return vo.job
 }
 
 // Klipper restarts while Valve Oil installs; Moonraker too while QIDI's package installs.
@@ -1139,6 +1190,7 @@ async function statusApi(req, res, path) {
   // nginx answers for the service while Moonraker (its authorizer) or the service is down.
   if (outage) return res.writeHead(502, { 'Content-Type': 'text/html' }).end('<html><body>502 Bad Gateway</body></html>')
   if (vo.absent) return res.writeHead(404, { 'Content-Type': 'text/html' }).end('<html><body>404 Not Found</body></html>')
+  if (vo.uninstalled) return res.writeHead(200, { 'Content-Type': 'text/html' }).end(FLUIDD_PAGE)
   const route = path.slice('/vo-status/api/'.length)
   if (req.method === 'GET' && route === 'support-bundle') {
     await new Promise((r) => setTimeout(r, 1500))
@@ -1191,10 +1243,21 @@ async function statusApi(req, res, path) {
     const job = startUpdate()
     return send(202, { job: { ...job, log: [...job.log], message: job.log.at(-1), run_id: null } })
   }
+  if (route === 'uninstall') {
+    const keys = Object.keys(body)
+    if (keys.some((key) => key !== 'keep_system_optimizations') || ('keep_system_optimizations' in body && typeof body.keep_system_optimizations !== 'boolean'))
+      return send(400, { error: 'Expected {} or {"keep_system_optimizations": true}.' })
+    const blocked = voStatus().uninstall.blocked_by
+    if (blocked.length) return send(409, { error: `Uninstall can't start: ${blocked.map((b) => b.message).join('; ')}.`, blocked_by: blocked })
+    const job = startUninstall(body.keep_system_optimizations === true)
+    return send(202, { job: { ...job, log: [...job.log], message: job.log.at(-1), run_id: null } })
+  }
   return send(404, { error: 'Not found.' })
 }
 
 // ---------- http ----------
+const FLUIDD_PAGE = '<!doctype html><html><head><title>Fluidd</title></head><body></body></html>'
+
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png' }
 
 const server = createServer(async (req, res) => {
@@ -1205,6 +1268,8 @@ const server = createServer(async (req, res) => {
     // Feature plugins answer first, so they can add to or replace any route below.
     for (const h of httpRoutes) if (await h(req, res, path, url)) return
     if (path === '/' || path === '/valve-oil') return res.writeHead(302, { Location: '/valve-oil/' }).end()
+    // After an uninstall, nginx answers Valve Oil UI's version file with QIDI's Fluidd, through its fallback.
+    if (vo.uninstalled && path === '/valve-oil/version.json') return res.writeHead(200, { 'Content-Type': 'text/html' }).end(FLUIDD_PAGE)
     if (path.startsWith('/valve-oil/')) {
       const rel = normalize(path.slice('/valve-oil/'.length) || 'index.html').replace(/^(\.\.[/\\])+/, '')
       const file = join(DIST, rel)

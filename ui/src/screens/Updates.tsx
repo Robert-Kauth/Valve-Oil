@@ -5,6 +5,7 @@ import { LanOnly } from '../components/settings/LanOnly'
 import { JobView, RunningBox } from '../components/settings/Addons'
 import { fmtDateTime, fmtTime, PendingToggleRow } from '../components/settings/common'
 import { InstallStepsCard, InstallerLogsCard } from '../components/updates/Install'
+import { UninstallRow } from '../components/updates/Uninstall'
 import { client } from '../state/printer'
 import {
   VO_UPDATE_NOW_BLOCKERS,
@@ -416,6 +417,8 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
           )}
         </>
       )}
+
+      <UninstallRow s={s} />
 
       {view.checkedAt && <div className="mt-3 border-t border-line pt-2 text-[12px] text-ink-3">{t('updates.card.last_checked', { time: fmtDateTime(view.checkedAt) })}</div>}
 

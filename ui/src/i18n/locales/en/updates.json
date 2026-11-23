@@ -228,5 +228,26 @@
     "printing": "a print is running or paused",
     "invalid_response": "Invalid response",
     "not_connected": "Not connected to this printer"
+  },
+  "uninstall": {
+    "title": "Uninstall Valve Oil",
+    "sub": "Puts QIDI's Fluidd, Klipper and Moonraker files, and touchscreen app back, and removes Valve Oil UI. The firmware stays as it is.",
+    "button": "Uninstall",
+    "confirm": "Uninstall Valve Oil from this printer? It puts back everything Valve Oil changed in QIDI's files: QIDI's Fluidd, Klipper and Moonraker files, and QIDI's touchscreen app, which offers QIDI's firmware updates again. It removes Valve Oil UI, this page included, and turns automatic updates off. The QIDI firmware and the board firmware stay as they are. Klipper and Moonraker restart while it runs, so the printer can't be used for a few minutes.",
+    "undo_optimizations": "Also undo the OS optimizations",
+    "undo_optimizations_sub": "Puts back QIDI's settings for swap, the CPU, storage, package sources, and the services Valve Oil turned off. If that needs a restart, the printer restarts when the uninstall finishes.",
+    "running_title": "Uninstalling Valve Oil",
+    "running_body": "Don't turn the printer off. Klipper and Moonraker restart during the uninstall, so this page may lose contact for a moment.",
+    "done_title": "Valve Oil is uninstalled",
+    "done_body": "Valve Oil UI has been removed from the printer, so this page stops here. The uninstall finishes by itself, and if undoing the OS optimizations needs a restart, the printer then restarts. Fluidd is at the printer's address, and its logs have the uninstall's log.",
+    "open_fluidd": "Open Fluidd",
+    "failed_title": "The uninstall didn't finish",
+    "failed_body": "Its log, under Installer logs on the Updates screen, says what went wrong and what state the printer was left in.",
+    "error": "The uninstall couldn't be started: {{error}}",
+    "blocked_now": "Uninstall couldn't start. {{reasons}}",
+    "blocked": {
+      "firmware_update_pending": "A QIDI firmware update hasn't finished. Finish it with Update now first.",
+      "installer_missing": "Valve Oil's installer is missing from the printer. Uninstall over SSH instead."
+    }
   }
 }

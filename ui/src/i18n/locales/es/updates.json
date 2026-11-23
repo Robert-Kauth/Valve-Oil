@@ -228,5 +228,26 @@
     "printing": "hay una impresión en curso o en pausa",
     "invalid_response": "Respuesta no válida",
     "not_connected": "No hay conexión con esta impresora"
+  },
+  "uninstall": {
+    "title": "Desinstalar Valve Oil",
+    "sub": "Restaura Fluidd, los archivos de Klipper y Moonraker y la app de la pantalla táctil de QIDI, y quita Valve Oil UI. El firmware se queda como está.",
+    "button": "Desinstalar",
+    "confirm": "¿Desinstalar Valve Oil de esta impresora? Restaura todo lo que Valve Oil cambió en los archivos de QIDI: Fluidd, los archivos de Klipper y Moonraker y la app de la pantalla táctil de QIDI, que vuelve a ofrecer las actualizaciones de firmware de QIDI. Quita Valve Oil UI, incluida esta página, y desactiva las actualizaciones automáticas. El firmware de QIDI y el firmware de las placas se quedan como están. Klipper y Moonraker se reinician mientras se ejecuta, así que la impresora no se puede usar durante unos minutos.",
+    "undo_optimizations": "Deshacer también las optimizaciones del sistema operativo",
+    "undo_optimizations_sub": "Restaura los ajustes de QIDI para la swap, la CPU, el almacenamiento, las fuentes de paquetes y los servicios que Valve Oil desactivó. Si eso necesita un reinicio, la impresora se reinicia cuando termina la desinstalación.",
+    "running_title": "Desinstalando Valve Oil",
+    "running_body": "No apagues la impresora. Klipper y Moonraker se reinician durante la desinstalación, así que esta página puede perder la conexión un momento.",
+    "done_title": "Valve Oil está desinstalado",
+    "done_body": "Valve Oil UI se quitó de la impresora, así que esta página termina aquí. La desinstalación termina sola y, si deshacer las optimizaciones del sistema operativo necesita un reinicio, la impresora se reinicia después. Fluidd está en la dirección de la impresora, y sus registros incluyen el de la desinstalación.",
+    "open_fluidd": "Abrir Fluidd",
+    "failed_title": "La desinstalación no terminó",
+    "failed_body": "Su registro, en Registros del instalador de la pantalla Actualizaciones, dice qué salió mal y en qué estado quedó la impresora.",
+    "error": "No se pudo iniciar la desinstalación: {{error}}",
+    "blocked_now": "No se pudo iniciar la desinstalación. {{reasons}}",
+    "blocked": {
+      "firmware_update_pending": "Una actualización de firmware de QIDI no terminó. Termínala primero con Actualizar ahora.",
+      "installer_missing": "Falta el instalador de Valve Oil en la impresora. Desinstala por SSH."
+    }
   }
 }
