@@ -86,7 +86,7 @@ class Overview:
     legacy_manual_install: bool  # hand-copied configs that the install resets to QIDI's first
     boards: tuple[str, ...] = ()  # boards that get firmware: "Toolhead", "mainboard", "Box 1", ...
     questions: tuple[Question, ...] = ()
-    community_supported: bool = False  # releases aren't tested on this printer (PrinterSpec.support)
+    community_supported: bool = False  # releases may ship untested on this printer (PrinterSpec.support)
 
     @property
     def turns_box_support_on(self) -> bool:

@@ -40,17 +40,17 @@ The installer SHALL identify the printer from its detected supported firmware, s
 - **AND** vendor-managed, user-specific, and sensitive configuration remains preserved
 
 ### Requirement: Community-supported printers are named at install
-Each printer in `installer/package.yaml` SHALL be officially supported, tested before each release on a printer the maintainer owns, or community-supported, declared with `support: community` and released without that testing. A community-supported printer SHALL install, update, and uninstall with the same admission, backup, rollback, and firmware safeguards as an officially supported one. Every supported printer, of either kind, SHALL run QIDI's Python 3.9.
+Each printer in `installer/package.yaml` SHALL be officially supported or community-supported, declared with `support: community`, whose releases may ship without being tested on it. A community-supported printer SHALL install, update, and uninstall with the same admission, backup, rollback, and firmware safeguards as an officially supported one. Every supported printer, of either kind, SHALL run QIDI's Python 3.9.
 
 #### Scenario: A terminal install on a community-supported printer says so first
 - **WHEN** an install or update started over SSH detects a community-supported printer
-- **THEN** it says the printer is community-supported and not tested before each release, before its first question
+- **THEN** it says the printer is community-supported and releases may ship without being tested on it, before its first question
 - **AND** its summary says the same
 
 #### Scenario: A touchscreen install on a community-supported printer says so first
 - **WHEN** the USB installer's first screen or update screen shows a community-supported printer
 - **THEN** the printer's row is marked community-supported
-- **AND** a new install shows a screen saying releases aren't tested on the printer before its first question, and Back returns to the first screen
+- **AND** a new install shows a screen saying releases may ship without being tested on the printer before its first question, and Back returns to the first screen
 
 #### Scenario: Officially supported printers show no notice
 - **WHEN** an install or update detects an officially supported printer

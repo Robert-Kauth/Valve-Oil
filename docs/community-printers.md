@@ -4,8 +4,8 @@
 
 Valve Oil supports two kinds of printer:
 
-- **Officially supported printers** are printers the maintainer owns. Each release is tested on them before it ships.
-- **Community-supported printers** are printers the maintainer doesn't own. Valve Oil installs on them with the same code and the same safety checks, but releases ship **without being tested on them**. Owners find a release's problems on these printers, and report them.
+- **Officially supported printers** 
+- **Community-supported printers** Valve Oil installs on them with the same code and the same safety checks, but **releases may ship without being tested on them**. Owners find a release's problems on these printers, and report them.
 
 The README lists the two kinds in separate tables. When you install or update on a community-supported printer, the installer says so: over SSH before its questions and in its summary, and on the touchscreen beside the printer's name, with a screen of its own before a new install's questions.
 

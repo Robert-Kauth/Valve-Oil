@@ -257,8 +257,8 @@ class Session:
     def _community_notice(self, overview) -> bool:
         """A new install on a community-supported printer says what that means first. False goes back."""
         tapped = self._ask_screen("confirm", ("back", "ok"), title="Community-supported printer", ok_label="Continue",
-                                  text=[f"The {overview.printer_name} is community-supported: Valve Oil isn't tested "
-                                        "on it before each release.",
+                                  text=[f"The {overview.printer_name} is community-supported: releases may ship "
+                                        "without being tested on it.",
                                         "A release can reach it with problems the officially supported printers "
                                         "don't have. Please report what you find at "
                                         "github.com/thelegendtubaguy/valve-oil/issues."])

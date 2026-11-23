@@ -303,7 +303,7 @@ def parse_manifest(raw: Any) -> Manifest:
     )
 
 
-# Official printers are tested before each release; community printers ship untested (PrinterSpec.support).
+# Releases may ship without being tested on community printers (PrinterSpec.support).
 PRINTER_SUPPORT_LEVELS = ("official", "community")
 
 
