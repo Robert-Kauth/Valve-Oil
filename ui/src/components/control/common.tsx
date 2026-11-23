@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { attempt, toast } from '../toast'
 import { printer, runGcode, usePrinter } from '../../state/printer'
 import { clampJog, moveGcode } from './gcode'
@@ -7,6 +7,15 @@ import './control.css'
 
 /** Runs G-code, logging it to the console and toasting a failure. */
 export const send = (gcode: string) => attempt(() => runGcode(gcode))
+
+/** The axes Klipper has homed, such as 'xyz'. */
+export const useHomedAxes = () => usePrinter((s) => (s.status.toolhead?.homed_axes as string | undefined) ?? '')
+
+/** The speed or flow factor, in percent. */
+export const usePercent = (factor: 'speed_factor' | 'extrude_factor') => usePrinter((s) => Math.round(((s.status.gcode_move?.[factor] as number | undefined) ?? 1) * 100))
+
+/** The G-code Z offset, in mm. */
+export const useZOffset = () => usePrinter((s) => (s.status.gcode_move?.homing_origin?.[2] as number | undefined) ?? 0)
 
 /**
  * Jogs an axis by a relative distance, shortened to stay within the axis limits. Says so instead of moving when the
@@ -18,31 +27,6 @@ export function jog(axis: 'X' | 'Y' | 'Z', distance: number, rate: number, clien
   const d = clampJog(th.position?.[i], distance, th.axis_minimum?.[i], th.axis_maximum?.[i])
   if (d === 0) return toast(t('control.end_of_travel', { axis }), 'error')
   return send(moveGcode({ [axis]: d }, rate, false, clientMacro))
-}
-
-/** True while a print is running (not paused): what Fluidd locks moves and some controls on. */
-export function usePrinting() {
-  return usePrinter((s) => s.status.print_stats?.state === 'printing')
-}
-
-/** True while a print is running or paused. */
-export function useJobActive() {
-  return usePrinter((s) => s.status.print_stats?.state === 'printing' || s.status.print_stats?.state === 'paused')
-}
-
-/** Whether Klipper knows a G-code command. */
-export function useHasCommand(name: string) {
-  return usePrinter((s) => s.commands.includes(name.toUpperCase()))
-}
-
-/** A key and its value on one line, as Fluidd's status labels. */
-export function KV({ k, children, className = '' }: { k: ReactNode; children: ReactNode; className?: string }) {
-  return (
-    <div className={`row-k ${className}`}>
-      <span className="k">{k}</span>
-      <span className="v">{children}</span>
-    </div>
-  )
 }
 
 /**
@@ -97,6 +81,12 @@ export function Slider({
   )
 }
 
+/** Keys for a field that edits a draft: Enter applies it (by leaving the field), Escape drops it. */
+export const draftKeys = (setDraft: (draft: null) => void) => (e: KeyboardEvent) => {
+  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+  if (e.key === 'Escape') (setDraft(null), (e.target as HTMLInputElement).blur())
+}
+
 /** A small number input that applies on Enter or when it loses focus, and shows the printer's value otherwise. */
 export function NumberInput({
   value,
@@ -105,7 +95,6 @@ export function NumberInput({
   disabled,
   label,
   readOnly,
-  className = '',
 }: {
   value: number
   onCommit: (v: number) => void
@@ -113,7 +102,6 @@ export function NumberInput({
   disabled?: boolean
   label: string
   readOnly?: boolean
-  className?: string
 }) {
   const [draft, setDraft] = useState<string | null>(null)
   const commit = () => {
@@ -124,7 +112,7 @@ export function NumberInput({
   }
   return (
     <input
-      className={`field num text-right font-semibold ${className}`}
+      className="field num text-right font-semibold"
       inputMode="decimal"
       aria-label={label}
       disabled={disabled}
@@ -133,11 +121,18 @@ export function NumberInput({
       onFocus={(e) => !readOnly && (setDraft(value.toFixed(digits)), e.target.select())}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-        if (e.key === 'Escape') (setDraft(null), (e.target as HTMLInputElement).blur())
-      }}
+      onKeyDown={draftKeys(setDraft)}
     />
+  )
+}
+
+/** A Control tab's two columns: the first card on the left, the rest stacked on the right; one column on a narrow screen. */
+export function Columns({ left, children }: { left: ReactNode; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-2">
+      {left}
+      <div className="grid min-w-0 grid-cols-1 gap-3.5">{children}</div>
+    </div>
   )
 }
 

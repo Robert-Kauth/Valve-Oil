@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from 'lucide-react'
 import { t } from '../i18n'
 
 const dialogStack: HTMLElement[] = []
@@ -133,26 +133,6 @@ export function Dialog({ open, onClose, title, children, footer, size }: { open:
   )
 }
 
-export function Sparkline({ values, target, width = 80, height = 24, color = 'var(--orange)' }: { values: number[]; target?: number; width?: number; height?: number; color?: string }) {
-  const pts = values.slice(-180)
-  if (pts.length < 2) return <svg width={width} height={height} />
-  let lo = Math.min(...pts, target ?? Infinity)
-  let hi = Math.max(...pts, target ?? -Infinity)
-  if (hi - lo < 4) {
-    const mid = (hi + lo) / 2
-    lo = mid - 2
-    hi = mid + 2
-  }
-  const y = (v: number) => height - 2 - ((v - lo) / (hi - lo)) * (height - 4)
-  const d = pts.map((v, i) => `${((i / (pts.length - 1)) * width).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
-  return (
-    <svg width={width} height={height} aria-hidden>
-      {target != null && target > 0 && <line x1={0} x2={width} y1={y(target)} y2={y(target)} stroke={color} strokeOpacity={0.35} strokeDasharray="3 3" />}
-      <polyline points={d} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
-    </svg>
-  )
-}
-
 export function Toggle({ checked, onChange, disabled, label }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; label?: string }) {
   return (
     <button
@@ -167,6 +147,61 @@ export function Toggle({ checked, onChange, disabled, label }: { checked: boolea
     >
       <i className="absolute top-1 h-4 w-4 rounded-full bg-white transition-all" style={{ left: checked ? 16 : 2 }} />
     </button>
+  )
+}
+
+/** A tinted message with its tone's icon, and a dismiss button when it can be closed. */
+export function Notice({ tone, icon, onClose, children, className = '' }: { tone: 'info' | 'warn' | 'bad' | 'good'; icon?: ReactNode; onClose?: () => void; children: ReactNode; className?: string }) {
+  const cls = { info: 'tone-accent', warn: 'tone-warn', bad: 'tone-bad', good: 'tone-good' }[tone]
+  const Icon = { info: Info, warn: TriangleAlert, bad: CircleAlert, good: CircleCheck }[tone]
+  return (
+    <div className={`${cls} flex items-start gap-2.5 rounded-lg px-3 py-2 ${className}`}>
+      <span className="mt-0.5 flex-none">{icon ?? <Icon size={15} />}</span>
+      <div className="min-w-0 flex-1 text-ink [overflow-wrap:anywhere]">{children}</div>
+      {onClose && (
+        <button className="iconbtn -my-1.5 -mr-2 h-7 w-7 flex-none" onClick={onClose} aria-label={t('common.dismiss')}>
+          <X size={15} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** A key and its value on one line, as Fluidd's status labels. */
+export function KV({ k, children, className = '', vClassName = '' }: { k: ReactNode; children: ReactNode; className?: string; vClassName?: string }) {
+  return (
+    <div className={`row-k ${className}`}>
+      <span className="k">{k}</span>
+      <span className={`v ${vClassName}`}>{children}</span>
+    </div>
+  )
+}
+
+/** A label over its field. */
+export function Field({ label, children, className = 'gap-1.5' }: { label: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <label className={`grid ${className}`}>
+      <span className="lbl">{label}</span>
+      {children}
+    </label>
+  )
+}
+
+/** A dialog's Cancel button. */
+export function CancelButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button className="btn btn-ghost" onClick={onClick}>
+      {t('common.cancel')}
+    </button>
+  )
+}
+
+/** A spinner in the middle of the space a list or panel will fill. */
+export function Loading({ className = 'py-10', size = 20 }: { className?: string; size?: number }) {
+  return (
+    <div className={`grid place-items-center ${className}`}>
+      <Spinner size={size} />
+    </div>
   )
 }
 

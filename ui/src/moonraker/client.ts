@@ -1,13 +1,10 @@
 // Minimal Moonraker JSON-RPC websocket client with reconnect.
 import { t } from '../i18n'
+import { readLocal, saveLocal } from '../lib/browser'
 
 export type ConnectionState = 'connecting' | 'open' | 'closed'
 
-type Pending = {
-  resolve: (value: unknown) => void
-  reject: (error: Error) => void
-  timer: ReturnType<typeof setTimeout>
-}
+type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 
 export class RpcError extends Error {
   readonly code: number
@@ -28,7 +25,6 @@ export class MoonrakerClient {
   private handlers = new Map<string, Set<NotificationHandler>>()
   private stateHandlers = new Set<(s: ConnectionState) => void>()
   private retryMs = 1000
-  private stopped = false
   state: ConnectionState = 'closed'
 
   constructor(origin: string) {
@@ -38,7 +34,6 @@ export class MoonrakerClient {
   }
 
   connect() {
-    this.stopped = false
     this.setState('connecting')
     const ws = new WebSocket(this.wsUrl)
     this.ws = ws
@@ -56,16 +51,9 @@ export class MoonrakerClient {
       }
       this.pending.clear()
       this.setState('closed')
-      if (!this.stopped) {
-        setTimeout(() => this.connect(), this.retryMs)
-        this.retryMs = Math.min(this.retryMs * 2, 10000)
-      }
+      setTimeout(() => this.connect(), this.retryMs)
+      this.retryMs = Math.min(this.retryMs * 2, 10000)
     }
-  }
-
-  close() {
-    this.stopped = true
-    this.ws?.close()
   }
 
   call<T = unknown>(method: string, params?: Record<string, unknown>, timeoutMs = 30000): Promise<T> {
@@ -103,21 +91,6 @@ export class MoonrakerClient {
     return `${this.httpBase}/server/files/${root}/${path.split('/').map(encodeURIComponent).join('/')}`
   }
 
-  async upload(file: File, path = '', onProgress?: (fraction: number) => void): Promise<void> {
-    const form = new FormData()
-    form.append('root', 'gcodes')
-    if (path) form.append('path', path)
-    form.append('file', file, file.name)
-    await new Promise<void>((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      xhr.open('POST', `${this.httpBase}/server/files/upload`)
-      xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total)
-      xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error(t('app.moonraker.upload_failed_status', { status: xhr.status }))))
-      xhr.onerror = () => reject(new Error(t('app.moonraker.upload_failed')))
-      xhr.send(form)
-    })
-  }
-
   private setState(s: ConnectionState) {
     this.state = s
     for (const fn of this.stateHandlers) fn(s)
@@ -139,10 +112,7 @@ export class MoonrakerClient {
       else p.resolve(msg.result)
       return
     }
-    if (msg.method) {
-      const set = this.handlers.get(msg.method)
-      if (set) for (const fn of set) fn(msg.params ?? [])
-    }
+    if (msg.method) for (const fn of this.handlers.get(msg.method) ?? []) fn(msg.params ?? [])
   }
 }
 
@@ -151,14 +121,9 @@ export function resolveMoonrakerOrigin(): string {
   const q = new URLSearchParams(location.search).get('moonraker')
   if (q) {
     const origin = q.includes('://') ? q : `http://${q}`
-    try {
-      localStorage.setItem('vo-moonraker', origin)
-    } catch {}
+    saveLocal('vo-moonraker', origin)
     return origin
   }
-  try {
-    const saved = localStorage.getItem('vo-moonraker')
-    if (saved && import.meta.env.DEV) return saved
-  } catch {}
-  return location.origin
+  const saved = readLocal('vo-moonraker')
+  return saved && import.meta.env.DEV ? saved : location.origin
 }
