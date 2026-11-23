@@ -308,6 +308,7 @@ Valve Oil's cut, purge, cooldown, cleaning, calibration, and cancel helpers MUST
 - **WHEN** a Valve Oil slicer filament change runs
 - **THEN** exactly one cut occurs: Valve Oil's cut when the vendor tool-change flow is absent, or the vendor flow's cut when it is present
 - **AND** when the vendor flow is present, the toolhead goes from the print to the cutter without first visiting the chute; the vendor flow moves to the chute after cutting
+- **AND** when the vendor flow returns without moving the toolhead, as it does with no USB Box, with **Use QIDI Box** off, or when the new tool keeps the loaded slot, nothing is cut and the toolhead moves to the chute before the change's heat-up and purge, as stock G-code does
 - **AND** Valve Oil's macros recognize a slicer filament change from print state, so slicer G-code passes no tool-change parameter
 - **AND** the same slicer G-code remains correct with older supported firmware
 

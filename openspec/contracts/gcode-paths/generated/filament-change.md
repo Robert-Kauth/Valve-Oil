@@ -119,7 +119,7 @@ Forbidden patterns:
 
 Condition: `a slicer filament change or a manual cut; QIDI's flow controller cuts for itself during a print`
 
-Source: `installer/klipper/macros/filament.cfg:119-130`
+Source: `installer/klipper/macros/filament.cfg:121-136`
 
 Direct visible macro calls in branch slice:
 
@@ -132,6 +132,7 @@ Ordered invariants:
 - `_VO_CUT_FILAMENT_MOTION`
 - `{% else %}`
 - `SET_GCODE_VARIABLE MACRO=OPTIMIZED_MOVE_TO_TRASH VARIABLE=vendor_cut_handoff_time VALUE={printer.toolhead.estimated_print_time}`
+- `SET_GCODE_VARIABLE MACRO=OPTIMIZED_CUT_FILAMENT VARIABLE=change_y VALUE={printer.gcode_move.position.y}`
 - `{% endif %}`
 
 Forbidden patterns:
@@ -159,6 +160,33 @@ Ordered invariants:
 
 Forbidden patterns:
 
+- `G1 `
+
+### chute_move_when_vendor_flow_stayed
+
+Condition: `right after a slicer filament change's T[n]; QIDI's flow returned without moving the toolhead from where the cut was handed to it (Box off, no Box, or the same slot kept)`
+
+Source: `installer/klipper/macros/heaters.cfg:63-80`
+
+Direct visible macro calls in branch slice:
+
+- `_VO_MOVE_TO_TRASH_MOTION`
+- `m104`
+
+Ordered invariants:
+
+- `printer.toolhead.estimated_print_time - change.change_time < 30`
+- `(position.x - change.change_x)|abs < 0.01`
+- `(position.y - change.change_y)|abs < 0.01`
+- `SET_GCODE_VARIABLE MACRO=OPTIMIZED_CUT_FILAMENT VARIABLE=change_time VALUE=-1`
+- `{% if vendor_flow_stayed %}`
+- `_VO_MOVE_TO_TRASH_MOTION`
+- `{% endif %}`
+- `TEMPERATURE_WAIT`
+
+Forbidden patterns:
+
+- `_VO_CUT_FILAMENT_MOTION`
 - `G1 `
 
 ### cut_motion_restores_state
@@ -219,7 +247,7 @@ Forbidden patterns:
 
 Condition: `the Box is in use; QIDI's flow controller cuts and unloads for itself`
 
-Source: `installer/klipper/macros/filament.cfg:141-164`
+Source: `installer/klipper/macros/filament.cfg:147-170`
 
 Direct visible macro calls in branch slice:
 
