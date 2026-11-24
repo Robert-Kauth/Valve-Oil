@@ -74,7 +74,28 @@ def macro_call_graph_errors() -> list[str]:
         cycles = find_cycles(macros, calls)
         if cycles:
             errors.append(f"{printer}: recursive gcode_macro calls:\n" + format_cycles(cycles, macros, calls))
+        own = {path.resolve() for path in installed_macro_files(printer)}
+        unreachable = sorted(
+            f"  {macro.name} runs as {klipper_command(macro.name)!r}: {relative(macro.path)}:{macro.line_number}"
+            for macro in macros.values()
+            if macro.path.resolve() in own and klipper_command(macro.name) != macro.key
+        )
+        if unreachable:
+            errors.append(f"{printer}: macros Klipper can't call by name:\n" + "\n".join(unreachable))
     return errors
+
+
+KLIPPER_ARGS_RE = re.compile(r"([A-Z_]+|[A-Z*/])")
+
+
+def klipper_command(line: str) -> str:
+    """The command Klipper's gcode.py dispatches a line to: the letters before the first number and that number, so
+    _VO_G29_HOME runs _VO_G29, which QIDI's Klipper ignores without a word."""
+    parts = KLIPPER_ARGS_RE.split(line.upper())
+    if len(parts) >= 3 and parts[1] != "N":
+        return parts[1] + parts[2].strip()
+    return ""
+
 
 
 def collect_config_tree_files(config_root: Path) -> tuple[Path, ...]:

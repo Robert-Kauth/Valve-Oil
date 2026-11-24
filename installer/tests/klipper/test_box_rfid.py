@@ -427,18 +427,10 @@ class BoxRfidTests(unittest.TestCase):
         with self.assertRaises(CommandError):
             self.printer.commands["VO_BOX_RFID_REPORT"](Gcmd(SLOT=7))
 
-    def test_startup_tag_read_waits_for_qidis_controller(self):
-        self.module()
-        printer, controller = self.printer, self.printer.controller
-        printer.commands["INIT_RFID_READ"](Gcmd())  # QIDI's own would raise here and shut Klipper down
-        printer.reactor.advance(10)
-        self.assertEqual(controller.init_reads, 0)
-        controller.ready()
-        printer.reactor.advance(10)
-        self.assertEqual(controller.init_reads, 1)
-        printer.commands["INIT_RFID_READ"](Gcmd())
-        self.assertEqual(controller.init_reads, 2)
-        # A controller that never becomes ready: the read is left out.
+    def test_startup_tag_read_is_left_out_when_qidis_controller_never_becomes_ready(self):
+        """Valve Oil holds INIT_RFID_READ until QIDI's Box controller is ready (issue 265; the wait itself is
+        gcode_flow/test_startup.py's). The wait has to end: when the controller isn't ready within it, the held read
+        is left out rather than polling forever or running whenever the controller turns up."""
         self.module()
         self.printer.commands["INIT_RFID_READ"](Gcmd())
         self.printer.reactor.advance(300)

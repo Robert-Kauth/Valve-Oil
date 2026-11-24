@@ -548,7 +548,9 @@ class BedSoak:
         self._script("wipe", "\n".join((
             "G90", "G1 Z20 F480", "OPTIMIZED_MOVE_TO_TRASH",
             "M109 S%g" % s["nozzle"], "M83", "G1 E-0.2 F1800",
-            "M106 S255", "VO_WIPE_NOZZLE_DROP", "M106 S0")))
+            "M106 S255", "VO_WIPE_NOZZLE_DROP", "M106 S0",
+            # Straight forward out of the chute before crossing the bed.
+            "_VO_LEAVE_CHUTE")))
         self._note_target("extruder")
         zx = self._profile_var("z_tilt_staging_x", None)
         zy = self._profile_var("z_tilt_staging_y", None)

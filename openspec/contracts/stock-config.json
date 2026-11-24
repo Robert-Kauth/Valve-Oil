@@ -1,0 +1,95 @@
+{
+  "description": "config/ is QIDI's stock Max 4 config. scripts/check_stock_config.py compares it with `stock`: comments, whitespace, and blank lines may differ; `translated_strings` lists each message string translated from QIDI's Chinese (stock line, config/ line); `added_lines` is the include wiring Valve Oil needs; `unchanged` files are read-only on the printer and pinned by SHA-256; `printer_written` files are written by QIDI's software on each printer, so only scripts/check_identifiers.py reads them.",
+  "stock": "installer/stock/qidi-max4-defaults/firmwares/01.01.07.01/config",
+  "unchanged": {
+    "fluidd.cfg": "bf3c4884e0422a0f180fa0d72dde68f0de658a391773ddd79ec9233bb951cf3a"
+  },
+  "printer_written": [
+    "MCU_ID.cfg",
+    "box.cfg",
+    "saved_variables.cfg"
+  ],
+  "added_lines": {
+    "printer.cfg": [
+      "[include vo-macros/*.cfg]"
+    ]
+  },
+  "translated_strings": {
+    "klipper-macros-qd/bed_mesh.cfg": [
+      [
+        "{action_respond_info(\"=== 智能自适应床网校准 ===\")}",
+        "{action_respond_info(\"=== Smart adaptive bed mesh calibration ===\")}"
+      ],
+      [
+        "{action_respond_info(\"算法类型: %s\" % algorithm)}",
+        "{action_respond_info(\"Algorithm: %s\" % algorithm)}"
+      ],
+      [
+        "{action_respond_info(\"默认探测点数: %d,%d\" % (probe_count[0], probe_count[1]))}",
+        "{action_respond_info(\"Default probe count: %d,%d\" % (probe_count[0], probe_count[1]))}"
+      ],
+      [
+        "{action_respond_info(\"优化探测点数: %d,%d\" % (x_probes, y_probes))}",
+        "{action_respond_info(\"Optimized probe count: %d,%d\" % (x_probes, y_probes))}"
+      ],
+      [
+        "{action_respond_info(\"默认床网范围: (%.1f,%.1f) 到 (%.1f,%.1f)\" %",
+        "{action_respond_info(\"Default mesh area: (%.1f,%.1f) to (%.1f,%.1f)\" %"
+      ],
+      [
+        "{action_respond_info(\"实际床网范围: (%.1f,%.1f) 到 (%.1f,%.1f)\" %",
+        "{action_respond_info(\"Actual mesh area: (%.1f,%.1f) to (%.1f,%.1f)\" %"
+      ],
+      [
+        "{action_respond_info(\"网格边距: %.1fmm\" % mesh_margin)}",
+        "{action_respond_info(\"Mesh margin: %.1fmm\" % mesh_margin)}"
+      ],
+      [
+        "{action_respond_info(\"探测点随机化: ±%.1fmm\" % fuzz_amount)}",
+        "{action_respond_info(\"Probe point fuzz: ±%.1fmm\" % fuzz_amount)}"
+      ],
+      [
+        "{ action(\"警告: 在您的\" ~ label ~ \"中检测到以下问题:\\n\" ~ output|join(\"\\n\")) }",
+        "{ action(\"Warning: the following issues were detected in your \" ~ label ~ \":\\n\" ~ output|join(\"\\n\")) }"
+      ]
+    ],
+    "klipper-macros-qd/globals.cfg": [
+      [
+        "{ action_respond_info(\"SMART_STATUS 状态更新: MODE=%d, SCREEN=%d, TIMELAPSE=%d\" % (m, s, t)) }",
+        "{ action_respond_info(\"SMART_STATUS status updated: MODE=%d, SCREEN=%d, TIMELAPSE=%d\" % (m, s, t)) }"
+      ]
+    ],
+    "klipper-macros-qd/heaters.cfg": [
+      [
+        "description:设置喷头等待温度升高到指定温度",
+        "description:Set the nozzle and wait for the temperature to rise to the target"
+      ],
+      [
+        "description:设置喷头等待温度降低到指定温度之后",
+        "description:Set the nozzle and wait for the temperature to fall to the target"
+      ]
+    ],
+    "klipper-macros-qd/qd_macro.cfg": [
+      [
+        "description: 自动共振器",
+        "description: Automatic input shaper"
+      ],
+      [
+        "description: 管理Zoffset",
+        "description: Manage Z offset"
+      ],
+      [
+        "description: 清理网床数据",
+        "description: Clear bed mesh data"
+      ],
+      [
+        "description: 根据设置开启空调",
+        "description: Enable the polar cooler according to settings"
+      ],
+      [
+        "description: 设置Z坐标",
+        "description: Set Z coordinate"
+      ]
+    ]
+  }
+}
