@@ -21,6 +21,9 @@ UNKNOWN_ON_THE_PRINTER = {
     "BUFFER_MONITORING": "stock pause and resume with the Box",
     # QIDI's power-loss resume (virtual_sdcard.py) sends it; the Smart 5's 01.01.02.01 macros don't define it.
     "CLEAR_NOZZLE_PLR": "QIDI's power-loss resume on the Smart 5",
+    # QIDI's PRINT_END sends both; no stock config defines them (config/klipper-macros-qd/start_end.cfg).
+    "RESET_FAN_SCALING": "QIDI's PRINT_END",
+    "_RESET_LAYER_GCODE": "QIDI's PRINT_END",
 }
 # How far from the chute (QIDI's park position in _km_globals) filament may leave the nozzle outside the print, mm.
 CHUTE_REACH = 5.

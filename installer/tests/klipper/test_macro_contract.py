@@ -184,7 +184,8 @@ class MacroContractTests(unittest.TestCase):
             # Conditions on the toolhead position are evaluated; any other condition runs its block.
             if position is None or "gcode_move.position" not in condition:
                 return True
-            where = types.SimpleNamespace(x=position[0], y=position[1])
+            # Z never moves X or Y; at Z0 every lift (such as the cancel park's) is taken.
+            where = types.SimpleNamespace(x=position[0], y=position[1], z=0.)
             printer = types.SimpleNamespace(gcode_move=types.SimpleNamespace(position=where))
             return bool(eval(condition, {"printer": printer, "km": km}))
 

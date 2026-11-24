@@ -220,7 +220,7 @@ Forbidden patterns:
 
 Condition: `the move to the chute from anywhere on or behind the bed`
 
-Source: `installer/klipper/printers/max4/nozzle_motion.cfg:160-187`
+Source: `installer/klipper/printers/max4/nozzle_motion.cfg:160-188`
 
 Direct visible macro calls in branch slice:
 

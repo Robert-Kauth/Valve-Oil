@@ -364,6 +364,13 @@ Valve Oil's cut, purge, cooldown, cleaning, calibration, and cancel helpers MUST
 - **AND** delayed fan shutdown cannot turn off a fan used by a new or paused print
 - **AND** OrcaSlicer applies the configured completion exhaust only when the last filament has both air filtration and its on-completion option on, while QIDI Studio passes zero and omits unsupported indexed completion-air placeholders
 
+#### Scenario: Operator cancellation cools the nozzle before parking
+- **WHEN** the operator stops a print with `CANCEL_PRINT`, from Fluidd, the touchscreen, or the console
+- **THEN** the nozzle heater turns off and, with the nozzle at or above 170°C, the part fan runs at full before any park move
+- **AND** the toolhead parks as the vendor cancel does for the printer
+- **AND** the part fan stays at full through the vendor print end until the nozzle is below 170°C, without holding the G-code queue
+- **AND** a print started since, or an operator fan command, keeps the fan where it set it
+
 #### Scenario: Error cancellation is motion-free
 - **WHEN** Valve Oil error cancellation executes
 - **THEN** heaters, fans, optional Box heat, pause state, and print state are cleaned up before base cancellation

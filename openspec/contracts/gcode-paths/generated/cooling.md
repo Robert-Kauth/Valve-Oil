@@ -11,7 +11,7 @@ Contract: `openspec/contracts/gcode-paths/cooling.path.json`
 
 Condition: `any fan command; the exhaust fan is P3`
 
-Source: `installer/klipper/macros/cooling.cfg:14-43`
+Source: `installer/klipper/macros/cooling.cfg:14-45`
 
 Direct visible macro calls in branch slice:
 
