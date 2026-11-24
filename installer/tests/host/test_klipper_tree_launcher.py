@@ -258,3 +258,12 @@ class InstallHoldTests(unittest.TestCase):
                 self.assertFalse(held)
                 self.assertEqual(posts, [])
                 self.assertFalse((data / klipper_tree.HOLD_FILE).exists())
+
+
+class PackageTreeTests(unittest.TestCase):
+    def test_the_package_tree_has_moonrakers_config_and_docs_folders(self):
+        # Moonraker warns `Supplied path (/home/qidi/vo-klipper/config) for (config_examples) is invalid` without them.
+        for name in klipper_tree.MOONRAKER_DIRS:
+            with self.subTest(name=name):
+                self.assertTrue((klipper_tree.TREE_SOURCE / name / "README.md").is_file())
+                self.assertIn(f"{name}/README.md", klipper_tree.SUPPORT_FILES)
