@@ -366,7 +366,15 @@ export function MenuButton({ button, items, align = 'right', className = 'iconbt
 }
 
 // ---- confirm and prompt, as promises: `if (await confirm({...})) ...` ----
-type Ask = { title: ReactNode; body?: ReactNode; confirm?: string; danger?: boolean; input?: { label: string; value: string; placeholder?: string } }
+type Ask = {
+  title: ReactNode
+  body?: ReactNode
+  confirm?: string
+  danger?: boolean
+  input?: { label: string; value: string; placeholder?: string }
+  /** Recheck live state immediately before resolving a consequential action. */
+  validate?: () => string | null
+}
 type Pending = Ask & { resolve: (v: string | boolean | null) => void }
 let openAsk: ((p: Pending | null) => void) | null = null
 
@@ -385,8 +393,9 @@ export const prompt = (a: Omit<Ask, 'input'> & { input: Ask['input'] }) => ask(a
 export function AskHost() {
   const [p, setP] = useState<Pending | null>(null)
   const [text, setText] = useState('')
+  const [validationError, setValidationError] = useState<string | null>(null)
   useEffect(() => {
-    openAsk = (next) => (setP(next), setText(next?.input?.value ?? ''))
+    openAsk = (next) => (setP(next), setText(next?.input?.value ?? ''), setValidationError(null))
     return () => {
       openAsk = null
     }
@@ -394,6 +403,11 @@ export function AskHost() {
   if (!p) return null
   const done = (v: string | boolean | null) => (p.resolve(v), setP(null))
   const cancel = () => done(p.input ? null : false)
+  const submit = () => {
+    const error = p.validate?.() ?? null
+    if (error) return setValidationError(error)
+    done(p.input ? text.trim() : true)
+  }
   return (
     <Dialog
       open
@@ -404,7 +418,7 @@ export function AskHost() {
           <button className="btn btn-ghost" onClick={cancel}>
             {t('common.cancel')}
           </button>
-          <button className={`btn ${p.danger ? 'btn-danger' : 'btn-primary'}`} disabled={!!p.input && !text.trim()} onClick={() => done(p.input ? text.trim() : true)}>
+          <button className={`btn ${p.danger ? 'btn-danger' : 'btn-primary'}`} disabled={!!p.input && !text.trim()} onClick={submit}>
             {p.confirm ?? t('common.ok')}
           </button>
         </>
@@ -419,10 +433,18 @@ export function AskHost() {
             autoFocus
             value={text}
             placeholder={p.input.placeholder}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && text.trim() && done(text.trim())}
+            onChange={(e) => {
+              setText(e.target.value)
+              setValidationError(null)
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && text.trim() && submit()}
           />
         </label>
+      )}
+      {validationError && (
+        <div role="alert" className="mt-3 rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-sm text-bad">
+          {validationError}
+        </div>
       )}
     </Dialog>
   )

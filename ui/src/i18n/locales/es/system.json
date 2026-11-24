@@ -159,7 +159,8 @@
       "shutdown": "Apagar",
       "shutdown_title": "¿Apagar la impresora?",
       "shutdown_body": "El ordenador de la impresora se apaga. Apaga y vuelve a encender la impresora para iniciarlo.",
-      "shutting_down": "Apagando la impresora"
+      "shutting_down": "Apagando la impresora",
+      "update_locked": "El reinicio y el apagado están bloqueados hasta que termine la actualización de Valve Oil."
     }
   },
   "logs": {

@@ -1,19 +1,20 @@
 import { useState } from 'react'
 import { ChevronDown, Ellipsis, Fan, Flame, Snowflake, Thermometer } from 'lucide-react'
-import { CancelButton, Card, Dialog, Empty, Field, MenuButton, confirm } from '../ui'
+import { CancelButton, Card, Dialog, Empty, Field, MenuButton } from '../ui'
 import { TempChart } from '../TempChart'
 import { Columns, Note, objectLabel, send } from './common'
-import { useJobActive, usePrinting } from '../../state/job'
+import { isActive, useJobActive, usePrinting } from '../../state/job'
 import { TargetStepper, startTarget } from './TargetStepper'
 import { boxHeaterNumber, heaterGcode, heaterParam, targetError, targetRange, type HeaterConfig } from './heaters'
 import { encodeGcodeParamValue, gcode } from './gcode'
 import { attempt } from '../toast'
-import { useHasCommand, usePrinter } from '../../state/printer'
+import { printer, useHasCommand, usePrinter } from '../../state/printer'
 import { applyPreset, usePresets } from '../../state/presets'
 import { boxHeaterMax, useBox } from '../../state/box'
 import { navigate } from '../../lib/router'
 import { t } from '../../i18n'
 import { tr } from '../../i18n/rich'
+import { useCoolDownAction } from './use-cool-down'
 
 /** A heater's name as people know it: Nozzle, Bed, Chamber, Box 1 heater. */
 export function heaterLabel(obj: string) {
@@ -42,29 +43,29 @@ export function TempsTab() {
 /** Presets and Cool down, beside the tabs. */
 export function TempsActions() {
   const [presets] = usePresets()
-  const active = useJobActive()
+  const coolDown = useCoolDownAction()
   return (
     <>
-      <MenuButton
-        className="btn btn-sm"
-        label={t('control.temps.presets')}
-        button={
-          <>
-            <Flame size={13} /> {t('control.temps.presets')} <ChevronDown size={13} />
-          </>
-        }
-        items={
-          presets.length
-            ? presets.map((p) => ({ label: p.name, onSelect: () => void attempt(() => applyPreset(p)) }))
-            : [{ label: t('control.temps.no_presets'), onSelect: () => navigate('settings') }]
-        }
-      />
+      {presets.length ? (
+        <MenuButton
+          className="btn btn-sm"
+          label={t('control.temps.presets')}
+          button={
+            <>
+              <Flame size={13} /> {t('control.temps.presets')} <ChevronDown size={13} />
+            </>
+          }
+          items={presets.map((p) => ({ label: p.name, onSelect: () => void attempt(() => applyPreset(p)) }))}
+        />
+      ) : (
+        <button type="button" className="btn btn-sm" aria-label={`${t('control.temps.presets')}: ${t('control.temps.no_presets')}`} onClick={() => navigate('settings', 'presets')}>
+          <Flame size={13} /> {t('control.temps.presets')}
+        </button>
+      )}
       <button
+        type="button"
         className="btn btn-sm"
-        onClick={async () => {
-          if (active && !(await confirm({ title: t('control.temps.cool_down_title'), body: t('control.temps.cool_down_body'), confirm: t('control.temps.cool_down'), danger: true }))) return
-          send('TURN_OFF_HEATERS')
-        }}
+        onClick={coolDown}
       >
         <Snowflake size={13} /> {t('control.temps.cool_down')}
       </button>
@@ -152,6 +153,7 @@ function HeaterRow({ obj, boxLimit }: { obj: string; boxLimit: number | null }) 
 
 function CalibrateDialog({ obj, kind, onClose }: { obj: string; kind: 'pid' | 'mpc'; onClose: () => void }) {
   const cfg = usePrinter((s) => s.settings[obj.toLowerCase()] as HeaterConfig | undefined)
+  const printing = useJobActive()
   const [target, setTarget] = useState('100')
   const [breakpoints, setBreakpoints] = useState('')
   const range = targetRange(cfg, null)
@@ -162,7 +164,7 @@ function CalibrateDialog({ obj, kind, onClose }: { obj: string; kind: 'pid' | 'm
   const name = heaterLabel(obj)
   const command = kind === 'pid' ? 'PID_CALIBRATE' : 'MPC_CALIBRATE'
   const run = () => {
-    if (error || bpError) return
+    if (error || bpError || isActive(printer.get().status.print_stats?.state)) return
     send(gcode`${command} HEATER=${heaterParam(obj)} TARGET=${value}${kind === 'mpc' && bp != null ? gcode` FAN_BREAKPOINTS=${bp}` : ''}`)
     onClose()
   }
@@ -174,7 +176,7 @@ function CalibrateDialog({ obj, kind, onClose }: { obj: string; kind: 'pid' | 'm
       footer={
         <>
           <CancelButton onClick={onClose} />
-          <button className="btn btn-primary" disabled={!!error || !!bpError} onClick={run}>
+          <button className="btn btn-primary" disabled={!!error || !!bpError || printing} onClick={run}>
             {t('control.temps.calibrate')}
           </button>
         </>
@@ -194,6 +196,7 @@ function CalibrateDialog({ obj, kind, onClose }: { obj: string; kind: 'pid' | 'm
         <div className="text-[12.5px] text-ink-2">
           {tr('control.temps.calibrate_note', { command: <span className="code">{command}</span>, name: name.toLowerCase() })}
         </div>
+        {printing && <Note tone="warn">{t('control.temps.calibrate_locked')}</Note>}
       </div>
     </Dialog>
   )

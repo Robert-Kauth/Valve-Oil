@@ -159,7 +159,8 @@
       "shutdown": "Shut down",
       "shutdown_title": "Shut down the printer?",
       "shutdown_body": "The printer’s computer shuts down. Turn the printer off and on again to start it.",
-      "shutting_down": "Shutting down the printer"
+      "shutting_down": "Shutting down the printer",
+      "update_locked": "Reboot and shutdown are locked until the Valve Oil update finishes."
     }
   },
   "logs": {

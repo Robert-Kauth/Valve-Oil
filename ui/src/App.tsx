@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import { href, useRoute, type Route } from './lib/router'
-import { client, runGcode, usePrinter } from './state/printer'
+import { client, usePrinter } from './state/printer'
 import { useJob, useJobActive, jobProgress } from './state/job'
 import { useBoxBusy, useBoxPresent } from './state/box'
 import { useWarnings } from './state/warnings'
@@ -40,6 +40,7 @@ import { installStepText, installTitle } from './components/updates/Install'
 import { fluiddUrl } from './lib/links'
 import { useTheme } from './lib/theme'
 import { t, type MessageKey } from './i18n'
+import { confirmAndSaveConfig } from './components/save-config'
 
 // Screens other than Home and Updates load when first opened, so the first page a tablet shows is small.
 const FilesScreen = lazy(() => import('./screens/Files').then((m) => ({ default: m.FilesScreen })))
@@ -291,11 +292,11 @@ function SaveConfigButton() {
   const sections = Object.keys(items ?? {})
   return (
     <button
-      className="btn btn-sm btn-primary mr-auto sm:mr-0"
+      className="btn btn-sm btn-primary max-w-full whitespace-normal"
       disabled={printing}
       title={printing ? t('app.save_config.waits') : undefined}
-      onClick={async () => {
-        const ok = await confirm({
+      onClick={() =>
+        confirmAndSaveConfig({
           title: t('app.save_config.confirm_title'),
           body: (
             <>
@@ -305,8 +306,7 @@ function SaveConfigButton() {
           ),
           confirm: t('app.save_config.confirm'),
         })
-        if (ok) attempt(() => runGcode('SAVE_CONFIG'))
-      }}
+      }
     >
       {t('app.save_config.button')}
     </button>
