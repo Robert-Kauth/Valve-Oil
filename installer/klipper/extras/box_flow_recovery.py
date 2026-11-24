@@ -209,6 +209,10 @@ MOVED_SHARE = .5
 LIFT_STATE = "_vo_cancelled_part_lift"
 LIFT_SCRIPT = ("SAVE_GCODE_STATE NAME=%s\nG91\nG1 Z0.01 F1200\nG1 Z-0.01\n"
                "RESTORE_GCODE_STATE NAME=%s" % (LIFT_STATE, LIFT_STATE))
+# Up off the print, then into the chute, keeping the G-code state.
+CHUTE_SCRIPT = ("SAVE_GCODE_STATE NAME=vo_resume_chute\n"
+                "G91\nG1 Z3 F1200\nG90\n_VO_MOVE_TO_TRASH_MOTION\n"
+                "RESTORE_GCODE_STATE NAME=vo_resume_chute")
 # SHA-256 of the source, line endings removed, of QIDI's power-loss resume
 # methods this was written for: Max 4 01.01.06.05 and 01.01.07.01, Plus 5
 # and Smart 5 01.01.02.01.
@@ -425,45 +429,45 @@ class _UnloadWatch:
         return getattr(self._gcode, name)
 
 
-class _LeaveChute:
-    """Until the next move in X or Y: when that move starts behind the bed,
-    leave the chute straight forward first, as each printer's move to the
-    chute arrives, then make it. Moves in Z and E alone stay where they are,
-    so filament the slicer pushes out after a change still goes into the
-    chute."""
+class _ChuteExit:
+    """A move transform from Klipper's ready, so below exclude_object and
+    QIDI's tool-change transform: a travel from behind the bed to the bed
+    goes straight forward to the bed's rear edge first, as each printer's
+    move to the chute arrives, then on. Behind the bed the Plus 5's and
+    Smart 5's toolheads fit only around the chute, and toward the right the
+    Max 4's cable meets the cable chain's mount; the slicer's straight exit
+    from the chute is dropped with the rest of a change between two tools on
+    one Box slot, and a travel after a pause or a cancelled part comes from
+    wherever the toolhead was. Moves a cancelled part drops never get here."""
 
-    def __init__(self, gcode_move, rear_y, exit_y, speed):
-        self.gcode_move = gcode_move
-        self.rear_y, self.exit_y, self.speed = rear_y, exit_y, speed
+    def __init__(self, gcode_move, rear_y):
+        self.rear_y = rear_y
         self.next_transform = gcode_move.set_move_transform(self, force=True)
 
     @classmethod
     def install(cls, printer):
         gcode_move = printer.lookup_object("gcode_move", None)
         km = printer.lookup_object("gcode_macro _km_globals", None)
-        variables = getattr(km, "variables", None) or {}
         try:
-            rear_y = float(variables["print_max"][1])
-            exit_y = float(variables["park_y"]) - 30.
-            speed = float(variables["travel_speed_xy"]) / 60.
-        except (KeyError, IndexError, TypeError, ValueError):
+            rear_y = float(km.variables["print_max"][1])
+        except (AttributeError, KeyError, IndexError, TypeError, ValueError):
             logging.info("vo_box_flow_recovery: chute exit not watched: "
-                         "_km_globals has no print_max, park_y, or "
-                         "travel_speed_xy")
-            return
-        if gcode_move is not None:
-            cls(gcode_move, rear_y, exit_y, speed)
+                         "_km_globals has no print_max")
+            return None
+        if gcode_move is None:
+            return None
+        return cls(gcode_move, rear_y)
 
     def get_position(self):
         return self.next_transform.get_position()
 
     def move(self, newpos, speed):
         pos = self.next_transform.get_position()
-        if newpos[0] != pos[0] or newpos[1] != pos[1]:
-            self.gcode_move.set_move_transform(self.next_transform, force=True)
-            if pos[1] > self.rear_y:
-                self.next_transform.move(
-                    [pos[0], self.exit_y] + list(pos[2:]), self.speed)
+        if pos[1] > self.rear_y >= newpos[1] and newpos[0] != pos[0]:
+            # The exit pushes no filament; the move keeps all of its own,
+            # such as exclude_object's catch-up after a cancelled part.
+            self.next_transform.move(
+                [pos[0], self.rear_y] + list(pos[2:]), speed)
         self.next_transform.move(newpos, speed)
 
 
@@ -502,6 +506,11 @@ class BoxFlowRecovery:
 
     # ----------------------------------------------------------------- setup
     def _handle_ready(self):
+        try:
+            _ChuteExit.install(self.printer)
+        except Exception:
+            logging.exception("vo_box_flow_recovery: watching the chute exit "
+                              "failed")
         try:
             self._guard_auto_feed_arms()
         except Exception:
@@ -1107,6 +1116,14 @@ class BoxFlowRecovery:
             self.gcode.run_script_from_command(part)
         if filament_change:
             self._filament_change = True
+            # The change's lines before the restart, its lift and move to
+            # the chute among them, don't run again, and a change longer than
+            # QIDI's 4 KiB restarts after them: go to the chute before the
+            # rest of the change pushes filament out where QIDI put the
+            # toolhead back.
+            logging.info("vo_box_flow_recovery: power-loss resume restarts "
+                         "inside a filament change; to the chute first")
+            self.gcode.run_script_from_command(CHUTE_SCRIPT)
 
     def _learn_extruder_position(self):
         """exclude_object lets the first 5 extrusions through once it starts
@@ -1122,7 +1139,12 @@ class BoxFlowRecovery:
             exclude.initial_extrusion_moves = 0
 
     def _moves_through_cancelled_parts(self):
+        # pause_resume is paused from the start of PAUSE, so the pause's own
+        # retract, lift, and park go through; print_stats says paused only
+        # once the PAUSE line has finished.
+        pause_resume = self.printer.lookup_object("pause_resume", None)
         return self._filament_change or self._tool_change \
+            or bool(getattr(pause_resume, "is_paused", False)) \
             or self._print_state() == "paused"
 
     def _drops_moves(self):
@@ -1184,13 +1206,7 @@ class BoxFlowRecovery:
 
     def cmd_TOOL_CHANGE_END(self, gcmd):
         try:
-            result = self.originals["TOOL_CHANGE_END"](gcmd)
-            # A change between two tools on one slot parks at the chute and
-            # QIDI drops the change's moves, the slicer's own exit from the
-            # chute among them, so the next travel would leave it diagonally.
-            if self._print_state() in ("printing", "paused"):
-                _LeaveChute.install(self.printer)
-            return result
+            return self.originals["TOOL_CHANGE_END"](gcmd)
         finally:
             self._end_filament_change()
 

@@ -265,7 +265,7 @@ Forbidden patterns:
 
 Condition: `all Valve Oil starts`
 
-Source: `installer/klipper/macros/filament.cfg:223-278`
+Source: `installer/klipper/macros/filament.cfg:224-279`
 
 Direct visible macro calls in branch slice:
 
@@ -288,7 +288,7 @@ Forbidden patterns:
 
 Condition: `USB Box stack loaded, Box enabled, and the start tool's slot is on no connected USB Box (prints from the external spool); a later start on a Box slot or normal end turns the Box back on`
 
-Source: `installer/klipper/macros/filament.cfg:248-274`
+Source: `installer/klipper/macros/filament.cfg:249-275`
 
 Direct visible macro calls in branch slice:
 
@@ -316,7 +316,7 @@ Forbidden patterns:
 
 Condition: `vo_keep_loaded_between_prints == 1 and retained physical state is proven`
 
-Source: `installer/klipper/macros/filament.cfg:279-320`
+Source: `installer/klipper/macros/filament.cfg:280-322`
 
 Direct visible macro calls in branch slice:
 
@@ -330,6 +330,7 @@ Direct visible macro calls in branch slice:
 - `VO_WAIT_HOTEND`
 - `M106`
 - `VO_WIPE_NOZZLE_DROP`
+- `_VO_LEAVE_CHUTE`
 - `_VO_REPORT_BED_TEMP`
 - `_VO_HOME_Z_FROM_SAFE_POINT`
 - `_VO_PREPARE_PRINT_MESH`
@@ -345,6 +346,7 @@ Ordered invariants:
 - `VO_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}`
 - `VO_WAIT_HOTEND S={reuse_nozzle_target} STATUS=clear_nozzle`
 - `VO_WIPE_NOZZLE_DROP`
+- `_VO_LEAVE_CHUTE`
 - `_VO_REPORT_BED_TEMP`
 - `Z_TILT_ADJUST`
 - `M400`
@@ -367,7 +369,7 @@ Forbidden patterns:
 
 Condition: `box_enabled and retention is disabled or retained physical state is not proven`
 
-Source: `installer/klipper/macros/filament.cfg:321-368`
+Source: `installer/klipper/macros/filament.cfg:323-370`
 
 Direct visible macro calls in branch slice:
 
@@ -423,7 +425,7 @@ Forbidden patterns:
 
 Condition: `!box_available || !enable_box || start tool on no connected USB Box`
 
-Source: `installer/klipper/macros/filament.cfg:369-408`
+Source: `installer/klipper/macros/filament.cfg:371-411`
 
 Direct visible macro calls in branch slice:
 
@@ -434,6 +436,7 @@ Direct visible macro calls in branch slice:
 - `M106`
 - `VO_WAIT_BED`
 - `VO_WAIT_CHAMBER`
+- `_VO_LEAVE_CHUTE`
 - `_VO_REPORT_BED_TEMP`
 - `_VO_HOME_Z_FROM_SAFE_POINT`
 - `_VO_PREPARE_PRINT_MESH`
@@ -446,6 +449,7 @@ Ordered invariants:
 - `VO_WIPE_AND_SCRAPE_NOZZLE TARGET={scrape_target}`
 - `VO_WAIT_BED S={bed_target} STATUS=wait_bed_temp`
 - `VO_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}`
+- `_VO_LEAVE_CHUTE`
 - `_VO_REPORT_BED_TEMP`
 - `Z_TILT_ADJUST`
 - `M400`
@@ -695,7 +699,7 @@ Forbidden patterns:
 
 Condition: `external-spool start, with optional vendor chute cleanup guarded by Box object availability`
 
-Source: `installer/klipper/macros/filament.cfg:204-219`
+Source: `installer/klipper/macros/filament.cfg:205-220`
 
 Direct visible macro calls in branch slice:
 
@@ -756,7 +760,7 @@ Forbidden patterns:
 
 Condition: `PRE_SCRAPE=1 selects mixed-speed start wiping; omitted or zero retains fast non-start cleanup`
 
-Source: `installer/klipper/macros/filament.cfg:566-612`
+Source: `installer/klipper/macros/filament.cfg:569-615`
 
 Direct visible macro calls in branch slice:
 

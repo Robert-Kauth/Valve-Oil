@@ -2,18 +2,14 @@
 in."""
 from __future__ import annotations
 
-import logging
 import unittest
 
+from installer.tests.gcode_flow import checks
 from installer.tests.gcode_flow.printer import FIRMWARE, FlowPrinter
 from installer.tests.gcode_flow.qidi import BoxSetup
 
 
-class StartupTests(unittest.TestCase):
-    def setUp(self):
-        logging.disable(logging.CRITICAL)
-        self.addCleanup(logging.disable, logging.NOTSET)
-
+class StartupTests(checks.FlowTestCase):
     def test_a_slow_start_reads_spool_tags_once_qidis_box_code_is_ready(self):
         """QIDI's INIT_GLOBALS runs INIT_RFID_READ 5 s into Klipper's ready callbacks, and QIDI's Box controller
         takes its saved variables and adapter only in its own ready callback, one of the last. When an earlier

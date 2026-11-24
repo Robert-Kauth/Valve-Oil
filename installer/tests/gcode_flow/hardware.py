@@ -4,7 +4,9 @@ Each stand-in keeps the commands, status, and errors of the Klipper object it re
 Valve Oil's Klipper and QIDI's share for these), with time and temperature simulated:
 
 - The reactor's clock moves only when something waits: a dwell or M400 for queued moves, or a heater wait. Timers
-  run when the clock passes them, as Klipper's reactor runs them between commands.
+  run when the clock passes them, but they aren't greenlets as on the printer: inside one timer, such as QIDI's print
+  loop, no other timer runs until it returns, and a timer that would wait for the G-code lock a console command holds
+  fails with HarnessGap instead of waiting.
 - The toolhead queues moves with their duration at the commanded speed and keeps every move, with the commands that
   were running when it was queued. Moves are checked as Klipper's kinematics and extruder check them: "Must home axis
   first", "Move out of range", "Extrude below minimum temp", and "Extrude only move too long".
@@ -14,6 +16,7 @@ from __future__ import annotations
 
 import math
 import threading
+import types
 from dataclasses import dataclass, field
 
 NEVER = 9999999999999999.
@@ -25,9 +28,22 @@ AMBIENT = 25.
 LONGEST_WAIT = 3600.
 
 
+# Every HarnessGap raised since the last FlowPrinter was built, so a test fails on one even when the code under test
+# caught it (Valve Oil's recovery code catches Exception).
+GAPS: list[str] = []
+
+
+class HarnessGap(AssertionError):
+    """Something the harness can't stand in for: an untraced vendor branch, or a call that hangs on the printer."""
+
+    def __init__(self, message):
+        super().__init__("harness: " + message)
+        GAPS.append(str(self))
+
+
 class LockBusy(Exception):
-    """A timer or callback reached the G-code lock while a command held it; it runs again once the lock is free, as
-    it would wait on the printer."""
+    """A timer reached the G-code lock while a command held it; it runs again once the lock is free, as it would wait
+    on the printer."""
 
 
 class Mutex:
@@ -37,38 +53,25 @@ class Mutex:
 
     def __init__(self, reactor):
         self.reactor = reactor
-        self.locked = False
+        self.locked = self.held_outside_callbacks = False
+        reactor.mutexes.append(self)
 
     def __enter__(self):
         if self.locked:
             if self.reactor.in_callback:
                 raise LockBusy()
-            raise AssertionError("harness: run_script() inside a command that holds the G-code lock; on the printer "
+            raise HarnessGap("run_script() inside a command that holds the G-code lock; on the printer "
                                  "this waits forever and every later G-code command waits behind it")
         self.locked = True
+        self.held_outside_callbacks = not self.reactor.in_callback
         return self
 
     def __exit__(self, *exc):
-        self.locked = False
+        self.locked = self.held_outside_callbacks = False
         return False
 
     def test(self):
         return self.locked
-
-
-class Completion:
-    def __init__(self):
-        self.result = None
-        self.done = False
-
-    def complete(self, result):
-        self.result, self.done = result, True
-
-    def test(self):
-        return self.done
-
-    def wait(self, waketime=NEVER, waketime_result=None):
-        return self.result if self.done else waketime_result
 
 
 class Timer:
@@ -84,20 +87,16 @@ class Reactor:
     def __init__(self):
         self.now = 1000.
         self.timers: list[Timer] = []
-        self.callbacks: list = []
         self.listeners: list = []
         self._advancing = False
         self.in_callback = False
-        self._busy: list = []
+        self.mutexes: list[Mutex] = []
 
     def monotonic(self):
         return self.now
 
     def mutex(self, is_locked=False):
         return Mutex(self)
-
-    def completion(self):
-        return Completion()
 
     def register_timer(self, callback, waketime=NEVER):
         timer = Timer(callback, waketime)
@@ -112,18 +111,18 @@ class Reactor:
         if timer in self.timers:
             self.timers.remove(timer)
 
-    def register_callback(self, callback, waketime=NOW):
-        self.callbacks.append(callback)
-
-    register_async_callback = register_callback
-
     def pause(self, waketime):
+        # On the printer a timer that pauses lets the reactor go back to the command holding the G-code lock, such as
+        # a console M400 that waits on the print; timers here aren't greenlets, so that would spin for ever.
+        if self.in_callback and any(m.held_outside_callbacks for m in self.mutexes):
+            raise HarnessGap("a timer paused while a console command held the G-code lock; send the command that "
+                             "waits (M400, G4) as its own printer.command() after the one that starts the print")
         self.advance(waketime)
         return self.now
 
     def advance(self, until):
-        """Move the clock to `until`, updating the heaters and running the timers and callbacks that come due. A
-        timer that waits moves the clock without running other timers inside it."""
+        """Move the clock to `until`, updating the heaters and running the timers that come due. A timer that waits
+        moves the clock without running other timers inside it."""
         busy = []
         while True:
             due = [] if self._advancing else [t for t in self.timers if t.waketime <= until and t not in busy]
@@ -132,8 +131,6 @@ class Reactor:
                 for listener in self.listeners:
                     listener(self.now, step_to)
                 self.now = step_to
-            if not self._advancing:
-                self._run_callbacks()
             if not due:
                 return
             timer = min(due, key=lambda t: t.waketime)
@@ -145,19 +142,6 @@ class Reactor:
             finally:
                 self._advancing = self.in_callback = False
 
-    def _run_callbacks(self):
-        waiting = []
-        while self.callbacks:
-            callback = self.callbacks.pop(0)
-            self.in_callback = True
-            try:
-                callback(self.now)
-            except LockBusy:
-                waiting.append(callback)
-            finally:
-                self.in_callback = False
-        self.callbacks.extend(waiting)
-
 
 class Buttons:
     """Klipper's buttons: keeps each registered button's handler for the harness to press."""
@@ -168,10 +152,6 @@ class Buttons:
     def register_debounce_button(self, pin, callback, config):
         self.handlers[config.get_name()] = callback
 
-    def register_buttons(self, pins, callback):
-        for pin in pins:
-            self.handlers[pin] = callback
-
 
 class Webhooks:
     def __init__(self, printer):
@@ -181,15 +161,9 @@ class Webhooks:
     def register_endpoint(self, path, callback, *args, **kwargs):
         self.endpoints[path] = callback
 
-    def register_mux_endpoint(self, path, key, value, callback):
-        self.endpoints[(path, key, value)] = callback
-
     def get_status(self, eventtime):
         message, state = self.printer.get_state_message()
         return {"state": state, "state_message": message}
-
-    def call_remote_method(self, *args, **kwargs):
-        pass
 
 
 class Heater:
@@ -201,6 +175,8 @@ class Heater:
         self.max_temp = config.getfloat("max_temp", 300.)
         self.min_extrude_temp = config.getfloat("min_extrude_temp", 170.) if kind == "extruder" else 0.
         self.target_temp = 0.
+        # Every target set, in order, however it was set.
+        self.targets: list[float] = []
         self.smoothed_temp = AMBIENT
         self.can_extrude = self.min_extrude_temp <= 0.
         self.lock = threading.Lock()
@@ -213,25 +189,14 @@ class Heater:
                                              % (degrees, self.min_temp, self.max_temp))
         with self.lock:
             self.target_temp = degrees
+        self.targets.append(degrees)
 
     def get_temp(self, eventtime):
         return self.smoothed_temp, self.target_temp
 
-    def check_busy(self, eventtime):
-        return self.smoothed_temp < self.target_temp - 2.
-
-    def get_max_power(self):
-        return 1.
-
-    def get_name(self):
-        return self.name
-
     def get_status(self, eventtime):
         return {"temperature": round(self.smoothed_temp, 2), "target": self.target_temp,
                 "power": self.last_pwm_value}
-
-    def stats(self, eventtime):
-        return False, ""
 
     def update(self, start, end):
         dt = end - start
@@ -263,7 +228,6 @@ class Heaters:
         self.available_heaters: list[str] = []
         self.available_sensors: list[str] = []
         self.available_monitors: list[str] = []
-        self.waits: list[tuple[str, float, float, float]] = []
         gcode = printer.lookup_object("gcode")
         gcode.register_command("TURN_OFF_HEATERS", self.cmd_TURN_OFF_HEATERS)
         gcode.register_command("M105", self.cmd_M105, when_not_ready=True)
@@ -292,9 +256,6 @@ class Heaters:
             raise self.printer.config_error("Unknown heater '%s'" % (name,))
         return self.heaters[name]
 
-    def get_all_heaters(self):
-        return list(self.heaters)
-
     def get_status(self, eventtime):
         return {"available_heaters": self.available_heaters, "available_sensors": self.available_sensors,
                 "available_monitors": self.available_monitors}
@@ -309,10 +270,8 @@ class Heaters:
     def cmd_M105(self, gcmd):
         gcmd.ack("ok")
 
-    def set_temperature(self, heater, temp, wait=False):
+    def set_temperature(self, heater, temp):
         heater.set_temp(temp)
-        if wait and temp:
-            self._wait(heater.name, lambda: not heater.check_busy(None), temp, NEVER)
 
     def _set_heater_command(self, heater):
         def cmd(gcmd):
@@ -326,17 +285,13 @@ class Heaters:
         if low == float("-inf") and high == float("inf"):
             raise gcmd.error("Error on 'TEMPERATURE_WAIT': missing MINIMUM or MAXIMUM.")
         sensor = self.sensors[name]
-        self._wait(name, lambda: low <= sensor.get_temp(None)[0] <= high, low, high)
-
-    def _wait(self, name, done, low, high):
         reactor = self.printer.get_reactor()
         start = reactor.monotonic()
-        while not done():
+        while not low <= sensor.get_temp(None)[0] <= high:
             if reactor.monotonic() - start > LONGEST_WAIT:
                 raise self.printer.command_error(
                     "harness: waiting for %s to reach %s..%s would never finish" % (name, low, high))
             reactor.pause(reactor.monotonic() + 1.)
-        self.waits.append((name, low, high, reactor.monotonic() - start))
 
     def _update(self, start, end):
         for heater in self.heaters.values():
@@ -356,7 +311,7 @@ class Extruder:
         self.last_position = 0.
         gcode = self.printer.lookup_object("gcode")
         gcode.register_command("M104", self.cmd_M104)
-        gcode.register_command("M109", self.cmd_M109)
+        gcode.register_command("M109", _waits_unreached)
         gcode.register_mux_command("ACTIVATE_EXTRUDER", "EXTRUDER", self.name, lambda gcmd: None)
         gcode.register_command("SET_PRESSURE_ADVANCE", self.cmd_SET_PRESSURE_ADVANCE)
         gcode.register_mux_command("SET_EXTRUDER_ROTATION_DISTANCE", "EXTRUDER", self.name, lambda gcmd: None)
@@ -387,12 +342,8 @@ class Extruder:
                 "Extrude only move too long (%.3fmm vs %.3fmm)\n"
                 "See the 'max_extrude_only_distance' config option for details" % (axis_d, self.max_e_dist))
 
-    def cmd_M104(self, gcmd, wait=False):
-        temp = gcmd.get_float("S", 0.)
-        self.printer.lookup_object("heaters").set_temperature(self.heater, temp, wait)
-
-    def cmd_M109(self, gcmd):
-        self.cmd_M104(gcmd, wait=True)
+    def cmd_M104(self, gcmd):
+        self.printer.lookup_object("heaters").set_temperature(self.heater, gcmd.get_float("S", 0.))
 
     def cmd_SET_PRESSURE_ADVANCE(self, gcmd):
         self.pressure_advance = gcmd.get_float("ADVANCE", self.pressure_advance, minval=0.)
@@ -433,9 +384,6 @@ class _MoveCheck:
         ep = self.end_pos
         return self.toolhead.printer.command_error("%s: %.3f %.3f %.3f [%.3f]" % (msg, ep[0], ep[1], ep[2], ep[3]))
 
-    def limit_speed(self, speed, accel):
-        pass
-
 
 class Kinematics:
     def __init__(self, toolhead, config):
@@ -447,7 +395,11 @@ class Kinematics:
         self.endstops = []
         for axis in "xyz":
             section = config.getsection("stepper_" + axis)
-            self.endstops.append(section.getfloat("position_endstop", None))
+            if section.get("endstop_pin", "").startswith("probe:"):
+                # Homing on the probe puts the axis at the probe's z_offset, as Klipper's probe endstop does.
+                self.endstops.append(config.getsection("probe_air").getfloat("z_offset"))
+            else:
+                self.endstops.append(section.getfloat("position_endstop", None))
 
     def get_status(self, eventtime):
         gcode = self.toolhead.printer.lookup_object("gcode")
@@ -464,9 +416,6 @@ class Kinematics:
             low, high = self.ranges[i]
             if move.end_pos[i] < low or move.end_pos[i] > high:
                 raise move.move_error()
-
-    def get_steppers(self):
-        return []
 
 
 class Toolhead:
@@ -488,9 +437,7 @@ class Toolhead:
         self.print_time = self.reactor.monotonic()
         self.moves: list[Move] = []
         self.extruder = None
-        self.e_enable = True
         self.stack_source = lambda: ()
-        self.accel_log: list[tuple[float, tuple]] = []
         gcode = printer.lookup_object("gcode")
         self.Coord = gcode.Coord
         gcode.register_command("G4", self.cmd_G4)
@@ -570,12 +517,6 @@ class Toolhead:
         self.extruder = extruder
         self.commanded_pos[3] = extrude_pos
 
-    def get_extra_axes(self):
-        return [self.extruder]
-
-    def get_max_velocity(self):
-        return self.max_velocity, self.max_accel
-
     def set_max_velocities(self, max_velocity, max_accel, square_corner_velocity, min_cruise_ratio):
         if max_velocity is not None:
             self.max_velocity = max_velocity
@@ -585,7 +526,6 @@ class Toolhead:
             self.square_corner_velocity = square_corner_velocity
         if min_cruise_ratio is not None:
             self.min_cruise_ratio = min_cruise_ratio
-        self.accel_log.append((self.max_accel, self.stack_source()))
         return self.max_velocity, self.max_accel, self.square_corner_velocity, self.min_cruise_ratio
 
     def get_status(self, eventtime):
@@ -597,12 +537,6 @@ class Toolhead:
                        "max_accel": self.max_accel, "minimum_cruise_ratio": self.min_cruise_ratio,
                        "square_corner_velocity": self.square_corner_velocity, "extra_axes": {}})
         return status
-
-    def stats(self, eventtime):
-        return False, ""
-
-    def check_busy(self, eventtime):
-        return self.print_time, eventtime, self.print_time <= eventtime
 
     # Commands
     def cmd_G4(self, gcmd):
@@ -635,7 +569,6 @@ class Homing:
 
     def __init__(self, printer, second_homing_command=False):
         self.printer = printer
-        self.homes: list[str] = []
         self.second_homing = True
         gcode = printer.lookup_object("gcode")
         gcode.register_command("G28", self.cmd_G28)
@@ -655,7 +588,8 @@ class Homing:
             endstop = toolhead.kin.endstops[i]
             pos[i] = endstop if endstop is not None else toolhead.kin.ranges[i][0]
         toolhead.set_position(pos, homing_axes=axes)
-        self.homes.append("".join("XYZ"[i] for i in axes))
+        # gcode_move takes the homed axes' G92 offsets back to its homing position, as after Klipper's G28.
+        self.printer.send_event("homing:home_axes", types.SimpleNamespace(get_axes=lambda: axes))
 
 
 class StepperEnable:
@@ -691,15 +625,16 @@ class ForceMove:
         gcode.register_command("FORCE_MOVE", lambda gcmd: None)
 
     def cmd_SET_KINEMATIC_POSITION(self, gcmd):
+        """force_move's: X, Y, and Z all count as homed afterwards unless SET_HOMED names fewer (QIDI's always
+        sets all three), and CLEAR_HOMED unhomes."""
         toolhead = self.printer.lookup_object("toolhead")
         pos = toolhead.get_position()
-        axes = []
         for i, axis in enumerate("XYZ"):
-            value = gcmd.get_float(axis, None)
-            if value is not None:
-                pos[i] = value
-                axes.append(i)
-        toolhead.set_position(pos, homing_axes=axes or (0, 1, 2))
+            pos[i] = gcmd.get_float(axis, pos[i])
+        set_homed = [a for a in "xyz" if a in gcmd.get("SET_HOMED", "xyz").lower()]
+        toolhead.set_position(pos, homing_axes=set_homed)
+        for axis in gcmd.get("CLEAR_HOMED", gcmd.get("CLEAR", "")).lower():
+            toolhead.homed.discard(axis)
 
 
 class Fan:
@@ -745,9 +680,6 @@ class TemperatureSensor:
     def __init__(self, temperature=AMBIENT):
         self.temperature = temperature
 
-    def get_temp(self, eventtime):
-        return self.temperature, 0.
-
     def get_status(self, eventtime):
         return {"temperature": self.temperature}
 
@@ -779,10 +711,21 @@ class IdleTimeout:
         return {"state": state, "printing_time": 0.}
 
 
+def probe_points(printer, points, speed, move_z):
+    """QIDI's ProbePointsHelper (probe.py): before each point, up to horizontal_move_z, at the travel speed for the
+    first and the probe's lift speed after; to the point; and up once more at the end. The probe's touches aren't
+    moves here, and probe_air has no X/Y offset on these printers."""
+    toolhead = printer.lookup_object("toolhead")
+    lift_speed = printer.lookup_object("probe_air").lift_speed
+    for number, (x, y) in enumerate(points):
+        toolhead.manual_move([None, None, move_z], speed if not number else lift_speed)
+        toolhead.manual_move([x, y], speed)
+    toolhead.manual_move([None, None, move_z], lift_speed)
+
+
 class BedMesh:
-    """bed_mesh. BED_MESH_CALIBRATE travels the toolhead over the probe grid as QIDI's bed_mesh.py and probe.py do:
-    a zigzag from mesh_min to mesh_max, lifting to horizontal_move_z before each point (at the mesh speed for the
-    first, the probe's lift speed after) and once more at the end. The probe's touches aren't moves here."""
+    """bed_mesh. BED_MESH_CALIBRATE probes a zigzag grid from mesh_min to mesh_max, or from the MESH_MIN, MESH_MAX,
+    and PROBE_COUNT QIDI's BED_MESH_CALIBRATE macro passes for the printed area, as QIDI's bed_mesh.py does."""
 
     def __init__(self, printer, config):
         self.printer = printer
@@ -792,9 +735,6 @@ class BedMesh:
         self.mesh_min = config.getfloatlist("mesh_min", count=2)
         self.mesh_max = config.getfloatlist("mesh_max", count=2)
         self.probe_count = config.getintlist("probe_count", (3, 3), count=2)
-        probe = config.getsection("probe")
-        self.probe_offsets = (probe.getfloat("x_offset", 0.), probe.getfloat("y_offset", 0.))
-        self.lift_speed = probe.getfloat("lift_speed", probe.getfloat("speed", 5.))
         gcode = printer.lookup_object("gcode")
         gcode.register_command("BED_MESH_CLEAR", self.cmd_BED_MESH_CLEAR)
         gcode.register_command("BED_MESH_PROFILE", self.cmd_BED_MESH_PROFILE)
@@ -807,8 +747,9 @@ class BedMesh:
     def cmd_BED_MESH_PROFILE(self, gcmd):
         self.profile_name = gcmd.get("LOAD", gcmd.get("PROFILE", "default"))
 
-    def points(self):
-        (min_x, min_y), (max_x, max_y), (x_count, y_count) = self.mesh_min, self.mesh_max, self.probe_count
+    @staticmethod
+    def grid(mesh_min, mesh_max, probe_count):
+        (min_x, min_y), (max_x, max_y), (x_count, y_count) = mesh_min, mesh_max, probe_count
         x_dist = math.floor((max_x - min_x) / (x_count - 1) * 100) / 100
         y_dist = math.floor((max_y - min_y) / (y_count - 1) * 100) / 100
         max_x = min_x + x_dist * (x_count - 1)
@@ -817,24 +758,23 @@ class BedMesh:
 
     def cmd_BED_MESH_CALIBRATE(self, gcmd):
         if gcmd.get_int("ADAPTIVE", 0):
-            raise AssertionError("harness: bed_mesh's adaptive mesh has no stand-in")
-        toolhead = self.printer.lookup_object("toolhead")
-        move_z = gcmd.get_float("HORIZONTAL_MOVE_Z", self.horizontal_move_z)
-        for number, (x, y) in enumerate(self.points()):
-            toolhead.manual_move([None, None, move_z], self.speed if not number else self.lift_speed)
-            toolhead.manual_move([x - self.probe_offsets[0], y - self.probe_offsets[1]], self.speed)
-        toolhead.manual_move([None, None, move_z], self.lift_speed)
+            raise HarnessGap("bed_mesh's ADAPTIVE has no stand-in")
+
+        def pair(name, default, parse):
+            value = gcmd.get(name, None)
+            return default if value is None else tuple(parse(v) for v in value.split(","))
+        mesh_min = pair("MESH_MIN", self.mesh_min, float)
+        mesh_max = pair("MESH_MAX", self.mesh_max, float)
+        count = pair("PROBE_COUNT", self.probe_count, int)
+        if len(count) == 1:
+            count = count * 2
+        probe_points(self.printer, self.grid(mesh_min, mesh_max, count), self.speed,
+                     gcmd.get_float("HORIZONTAL_MOVE_Z", self.horizontal_move_z))
         self.profile_name = gcmd.get("PROFILE", "default")
 
     def get_status(self, eventtime):
         return {"profile_name": self.profile_name, "mesh_min": (0., 0.), "mesh_max": (0., 0.),
                 "probed_matrix": [[]], "mesh_matrix": [[]], "profiles": {}}
-
-    def get_mesh(self):
-        return None
-
-    def set_mesh(self, mesh):
-        pass
 
 
 def register_bed_commands(printer, heater):
@@ -842,15 +782,29 @@ def register_bed_commands(printer, heater):
     heaters = printer.lookup_object("heaters")
     gcode = printer.lookup_object("gcode")
     gcode.register_command("M140", lambda gcmd: heaters.set_temperature(heater, gcmd.get_float("S", 0.)))
-    gcode.register_command("M190", lambda gcmd: heaters.set_temperature(heater, gcmd.get_float("S", 0.), True))
+    gcode.register_command("M190", _waits_unreached)
+
+
+def _waits_unreached(gcmd):
+    # QIDI's M109 and M190 macros wait with TEMPERATURE_WAIT, so Klipper's own waits behind them have no stand-in.
+    raise HarnessGap("Klipper's own %s wait has no stand-in" % (gcmd.get_command(),))
 
 
 class ZTilt:
-    def __init__(self, printer):
+    """z_tilt. Z_TILT_ADJUST probes its configured points as QIDI's z_tilt.py does; the levelling itself isn't a
+    move here."""
+
+    def __init__(self, printer, config):
+        self.printer = printer
         self.applied = False
+        self.points = config.getlists("points", seps=(",", "\n"), parser=float, count=2)
+        self.speed = config.getfloat("speed", 50.)
+        self.horizontal_move_z = config.getfloat("horizontal_move_z", 5.)
         printer.lookup_object("gcode").register_command("Z_TILT_ADJUST", self.cmd_Z_TILT_ADJUST)
 
     def cmd_Z_TILT_ADJUST(self, gcmd):
+        probe_points(self.printer, self.points, self.speed,
+                     gcmd.get_float("HORIZONTAL_MOVE_Z", self.horizontal_move_z))
         self.applied = True
 
     def get_status(self, eventtime):
@@ -913,8 +867,9 @@ class BoardControl:
 class Probe:
     """The load-cell probe (QIDI's probe_air): PROBE and its relatives touch the bed at Z 0 where the toolhead is."""
 
-    def __init__(self, printer):
+    def __init__(self, printer, config):
         self.printer = printer
+        self.lift_speed = config.getfloat("lift_speed", config.getfloat("speed", 5.))
         self.last_z_result = 0.
         gcode = printer.lookup_object("gcode")
         for command in ("PROBE", "PROBE_ACCURACY", "QUERY_PROBE", "PROBE_CALIBRATE"):
@@ -922,7 +877,7 @@ class Probe:
 
     def cmd_PROBE(self, gcmd):
         toolhead = self.printer.lookup_object("toolhead")
-        if "z" not in toolhead.homed and "x" not in toolhead.homed:
+        if "z" not in toolhead.homed:
             raise gcmd.error("Must home before probe")
         self.last_z_result = 0.
 

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Where things are and what to run. The checks under **Checks** hold the project's rules; a failing check says what to fix.
+The checks under **Checks** hold the project's rules; a failing check says what to fix.
 
 ## Where changes go
 

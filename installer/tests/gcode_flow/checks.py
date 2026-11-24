@@ -1,8 +1,11 @@
 """What every flow must hold on the printer, checked on a FlowPrinter after it ran."""
 from __future__ import annotations
 
+import logging
 import math
+import unittest
 
+from installer.tests.gcode_flow import hardware
 from installer.tests.printer_geometry import REAR_LIMITS
 
 # Commands the packs or QIDI's macros send that no Klipper on the printer registers, as far as is recorded, so Klipper
@@ -23,6 +26,14 @@ UNKNOWN_ON_THE_PRINTER = {
 CHUTE_REACH = 5.
 
 
+class FlowTestCase(unittest.TestCase):
+    """Klipper's modules log freely while a flow runs; a flow test keeps that out of its output."""
+
+    def setUp(self):
+        logging.disable(logging.CRITICAL)
+        self.addCleanup(logging.disable, logging.NOTSET)
+
+
 def chute(printer):
     km = printer.lookup_object("gcode_macro _km_globals").variables
     return km["park_x"], km["park_y"]
@@ -34,7 +45,9 @@ def at_chute(printer, xy) -> bool:
 
 
 def assert_no_errors(test, printer, codes=()):
-    """No errors, shutdown, or unknown commands; `codes` are QIDI error codes the flow is expected to report."""
+    """No errors, shutdown, unknown commands, or harness gaps, even caught ones; `codes` are QIDI error codes the flow
+    is expected to report."""
+    test.assertEqual(hardware.GAPS, [])
     errors = [line for line in printer.responses.errors
               if not any(line.startswith("!! Code:%s" % (code,)) for code in codes)]
     test.assertEqual(errors, [])
@@ -47,16 +60,18 @@ def assert_no_errors(test, printer, codes=()):
     test.assertEqual(unknown, [])
 
 
-def assert_purges_only_at_the_chute(test, printer, first, last):
-    """Filament that leaves the nozzle in moves[first:last] leaves it at the chute. A forward move first takes back
-    what earlier retracts pulled in; only what it pushes past that leaves the nozzle."""
+def pushed_out(moves):
+    """Each move with the filament it pushes out of the nozzle, mm. A forward move first takes back what earlier
+    retracts pulled in; only what it pushes past that leaves the nozzle."""
     debt = 0.
-    for index, move in enumerate(printer.toolhead.moves):
-        if move.extrude < 0:
-            debt -= move.extrude
-            continue
-        out = max(0., move.extrude - debt)
+    for move in moves:
+        yield move, max(0., move.extrude - debt)
         debt = max(0., debt - move.extrude)
+
+
+def assert_purges_only_at_the_chute(test, printer, first, last):
+    """Filament that leaves the nozzle in moves[first:last] leaves it at the chute."""
+    for index, (move, out) in enumerate(pushed_out(printer.toolhead.moves)):
         if first <= index < last and out > .01 and not at_chute(printer, move.end[:2]):
             x, y = chute(printer)
             test.fail(f"{out:.1f} mm left the nozzle at X{move.end[0]:g} Y{move.end[1]:g}, away from the chute at "
@@ -82,6 +97,3 @@ def cuts(printer) -> int:
     return sum(1 for command in printer.trace if command.name == "_VO_CUTTER_STRIKE")
 
 
-def moves_from_line(printer, line) -> int:
-    """How many moves the toolhead had queued when the print reached file line `line`."""
-    return printer.moves_from_line(line)

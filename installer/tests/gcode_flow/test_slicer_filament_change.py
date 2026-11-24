@@ -3,7 +3,6 @@ on every printer and from both slicer packs, through every branch of QIDI's T_MA
 what the printer does from the change's first line until the print carries on or pauses."""
 from __future__ import annotations
 
-import logging
 import unittest
 from dataclasses import dataclass
 
@@ -59,11 +58,7 @@ CASES = (
 )
 
 
-class SlicerFilamentChangeTests(unittest.TestCase):
-    def setUp(self):
-        logging.disable(logging.CRITICAL)
-        self.addCleanup(logging.disable, logging.NOTSET)
-
+class SlicerFilamentChangeTests(checks.FlowTestCase):
     def test_filament_changes_purge_at_the_chute_cut_once_and_carry_on(self):
         filaments = [slicer.Filament(temperature=220)] + [slicer.Filament(temperature=230, range_high=250)] * 5
         for printer_id in FIRMWARE:
@@ -76,7 +71,7 @@ class SlicerFilamentChangeTests(unittest.TestCase):
                         printer.start_print(job.text)
 
                         checks.assert_no_errors(self, printer, case.codes)
-                        first = checks.moves_from_line(printer, job.change_line)
+                        first = printer.moves_from_line(job.change_line)
                         checks.assert_rear_moves_around_the_chute(self, printer)
                         self.assertEqual(checks.cuts(printer), case.cuts)
                         if case.armed:
@@ -93,7 +88,7 @@ class SlicerFilamentChangeTests(unittest.TestCase):
                         self.assertEqual(printer.status("print_stats")["state"], "complete")
                         self.assertFalse(printer.status("pause_resume")["is_paused"])
                         checks.assert_purges_only_at_the_chute(
-                            self, printer, first, checks.moves_from_line(printer, job.change_line + job.change_lines))
+                            self, printer, first, printer.moves_from_line(job.change_line + job.change_lines))
                         state = printer.status("gcode_move")
                         self.assertTrue(state["absolute_coordinates"])
                         self.assertFalse(state["absolute_extrude"])
@@ -119,11 +114,7 @@ FAILURES = (
 )
 
 
-class FailedFilamentChangeTests(unittest.TestCase):
-    def setUp(self):
-        logging.disable(logging.CRITICAL)
-        self.addCleanup(logging.disable, logging.NOTSET)
-
+class FailedFilamentChangeTests(checks.FlowTestCase):
     def test_a_change_that_fails_pauses_the_print_and_resume_finishes_it(self):
         filaments = [slicer.Filament(temperature=220), slicer.Filament(temperature=230, range_high=250)]
         for printer_id in FIRMWARE:
@@ -140,27 +131,90 @@ class FailedFilamentChangeTests(unittest.TestCase):
                     self.assertEqual(len(printer.responses.errors), 1)
                     self.assertIn(message, printer.responses.errors[0])
                     self.assertTrue(checks.at_chute(printer, printer.toolhead.commanded_pos[:2]))
-                    first = checks.moves_from_line(printer, job.change_line)
+                    first = printer.moves_from_line(job.change_line)
                     checks.assert_purges_only_at_the_chute(self, printer, first, len(printer.toolhead.moves))
 
                     if cleared:
-                        setattr(printer.vendor, cleared, cleared == "caught" and False or None)
+                        setattr(printer.vendor, cleared, None)
                     printer.responses.lines.clear()
                     printer.command("RESUME")
                     checks.assert_no_errors(self, printer)
                     self.assertEqual(printer.status("print_stats")["state"], "complete")
                     self.assertEqual(printer.variables()["last_load_slot"], "slot1")
                     checks.assert_purges_only_at_the_chute(
-                        self, printer, first, checks.moves_from_line(printer, job.change_line + job.change_lines))
+                        self, printer, first, printer.moves_from_line(job.change_line + job.change_lines))
                     checks.assert_rear_moves_around_the_chute(self, printer)
                     self.assertEqual(printer.toolhead.moves[-1].end[:2], (job.resume_xy[0] + 5, job.resume_xy[1]))
 
 
-class CancelledPartFilamentChangeTests(unittest.TestCase):
-    def setUp(self):
-        logging.disable(logging.CRITICAL)
-        self.addCleanup(logging.disable, logging.NOTSET)
+# Where a part after the change sits so that a diagonal from each printer's chute would leave its rear limits.
+BEYOND_A_DIAGONAL = {"max4": (330., 390.), "plus5": (20., 300.), "smart5": (165., 120.)}
+SAME_SLOT = dict(boxes=1, enable_box=1, tools={0: "slot0", 1: "slot0"}, loaded_slot="slot0", current_tool=0)
 
+
+class SameSlotChangeExitTests(checks.FlowTestCase):
+    """A change between two tools on one Box slot parks at the chute and QIDI drops every move until
+    TOOL_CHANGE_END, the pack's straight exit from the chute among them; Valve Oil leaves the chute straight forward
+    at the print's next travel instead, without upsetting Klipper's cancelled parts."""
+
+    def job(self, printer_id, *, pause=False, cancel_next=False):
+        filaments = [slicer.Filament(temperature=220), slicer.Filament(temperature=230, range_high=250)]
+        # With cancel_next, the change's own part is cancelled too, so Klipper has learned the extruder's position
+        # by then and drops all of part_2.
+        lines = slicer.print_with_change("orca", printer_id, filaments=filaments, current=0, following=1,
+                                         cancelled=cancel_next).text.splitlines()
+        x, y = BEYOND_A_DIAGONAL[printer_id]
+        if cancel_next:
+            lines.insert(2, "EXCLUDE_OBJECT NAME=part_2")
+        lines.insert(0, f"EXCLUDE_OBJECT_DEFINE NAME=part_3 CENTER={x:g},{y:g} "
+                        f"POLYGON=[[{x - 1:g},{y - 1:g}],[{x + 1:g},{y - 1:g}],[{x + 1:g},{y:g}],[{x - 1:g},{y:g}]]")
+        if pause:
+            end = lines.index("TOOL_CHANGE_END")
+            lines.insert(end + 1, "PAUSE")
+        lines += ["EXCLUDE_OBJECT_START NAME=part_3", f"G1 X{x - 1:g} Y{y:g} F12000", "G1 Z0.2 F600",
+                  "G1 E0.8 F2100", f"G1 X{x:g} Y{y:g} E0.25 F3000", "EXCLUDE_OBJECT_END NAME=part_3"]
+        return "\n".join(lines), (x, y)
+
+    def test_the_next_travel_leaves_the_chute_straight_even_past_a_cancelled_part(self):
+        """With the part after the change cancelled, Klipper drops its travel and the exit came with it, so the
+        toolhead crossed from the chute to the next part diagonally (review, 2026-11-23)."""
+        for printer_id in FIRMWARE:
+            for cancel_next in (False, True):
+                with self.subTest(printer=printer_id, next_part_cancelled=cancel_next):
+                    printer = FlowPrinter(printer_id, box=BoxSetup(**SAME_SLOT))
+                    text, part_3 = self.job(printer_id, cancel_next=cancel_next)
+                    printer.start_print(text)
+                    checks.assert_no_errors(self, printer)
+                    self.assertEqual(printer.status("print_stats")["state"], "complete")
+                    checks.assert_rear_moves_around_the_chute(self, printer)
+                    self.assertEqual(printer.toolhead.moves[-1].end[:2], part_3)
+                    if cancel_next:
+                        # part_2 prints at X155 Y150.
+                        self.assertNotIn((155., 150.), [m.end[:2] for m in printer.toolhead.moves if m.extrude > 0])
+
+    def test_a_part_cancelled_while_paused_after_the_change_stays_cancelled(self):
+        """A one-shot transform put on top at TOOL_CHANGE_END took Klipper's cancelled-part transform out of the chain
+        when a part was first cancelled while it waited, and the cancelled part printed after RESUME (review,
+        2026-11-23)."""
+        for printer_id in FIRMWARE:
+            with self.subTest(printer=printer_id):
+                printer = FlowPrinter(printer_id, box=BoxSetup(**SAME_SLOT))
+                text, part_3 = self.job(printer_id, pause=True)
+                printer.start_print(text)
+                self.assertEqual(printer.status("print_stats")["state"], "paused")
+                printer.command("EXCLUDE_OBJECT NAME=part_2")
+                printer.command("RESUME")
+                printer.reactor.advance(printer.reactor.monotonic())
+                checks.assert_no_errors(self, printer)
+                self.assertEqual(printer.status("print_stats")["state"], "complete")
+                checks.assert_rear_moves_around_the_chute(self, printer)
+                # part_2 prints at X155 Y150; part_3 still prints.
+                self.assertEqual([m.end[:2] for m in printer.toolhead.moves if m.extrude > 0 and m.xy_moved
+                                  and m.end[:2] == (155., 150.)], [])
+                self.assertEqual(printer.toolhead.moves[-1].end[:2], part_3)
+
+
+class CancelledPartFilamentChangeTests(checks.FlowTestCase):
     def test_a_change_inside_a_cancelled_part_still_cuts_unloads_and_loads(self):
         """Klipper drops every move inside a cancelled part, extruder moves too, and OrcaSlicer writes a filament
         change inside the label of the part printed just before it. After an operator cancelled a part, its change
@@ -180,15 +234,68 @@ class CancelledPartFilamentChangeTests(unittest.TestCase):
                 self.assertEqual(printer.status("print_stats")["state"], "complete")
                 self.assertEqual(checks.cuts(printer), 1)
                 self.assertEqual(printer.variables()["last_load_slot"], "slot1")
-                first = checks.moves_from_line(printer, job.change_line)
-                resumed = checks.moves_from_line(printer, job.change_line + job.change_lines)
+                first = printer.moves_from_line(job.change_line)
+                resumed = printer.moves_from_line(job.change_line + job.change_lines)
                 checks.assert_purges_only_at_the_chute(self, printer, first, resumed)
+                purged = sum(out for move, out in list(checks.pushed_out(printer.toolhead.moves))[first:resumed])
+                self.assertGreater(purged, 0.)
+                self.assertEqual(printer.toolhead.moves[-1].end[:2], (job.resume_xy[0] + 5, job.resume_xy[1]))
                 # The cancelled part's moves after Klipper's five learning extrusions are dropped.
                 part_moves = printer.toolhead.moves[:first]
                 self.assertEqual([m for m in part_moves if m.end[:3] == (*job.resume_xy, 2.) and m.extrude > 0], [])
                 lift = printer.toolhead.moves[first]
                 self.assertEqual(lift.start[:2], lift.end[:2])
                 self.assertGreaterEqual(lift.end[2], 5.)
+
+    def test_a_cancelled_part_stays_cancelled_after_a_change_that_never_ends(self):
+        """Valve Oil lets moves through a cancelled part from TOOL_CHANGE_START until TOOL_CHANGE_END. When the end
+        never comes, the cancelled part would print, in the air, for the rest of the print or into the next one. The
+        part's next label ends the change (G-code that starts a change without ending it, such as an operator's own
+        change G-code), and so does a new print (a print cancelled while paused in a failed change)."""
+        defined = ["EXCLUDE_OBJECT_DEFINE NAME=part_1 CENTER=45,80 POLYGON=[[40,70],[50,70],[50,90],[40,90]]",
+                   "EXCLUDE_OBJECT_DEFINE NAME=part_2 CENTER=125,80 POLYGON=[[120,70],[130,70],[130,90],[120,90]]"]
+
+        def part(name, x, moves):
+            return [f"EXCLUDE_OBJECT_START NAME={name}", *(f"G1 X{x + i} Y80 E0.2 F3000" for i in range(moves)),
+                    f"EXCLUDE_OBJECT_END NAME={name}"]
+        # part_2's six extrusions first, while Klipper learns the extruder's position.
+        relabelled = "\n".join(defined + ["EXCLUDE_OBJECT NAME=part_1"] + part("part_2", 120, 6) + [
+            "EXCLUDE_OBJECT_START NAME=part_1", "TOOL_CHANGE_START F=0 T=1", "EXCLUDE_OBJECT_END NAME=part_1"]
+            + part("part_1", 40, 6) + part("part_2", 126, 1))
+        filaments = [slicer.Filament(temperature=220), slicer.Filament(temperature=230, range_high=250)]
+        for printer_id in FIRMWARE:
+            with self.subTest(printer=printer_id, case="the part's next label"):
+                printer = FlowPrinter(printer_id, box=BoxSetup())
+                printer.start_print(relabelled, at=(120., 80., 2.))
+                checks.assert_no_errors(self, printer)
+                self.assertEqual(printer.status("print_stats")["state"], "complete")
+                printed = [m.end[:2] for m in printer.toolhead.moves if m.extrude > 0]
+                self.assertEqual([xy for xy in printed if xy[0] < 90], [])
+                self.assertEqual(printed[-1], (126., 80.))
+
+            with self.subTest(printer=printer_id, case="a new print"):
+                box = BoxSetup(boxes=1, enable_box=1, tools={0: "slot0", 1: "slot1"}, loaded_slot="slot0",
+                               current_tool=0, caught=True)
+                printer = FlowPrinter(printer_id, box=box)
+                job = slicer.print_with_change("orca", printer_id, filaments=filaments, current=0, following=1,
+                                               cancelled=True)
+                printer.start_print(job.text)
+                self.assertEqual(printer.status("print_stats")["state"], "paused")
+                printer.command("CANCEL_PRINT")
+                self.assertEqual(printer.status("print_stats")["state"], "cancelled")
+                # Stock CANCEL_PRINT ends with RESET_FAN_SCALING and _RESET_LAYER_GCODE, which no config here
+                # defines (config/klipper-macros-qd/start_end.cfg); that isn't what this case is about.
+                printer.unknown_commands.clear()
+                printer.responses.lines.clear()
+                printer.vendor.caught = False
+
+                printer.start_print("\n".join(defined + ["EXCLUDE_OBJECT NAME=part_1"] + part("part_2", 120, 6)
+                                              + part("part_1", 40, 6) + part("part_2", 126, 1)), at=(120., 80., 2.))
+                checks.assert_no_errors(self, printer)
+                self.assertEqual(printer.status("print_stats")["state"], "complete")
+                printed = [m.end[:2] for m in printer.toolhead.moves if m.extrude > 0]
+                self.assertEqual([xy for xy in printed if xy[0] < 90], [])
+                self.assertEqual(printed[-1], (126., 80.))
 
 
 if __name__ == "__main__":

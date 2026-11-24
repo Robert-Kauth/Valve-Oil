@@ -76,7 +76,7 @@ def macro_call_graph_errors() -> list[str]:
             errors.append(f"{printer}: recursive gcode_macro calls:\n" + format_cycles(cycles, macros, calls))
         own = {path.resolve() for path in installed_macro_files(printer)}
         unreachable = sorted(
-            f"  {macro.name} runs as {klipper_command(macro.name)!r}: {relative_to_repo(macro.path)}:{macro.line_number}"
+            f"  {macro.name} runs as {klipper_command(macro.name)!r}: {relative(macro.path)}:{macro.line_number}"
             for macro in macros.values()
             if macro.path.resolve() in own and klipper_command(macro.name) != macro.key
         )
@@ -96,12 +96,6 @@ def klipper_command(line: str) -> str:
         return parts[1] + parts[2].strip()
     return ""
 
-
-def relative_to_repo(path: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(REPO_ROOT))
-    except ValueError:
-        return str(path)
 
 
 def collect_config_tree_files(config_root: Path) -> tuple[Path, ...]:

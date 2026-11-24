@@ -1,8 +1,9 @@
 """A printer for G-code flow tests: Valve Oil installed into a printer's newest stock printer_data, its config read
 with Klipper's own config reader, and every section loaded as the printer loads it.
 
-Klipper's own modules come from klipper/klippy (Valve Oil's Klipper, which keeps QIDI's G-code, macro, pause, and
-save-variable code): the G-code dispatcher, gcode_move, gcode_macro, homing_override, pause_resume, exclude_object,
+Klipper's own modules come from klipper/klippy, Valve Oil's opt-in Klipper (upstream v0.14 with QIDI's changes). Most
+printers run QIDI's own Klipper instead, whose copies of these modules differ in code but parse commands, run macros,
+and transform moves the same way for what these flows do: the G-code dispatcher, gcode_move, gcode_macro, homing_override, pause_resume, exclude_object,
 save_variables, print_stats, QIDI's print_stats_manager, delayed_gcode, respond, gcode_arcs, display_status, and the
 filament switch sensor. Valve Oil's modules are the installed ones. Hardware is hardware.py's; QIDI's compiled
 modules are qidi.py's. Every config section is one of these, or is listed in IGNORED_SECTIONS with what it does on a
@@ -17,6 +18,7 @@ import logging
 import shutil
 import sys
 import types
+import weakref
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -43,11 +45,11 @@ import gcode as klipper_gcode  # noqa: E402  (Klipper's)
 
 FIRMWARE = {"max4": "01.01.07.01", "plus5": "01.01.02.01", "smart5": "smart5-01.01.02.01"}
 
-# Klipper modules loaded from klipper/klippy/extras for their sections.
+# Klipper modules loaded from klipper/klippy/extras for their sections, or when another module loads them.
 KLIPPER_MODULES = {
     "gcode_macro", "save_variables", "pause_resume", "exclude_object", "respond", "gcode_arcs",
     "homing_override", "print_stats_manager", "delayed_gcode", "display_status", "filament_switch_sensor",
-    "tuning_tower",
+    "tuning_tower", "print_stats",
 }
 
 # Sections whose objects these flows never reach, and what they are on the printer.
@@ -130,8 +132,7 @@ class _TracingHandlers(dict):
 
         def traced(gcmd):
             printer.stack.append(gcmd.get_commandline())
-            printer.trace.append(Command(cmd, gcmd.get_commandline(), len(printer.stack),
-                                         tuple(printer.toolhead.commanded_pos) if printer.toolhead else ()))
+            printer.trace.append(Command(cmd, gcmd.get_commandline()))
             try:
                 return handler(gcmd)
             finally:
@@ -143,8 +144,6 @@ class _TracingHandlers(dict):
 class Command:
     name: str
     line: str
-    depth: int
-    position: tuple
 
 
 @dataclass
@@ -156,6 +155,15 @@ class Responses:
         return [line for line in self.lines if line.startswith("!!")]
 
 
+def _close_print_file(sdcard):
+    if getattr(sdcard, "current_file", None) is not None:
+        sdcard.current_file.close()
+
+
+# The installed extras folder of the printer built last, in Klipper's extras package path.
+_INSTALLED_EXTRAS = None
+
+
 class FlowPrinter:
     """Klipper's Printer for the harness: objects, events, and config, with the hardware and QIDI stand-ins."""
 
@@ -165,6 +173,7 @@ class FlowPrinter:
     def __init__(self, printer_id: str, *, box: qidi.BoxSetup, variables: dict | None = None,
                  filament_detected: bool = True, slow_ready: float = 0.):
         self.printer_id = printer_id
+        hardware.GAPS.clear()
         self.root = temp_path(f"gcode-flow-{printer_id}-") / "printer_data"
         shutil.copytree(installed_printer_data(printer_id), self.root, symlinks=True)
         self.config_root = self.root / "config"
@@ -186,6 +195,8 @@ class FlowPrinter:
         self.toolhead = None
         self.start_args = {"config_file": str(self.config_root / "printer.cfg")}
         self._build(filament_detected)
+        # QIDI's print loop keeps a paused print's file open, as on the printer; close it with the printer.
+        weakref.finalize(self, _close_print_file, self.lookup_object("virtual_sdcard"))
 
     # Klipper's Printer interface
     def get_start_args(self):
@@ -226,10 +237,7 @@ class FlowPrinter:
     def load_object(self, config, section, default=configfile.sentinel):
         if section in self.objects:
             return self.objects[section]
-        module = section.split()[0]
-        if module in ("gcode_move", "print_stats", "gcode_macro", "pause_resume", "buttons", "homing",
-                      "stepper_enable", "idle_timeout", "virtual_sdcard", "heaters", "webhooks") \
-                or module in KLIPPER_MODULES:
+        if section.split()[0] in KLIPPER_MODULES:
             return self._load(config, section)
         if default is not configfile.sentinel:
             return default
@@ -381,17 +389,15 @@ class FlowPrinter:
         elif module == "closed_loop":
             self.add_object(section, hardware.ClosedLoop(self))
         elif module == "probe_air":
-            self.add_object(section, hardware.Probe(self))
+            self.add_object(section, hardware.Probe(self, config.getsection(section)))
         elif module == "z_tilt":
-            self.add_object(section, hardware.ZTilt(self))
+            self.add_object(section, hardware.ZTilt(self, config.getsection(section)))
         elif module == "force_move":
             self.add_object(section, hardware.ForceMove(self))
-        elif module in ("idle_timeout", "virtual_sdcard"):
-            pass
         elif module in IGNORED_SECTIONS:
             pass
         else:
-            raise AssertionError(f"harness: no stand-in or reason to ignore [{section}]; add one to printer.py")
+            raise hardware.HarnessGap(f"no stand-in or reason to ignore [{section}]; add one to printer.py")
 
     def _load(self, config, section):
         if section in self.objects:
@@ -416,12 +422,21 @@ class FlowPrinter:
         return module
 
     def _load_valve_oil(self, config, section):
-        # The installed modules, imported from Klipper's extras package as Klipper imports them.
+        # This printer's installed modules, imported from Klipper's extras package as Klipper imports them; one
+        # imported for another printer is imported again when this printer's copy differs.
         import extras
+        global _INSTALLED_EXTRAS
         installed = str(self.root / "klipper/klippy/extras")
-        if installed not in extras.__path__:
-            extras.__path__.insert(0, installed)
-        module = importlib.import_module("extras." + section.split()[0])
+        if _INSTALLED_EXTRAS in extras.__path__:
+            extras.__path__.remove(_INSTALLED_EXTRAS)
+        extras.__path__.insert(0, installed)
+        _INSTALLED_EXTRAS = installed
+        name = "extras." + section.split()[0]
+        module = importlib.import_module(name)
+        mine = Path(installed, Path(module.__file__).name)
+        if Path(module.__file__) != mine and mine.read_bytes() != Path(module.__file__).read_bytes():
+            del sys.modules[name]
+            module = importlib.import_module(name)
         init = getattr(module, "load_config_prefix" if len(section.split()) > 1 else "load_config")
         self.objects[section] = init(config.getsection(section))
 
@@ -444,10 +459,6 @@ class FlowPrinter:
             heater.set_temp(temperature)
             heater.set_smoothed_temp(temperature)
         self.run("G90\nM83\nG92 E0")
-        self.print_file(text, name=name)
-
-    def start_cold(self, text: str, *, name="job.gcode"):
-        """Print `text` from the virtual SD card on an idle printer: nothing homed, heaters off."""
         self.print_file(text, name=name)
 
     def print_file(self, text: str, *, name="job.gcode"):

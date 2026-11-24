@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import logging
-import os
 import sys
-import tempfile
 import threading
 import types
 import unittest
 from unittest import mock
 
-from installer.tests.helpers import REPO_ROOT, load_source
 from installer.tests.klipper_fakes import FEED_TIME, BoxAutoFeed, CommandError, Reactor, load_extra
 
 cold_cut = load_extra("cold_cut")
@@ -19,8 +15,6 @@ cold_cut = load_extra("cold_cut")
 # Klipper's greenlet, which only names the running command here.
 sys.modules.setdefault("greenlet", types.SimpleNamespace(getcurrent=lambda: None))
 box_flow_recovery = load_extra("box_flow_recovery")
-exclude_object = load_source("klipper_exclude_object", REPO_ROOT / "installer/tests/fixtures/klipper_exclude_object.py")
-virtual_sdcard = load_source("klipper_virtual_sdcard", REPO_ROOT / "installer/tests/fixtures/klipper_virtual_sdcard.py")
 
 MIN_EXTRUDE_TEMP = 135.
 
@@ -287,9 +281,7 @@ class Dispatcher:
         self.handlers = {}
         self.gcode_help = {}
         self.sent = []
-        self.heated = []
         self.messages = []
-        self.handlers["M109"] = lambda gcmd: self.heated.append(gcmd.line)
 
     def register_command(self, name, handler, desc=None):
         if handler is None:
@@ -333,29 +325,22 @@ class Task:
 class Manager:
     """QIDI's TaskQueueManager on firmware 01.01.07.01, as the harness ran it."""
 
-    FLOW_MAP = {0: [], 3: ["BOX_HEAT", "BOX_CUT", "BOX_UNLOAD"], 4: ["BOX_EJECT"],
-                5: ["BOX_HEAT", "BOX_CUT", "BOX_UNLOAD", "BOX_EJECT"],
-                6: ["EXT_HEAT", "EXT_LOAD", "EXT_WIPE"],
-                7: ["EXT_HEAT", "EXT_CUT", "EXT_UNLOAD"]}
+    FLOW_MAP = {3: ["BOX_HEAT", "BOX_CUT", "BOX_UNLOAD"],
+                6: ["EXT_HEAT", "EXT_LOAD", "EXT_WIPE"]}
 
-    def __init__(self, gcode, unload_failures, unload_errors):
+    def __init__(self, gcode):
         self.gcode = gcode
         self.current_task = None
         self.current_flow_temp = None
-        self.unload_failures = unload_failures
-        self.unload_errors = unload_errors
         self.wipe_errors = 0
-        # The Box slot whose unload from the toolhead BOX_UNLOAD runs, if any.
+        # The Box slot whose unload from the toolhead BOX_UNLOAD runs.
         self.stepper = None
         run = gcode.run_script_from_command
         self.method_map = {
             "BOX_HEAT": lambda: run("MOVE_TO_TRASH\nM109 S%s" % (self.current_flow_temp,)) or True,
             "BOX_CUT": lambda: run("CUT_FILAMENT_1") or True,
             "BOX_UNLOAD": self.unload,
-            "BOX_EJECT": lambda: run("MOVE_TO_TRASH\n") or True,
             "EXT_HEAT": lambda: run("MOVE_TO_TRASH\nM109 S%s" % (self.current_flow_temp,)) or True,
-            "EXT_CUT": lambda: run("CUT_FILAMENT_1") or True,
-            "EXT_UNLOAD": lambda: run("M83\nG1 E-60 F300") or True,
             "EXT_LOAD": lambda: True,
             "EXT_WIPE": self.external_wipe,
         }
@@ -373,17 +358,7 @@ class Manager:
         run = self.gcode.run_script_from_command
         run("MOVE_TO_TRASH\n")
         run("M109 S%s" % (self.current_flow_temp if self.current_flow_temp is not None else 0,))
-        if self.stepper is not None:
-            return self.stepper.extruder_unload_single_func()
-        for line in ("M83", "G1 E-30 F300", "M400", "G1 E-120 F600", "M400"):
-            run(line)
-        if self.unload_errors:
-            self.unload_errors -= 1
-            raise CommandError("Error during homing b_endstop: Communication timeout during homing")
-        if self.unload_failures:
-            self.unload_failures -= 1
-            return False
-        return True
+        return self.stepper.extruder_unload_single_func()
 
     def start_flow(self, flow_id, on_complete):
         self.current_task = Task(self.FLOW_MAP[flow_id])
@@ -414,10 +389,10 @@ class Manager:
 
 
 class Controller:
-    def __init__(self, gcode, flow, unload_failures=0, unload_errors=0):
+    def __init__(self, gcode, flow):
         self.gcode = gcode
         self.flow = flow
-        self.task_queue_manager = Manager(gcode, unload_failures, unload_errors)
+        self.task_queue_manager = Manager(gcode)
         for name in ("UNLOAD_FILAMENT_CONTROL", "EJECT_FILAMENT_CONTROL"):
             gcode.register_command(name, self.cmd_FILAMENT_CONTROL)
         gcode.register_command("FLOW_STOP", lambda gcmd: self.task_queue_manager.stop())
@@ -454,76 +429,25 @@ class FilamentCommand:
 
 
 class ColdBoxFlowTest(unittest.TestCase):
-    """COLD=1 unloads and ejects run QIDI's flow without heating, retracting cold."""
+    """COLD=1 refused while a print runs. Kept here because the G-code flow
+    harness can't send a console command while QIDI's print loop runs: the
+    loop is one timer there, and its timers aren't greenlets. The paused case
+    and the cold flows themselves are gcode_flow/test_box_flows.py's."""
 
-    def setup(self, flow=3, unload_failures=0, unload_errors=0, print_state="standby"):
-        printer = Printer(25., print_state=print_state)
+    def test_cold_refused_while_a_print_runs(self) -> None:
+        """COLD=1 skips the flow's heating and lets cold pull-backs through;
+        a running print's filament and temperature aren't the operator's to
+        change that way, so nothing may be sent or moved."""
+        printer = Printer(25., print_state="printing")
         gcode = printer.objects["gcode"] = Dispatcher(printer)
-        controller = Controller(gcode, flow, unload_failures, unload_errors)
-        printer.objects["multi_color_controller"] = controller
+        printer.objects["multi_color_controller"] = Controller(gcode, 3)
         config = types.SimpleNamespace(get_printer=lambda: printer)
         printer.objects["vo_cold_cut"] = cold_cut.ColdCut(config)
-        printer.objects["toolhead"].get_status = lambda e: {"max_accel": 20000.}
         printer.register_event_handler = lambda event, handler: None
-        recovery = box_flow_recovery.BoxFlowRecovery(config)
-        recovery._handle_ready()
-        return printer, gcode, controller.task_queue_manager
-
-    def unload(self, gcode, **params):
-        gcode.handlers["UNLOAD_FILAMENT_CONTROL"](FilamentCommand(SLOT=2, **params))
-
-    def test_cold_unload_cuts_and_pulls_back_without_heating(self) -> None:
-        printer, gcode, manager = self.setup()
-        self.unload(gcode, COLD=1)
-        self.assertEqual(gcode.heated, [])
-        self.assertEqual(printer.moves, [-4., -30., -120.])
-        self.assertIsNone(manager.current_task)
-        self.assertIn("M104 S0", gcode.sent)
-        self.assertNotIn("WIPE_NOZZLE_DROP", gcode.sent)
+        box_flow_recovery.BoxFlowRecovery(config)._handle_ready()
         with self.assertRaises(CommandError):
-            printer.move(-4.)
-        gcode.run_script_from_command("M109 S240")
-        self.assertEqual(gcode.heated, ["M109 S240"])
-
-    def test_unload_without_cold_heats_as_before(self) -> None:
-        printer, gcode, manager = self.setup()
-        printer.heater.smoothed_temp = 260.
-        printer.heater.temperature_callback()
-        self.unload(gcode)
-        self.assertEqual(gcode.heated, ["M109 S260", "M109 S260"])
-        self.assertIn("WIPE_NOZZLE_DROP", gcode.sent)
-
-    def test_retry_of_a_paused_cold_unload_stays_cold(self) -> None:
-        for failure in ({"unload_failures": 1}, {"unload_errors": 1}):
-            with self.subTest(**failure):
-                printer, gcode, manager = self.setup(**failure)
-                try:
-                    self.unload(gcode, COLD=1)
-                except CommandError:
-                    pass
-                self.assertTrue(manager.current_task.is_paused)
-                with self.assertRaises(CommandError):
-                    printer.move(-4.)
-                gcode.handlers["FLOW_RETRY"](FilamentCommand())
-                self.assertIsNone(manager.current_task)
-                self.assertEqual(gcode.heated, [])
-                self.assertEqual(printer.moves, [-4., -30., -120., -30., -120.])
-
-    def test_flow_with_other_steps_heats_and_says_so(self) -> None:
-        printer, gcode, manager = self.setup(flow=7)
-        printer.heater.smoothed_temp = 260.
-        printer.heater.temperature_callback()
-        self.unload(gcode, COLD=1)
-        self.assertEqual(gcode.heated, ["M109 S260"])
-        self.assertTrue(any("heats the nozzle" in message for message in gcode.messages))
-
-    def test_cold_refused_during_a_print(self) -> None:
-        for state in ("printing", "paused"):
-            with self.subTest(state=state):
-                printer, gcode, manager = self.setup(print_state=state)
-                with self.assertRaises(CommandError):
-                    self.unload(gcode, COLD=1)
-                self.assertEqual((gcode.sent, printer.moves), ([], []))
+            gcode.handlers["UNLOAD_FILAMENT_CONTROL"](FilamentCommand(SLOT=2, COLD=1))
+        self.assertEqual((gcode.sent, printer.moves), ([], []))
 
 
 class BoxStepper:
@@ -735,8 +659,9 @@ class AutoFeedArmTest(BoxUnloadSetup, unittest.TestCase):
 
 class ToolheadUnloadTest(BoxUnloadSetup, unittest.TestCase):
     """Filament caught at the toolhead stops a Box unload 20 mm past its
-    pull-back, instead of three rounds of pull-backs, and a tool change
-    that QIDI's auto-reload bug stops says which slot ran out."""
+    pull-back, on any Box code's pulls, instead of three rounds of
+    pull-backs; the slot's step clock is reset before it is tied to the
+    extruder. The caught-filament flows themselves are gcode_flow's."""
 
     def test_filament_that_clears_within_two_pulls_unloads_as_qidis_does(self) -> None:
         for clears_after, pulls in ((40., []), (95., [-10.]), (105., [-10., -10.])):
@@ -746,40 +671,6 @@ class ToolheadUnloadTest(BoxUnloadSetup, unittest.TestCase):
                 self.assertEqual(printer.moves, [-30., -55.] + pulls)
                 self.assertEqual(stepper.box_pulls, 1)
                 self.assertIsNone(manager.current_task)
-
-    def test_caught_filament_stops_the_idle_unload_before_the_box_pulls(self) -> None:
-        printer, gcode, manager, stepper = self.setup(None, box=True)
-        with self.assertRaises(CommandError) as caught:
-            self.unload(gcode)
-        self.assertEqual(printer.moves, [-30., -55., -10., -10.])
-        self.assertEqual(stepper.box_pulls, 0)
-        message = str(caught.exception)
-        self.assertIn("1C", message)
-        self.assertIn("105 mm", message)
-        self.assertIn("in the Box", message)
-        self.assertIn("FLOW_RETRY", message)
-        self.assertTrue(manager.current_task.is_paused)
-        self.assertEqual(manager.current_task.current_step, "BOX_UNLOAD")
-        # Through the pause the slot is neither tied to the extruder nor held on in Klipper, as after QIDI's own
-        # cleanup, so Klipper switches it on again for its next move.
-        self.assertIsNone(stepper.extruder_stepper.synced)
-        self.assertFalse(stepper.sync_extruder_bind_stepper)
-        self.assertFalse(stepper.enabled)
-        # Freed by hand, the retry unloads it.
-        stepper.clears_after = 0.
-        gcode.handlers["FLOW_RETRY"](FilamentCommand())
-        self.assertEqual(stepper.box_pulls, 1)
-        self.assertIsNone(manager.current_task)
-        self.assertEqual(len(stepper.extruder_stepper.at_sync), 2)
-
-    def test_caught_filament_in_a_tool_change_pauses_the_print(self) -> None:
-        printer, gcode, manager, stepper = self.setup(None, print_state="printing")
-        gcode.handlers["T_MANAGER"](Params("T_MANAGER T=3"))
-        self.assertEqual(printer.moves, [-30., -55., -10., -10.])
-        self.assertEqual(stepper.box_pulls, 0)
-        self.assertIn("PAUSED", gcode.sent)
-        self.assertTrue(manager.current_task.is_paused)
-        self.assertTrue(any("1C" in m and "RESUME" in m and "FLOW_RETRY" not in m for m in gcode.messages))
 
     def test_pulls_klipper_did_not_move_say_so(self) -> None:
         printer, gcode, manager, stepper = self.setup(40.)
@@ -875,240 +766,6 @@ class ToolheadUnloadTest(BoxUnloadSetup, unittest.TestCase):
         self.assertEqual(printer.moves, [-30., -55., -5., -5., -5., -5.])
         self.assertEqual(stepper.box_pulls, 0)
         self.assertTrue(manager.current_task.is_paused)
-
-    def test_tool_change_after_a_slot_ran_out_names_the_slot_and_pauses_the_print(self) -> None:
-        printer, gcode, manager, stepper = self.setup(None, print_state="printing")
-        printer.objects["save_variables"] = types.SimpleNamespace(allVariables={"last_load_slot": "slot2"})
-
-        def tool_change(gcmd):
-            raise AttributeError("'BoxExtruderStepper' object has no attribute 'loaded_stepper'")
-        recovery = box_flow_recovery.BoxFlowRecovery(types.SimpleNamespace(get_printer=lambda: printer))
-        recovery.originals["T_MANAGER"] = tool_change
-        recovery.manager = manager
-        recovery.cmd_T_MANAGER(Params("T_MANAGER T=3"))
-        self.assertIn("PAUSED", gcode.sent)
-        self.assertTrue(any("1C ran out" in m and "RESUME" in m for m in gcode.messages))
-
-
-class Motion:
-    """Klipper's gcode_move and toolhead, as far as exclude_object uses them: G1 in absolute or relative coordinates
-    goes through the move transform to the toolhead, which keeps every place the nozzle went. Extrusion is
-    relative, as QIDI's and the slicers' M83 make it."""
-
-    def __init__(self, printer):
-        self.printer = printer
-        self.position = [0., 0., 0., 0.]
-        self.path = []
-        self.transform = self
-        self.last_position = [0., 0., 0., 0.]
-        self.relative = False
-        self.saved = False
-
-    def get_extruder(self):
-        return types.SimpleNamespace(get_name=lambda: "extruder")
-
-    def move(self, newpos, speed):
-        if newpos[3] != self.position[3]:
-            self.printer.moves.append(round(newpos[3] - self.position[3], 3))
-        self.position = list(newpos)
-        self.path.append(tuple(round(v, 3) for v in newpos[:3]))
-
-    def get_position(self):
-        return list(self.position)
-
-    def set_move_transform(self, transform, force=False):
-        previous, self.transform = self.transform, transform
-        return previous
-
-    def reset_last_position(self):
-        self.last_position = self.transform.get_position()
-
-    def run(self, line):
-        words = line.split()
-        if words[0] in ("G90", "G91"):
-            self.relative = words[0] == "G91"
-        elif words[0] == "SAVE_GCODE_STATE":
-            self.saved = self.relative
-        elif words[0] == "RESTORE_GCODE_STATE":
-            self.relative = self.saved
-        elif words[0] in ("G0", "G1"):
-            newpos = list(self.last_position)
-            for word in words[1:]:
-                axis = "XYZE".find(word[0])
-                if axis >= 0:
-                    value = float(word[1:])
-                    newpos[axis] = newpos[axis] + value if axis == 3 or self.relative else value
-            self.transform.move(newpos, 100.)
-            self.last_position = newpos
-
-
-class MotionDispatcher(Dispatcher):
-    def __init__(self, printer, motion):
-        super().__init__(printer)
-        self.motion = motion
-
-    def run_script_from_command(self, script):
-        for line in script.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            self.sent.append(line)
-            command = line.split()[0]
-            if command in self.handlers:
-                self.handlers[command](Params(line))
-            else:
-                self.motion.run(line)
-
-
-class CancelledPartTest(unittest.TestCase):
-    """A filament change inside a cancelled part still cuts, unloads, and purges, the print paused inside one
-    still moves, a power-loss resume inside one keeps it skipped, and the part's own lines stay dropped."""
-
-    def setUp(self) -> None:
-        logging.disable(logging.CRITICAL)
-        self.addCleanup(logging.disable, logging.NOTSET)
-        printer = self.printer = Printer(260.)
-        self.state = "printing"
-        motion = self.motion = Motion(printer)
-        gcode = self.gcode = printer.objects["gcode"] = MotionDispatcher(printer, motion)
-        controller = Controller(gcode, 3)
-        manager = self.manager = controller.task_queue_manager
-        stepper = self.stepper = manager.stepper = BoxStepper(printer, gcode, 40.)
-        printer.objects.update({
-            "multi_color_controller": controller,
-            box_flow_recovery.TOOLHEAD_SENSOR: stepper,
-            "box_extras": types.SimpleNamespace(b_endstop_state=0),
-            "toolhead": motion,
-            "tuning_tower": types.SimpleNamespace(is_active=lambda: False),
-            "print_stats": types.SimpleNamespace(get_status=lambda e: {"state": self.state}),
-        })
-        printer.lookup_objects = lambda prefix: [("box_stepper slot2", stepper)]
-        self.events = {}
-        printer.register_event_handler = lambda event, handler: self.events.setdefault(event, []).append(handler)
-        printer.load_object = lambda config, name: motion
-        gcode.handlers["PAUSE"] = lambda gcmd: gcode.sent.append("PAUSED")
-        gcode.handlers["CUT_FILAMENT_1"] = lambda gcmd: gcode.run_script_from_command(
-            "G1 Y0 F15000\nG1 X3 F15000\nM83\nG1 E-4 F1800")
-        gcode.handlers["TOOL_CHANGE_START"] = gcode.handlers["TOOL_CHANGE_END"] = lambda gcmd: None
-
-        def tool_change(gcmd):
-            manager.current_task = Task(["BOX_CUT", "BOX_UNLOAD", "BOX_LOAD"])
-            manager.method_map["BOX_LOAD"] = lambda: run("G1 E40 F300") or True
-            manager.on_complete = lambda task: None
-            manager._run()
-        run = gcode.run_script_from_command
-        gcode.handlers["T_MANAGER"] = tool_change
-        # QIDI's power-loss resume, as virtual_sdcard has it.
-        sdcard = self.sdcard = object.__new__(virtual_sdcard.VirtualSD)
-        sdcard.printer, sdcard.gcode, sdcard._printer_off_power_resume = printer, gcode, None
-        printer.objects.update({"virtual_sdcard": sdcard, "gcode_move": motion,
-                                "save_variables": types.SimpleNamespace(allVariables={"profile_name": "default"})})
-        config = types.SimpleNamespace(get_printer=lambda: printer)
-        exclude = printer.objects["exclude_object"] = exclude_object.ExcludeObject(config)
-        exclude._handle_connect()
-        box_flow_recovery.BoxFlowRecovery(config)._handle_ready()
-        # A is cancelled, B prints, and the print reaches A.
-        self.send("EXCLUDE_OBJECT_DEFINE NAME=A", "EXCLUDE_OBJECT_DEFINE NAME=B", "M83", "EXCLUDE_OBJECT NAME=A",
-                  "EXCLUDE_OBJECT_START NAME=B", "G1 X10 Y10 Z0.2 F600",
-                  *("G1 X%d E1" % (x,) for x in range(11, 17)), "EXCLUDE_OBJECT_END NAME=B",
-                  "EXCLUDE_OBJECT_START NAME=A", "G1 X100 Y100", "G1 X110 E1")
-
-    def send(self, *lines):
-        for line in lines:
-            self.gcode.run_script_from_command(line)
-
-    def went(self, x=None, y=None, z=None):
-        return any((x is None or p[0] == x) and (y is None or p[1] == y) and (z is None or p[2] == z)
-                   for p in self.motion.path)
-
-    def test_filament_change_inside_a_cancelled_part_cuts_unloads_and_purges(self) -> None:
-        before = len(self.motion.path)
-        self.send("G1 Z3.2 F1200", "TOOL_CHANGE_START F=0 T=1", "G1 E-2 F1800", "T_MANAGER T=1",
-                 "G1 Y403.5 F2000", "G1 E30 F300", "TOOL_CHANGE_END", "G1 E3 F300",
-                 "G1 X120 Y100 Z0.2", "G1 X130 E1", "EXCLUDE_OBJECT_END NAME=A",
-                 "EXCLUDE_OBJECT_START NAME=B", "G1 X30 Y10 Z0.4", "G1 X40 E1", "EXCLUDE_OBJECT_END NAME=B")
-        # Straight up from where B ended to the slicer's lift, before moving anywhere else.
-        self.assertEqual(self.motion.path[before:before + 2], [(16., 10., 3.21), (16., 10., 3.2)])
-        self.assertTrue(self.went(3., 0., 3.2), "never reached the cutter")
-        self.assertEqual(self.stepper.box_pulls, 1)
-        self.assertNotIn("PAUSED", self.gcode.sent)
-        self.assertIn(40., self.printer.moves)
-        self.assertTrue(self.went(y=403.5), "never reached the waste chute")
-        self.assertFalse(self.went(x=120.) or self.went(x=130.), "printed the cancelled part")
-        self.assertTrue(self.went(40., 10., 0.4))
-
-    def test_paused_inside_a_cancelled_part_still_moves(self) -> None:
-        self.state = "paused"
-        self.send("G91", "G1 Z5", "G90", "G1 X200 Y200", "G1 E-5")
-        self.assertEqual(self.motion.path[-3:], [(16., 10., 5.2), (200., 200., 5.2), (200., 200., 5.2)])
-        self.assertEqual(self.printer.moves[-1], -5.)
-        self.state = "printing"
-        self.send("G1 X140 Y100 Z0.2 E1", "EXCLUDE_OBJECT_END NAME=A",
-                 "EXCLUDE_OBJECT_START NAME=B", "G1 X50 Y10 Z0.2 E1")
-        self.assertFalse(self.went(x=140.), "printed the cancelled part")
-        self.assertEqual(self.motion.path[-1], (50., 10., 0.2))
-
-    def test_cancelled_part_stays_cancelled_after_a_filament_change_that_never_ends(self) -> None:
-        for end in (("EXCLUDE_OBJECT_END NAME=A", "EXCLUDE_OBJECT_START NAME=A"), ()):
-            with self.subTest(end=end):
-                self.setUp()
-                self.send("TOOL_CHANGE_START F=0 T=1", "EXCLUDE_OBJECT_END NAME=A", *end)
-                if not end:
-                    for handler in self.events["virtual_sdcard:reset_file"]:
-                        handler()
-                    self.send("EXCLUDE_OBJECT NAME=A", *("G1 X%d E1" % (x,) for x in range(5)),
-                              "EXCLUDE_OBJECT_START NAME=A")
-                self.send("G1 X150 Y100 E1")
-                self.assertFalse(self.went(x=150.), "printed the cancelled part")
-
-
-    def resume_after_power_loss(self, part_a):
-        """Lose power at the line `; power lost` of a print whose part A, cancelled, holds PART_A, and resume as
-        QIDI does: put the toolhead back, then restart the file 4 KiB before that line. Returns where the nozzle
-        went after the toolhead was put back."""
-        text = "\n".join([
-            "EXCLUDE_OBJECT_DEFINE NAME=A", "EXCLUDE_OBJECT_DEFINE NAME=B", "M83",
-            "EXCLUDE_OBJECT_START NAME=B", "G1 X10 Y10 Z0.2 F600", "G1 X16 E1", "EXCLUDE_OBJECT_END NAME=B",
-            "EXCLUDE_OBJECT_START NAME=A", "G1 X100 Y100", *part_a, "EXCLUDE_OBJECT_END NAME=A",
-            "EXCLUDE_OBJECT_START NAME=B", "G1 X30 Y10 Z0.4", "G1 X40 E1", "EXCLUDE_OBJECT_END NAME=B", ""])
-        lost = text.index("; power lost")
-        self.assertGreater(lost - text.index("EXCLUDE_OBJECT_START NAME=A"), 4096)
-        with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "plate_1.gcode")
-            with open(path, "w", newline="") as f:
-                f.write(text)
-            for handler in self.events["virtual_sdcard:reset_file"]:
-                handler()
-            state = {"file_position": lost, "exclude_objects": ["A"],
-                     "all_objects": [{"name": "A"}, {"name": "B"}], "gcode_position": [120., 100., 0.2, 0.]}
-            self.sdcard._set_printer_state_internal(state, state["gcode_position"], [0.] * 4, [0.] * 4)
-            with io.open(path, "r", newline="") as f:
-                self.sdcard.current_file = f
-                self.sdcard.file_position = max(lost - 4096, 0)
-                f.seek(self.sdcard.file_position)
-                self.sdcard._printer_off_power_resume()
-                self.assertEqual(self.motion.path[-1], (120., 100., 0.2))
-                restored = len(self.motion.path)
-                self.send(*f.read().split("\n"))
-        return self.motion.path[restored:]
-
-    def test_power_loss_resume_inside_a_cancelled_part_keeps_it_skipped(self) -> None:
-        part_a = ["G1 X%.1f Y100 E0.1" % (100 + i / 10) for i in range(1, 400)]
-        part_a.insert(300, "; power lost")
-        path = self.resume_after_power_loss(part_a)
-        self.assertFalse([p for p in path if 100 <= p[0] < 150], "printed the cancelled part")
-        self.assertEqual(path, [(30., 10., 0.4), (40., 10., 0.4)])
-
-    def test_power_loss_resume_inside_a_filament_change_in_a_cancelled_part_finishes_the_change(self) -> None:
-        path = self.resume_after_power_loss([
-            "G1 X101 Y100 E1", "G1 Z3.2 F1200", "TOOL_CHANGE_START F=0 T=1", "G1 E-2 F1800",
-            *("; " + "-" * 60 for _ in range(80)), "; power lost", "G1 Y403.5 F2000", "G1 E30 F300",
-            "TOOL_CHANGE_END", "G1 X130 Y100 Z0.2", "G1 X131 E1"])
-        self.assertIn((120., 403.5, 0.2), path, "never reached the waste chute")
-        self.assertIn(30., self.printer.moves)
-        self.assertFalse([p for p in path if p[0] in (130., 131.)], "printed the cancelled part")
-        self.assertEqual(path[-1], (40., 10., 0.4))
-
 
 class ExternalLoadTest(unittest.TestCase):
     """QIDI's external-spool load ends with a wipe that reports failure after

@@ -809,7 +809,7 @@ Valve Oil's configuration SHALL let moves through Klipper's object exclusion dur
 
 #### Scenario: Paused inside a cancelled part
 - **WHEN** the print is paused while inside a cancelled part
-- **THEN** the pause's moves and any moves or extrusion made while paused move the toolhead and extruder
+- **THEN** the pause's moves, from the pause's start, and any moves or extrusion made while paused move the toolhead and extruder, so the pause parks at the chute as it does outside a cancelled part
 - **AND** once the print runs again, the cancelled part's lines are dropped
 
 #### Scenario: A filament change that never ends
@@ -825,7 +825,7 @@ When parts were cancelled before a power loss, optimized configuration SHALL, af
 
 #### Scenario: Power lost during a filament change inside a cancelled part
 - **WHEN** the vendor resume restarts the file between `TOOL_CHANGE_START` and `TOOL_CHANGE_END` inside a cancelled part
-- **THEN** the rest of the filament change moves the toolhead and extruder, and the cancelled part's lines after `TOOL_CHANGE_END` are dropped
+- **THEN** the toolhead lifts and goes to the chute before the rest of the filament change, which moves the toolhead and extruder, and the cancelled part's lines after `TOOL_CHANGE_END` are dropped
 
 ### Requirement: Spoolman spools follow the loaded QIDI Box slot
 Valve Oil's configuration SHALL keep an operator-assigned Spoolman spool for each QIDI Box slot and the external spool, and SHALL make the loaded slot's spool Moonraker's active spool whenever the slot recorded as loaded changes.
@@ -1571,7 +1571,7 @@ On the Plus 5, Valve Oil's macros SHALL use the Plus 5's homing sequence, positi
 #### Scenario: Plus 5 rear moves stay inside the chute window
 - **WHEN** a Valve Oil macro or a project Plus 5 slicer pack moves the toolhead behind Y 320 on a Plus 5
 - **THEN** the toolhead stays between X 75 and X 231 for the whole move, including where it crosses Y 320
-- **AND** a move from the chute to anywhere in front of Y 320 leaves the chute straight forward first
+- **AND** a move from behind Y 320 onto the bed comes straight forward to Y 320 first, including the travel after a filament change, pause, or cancelled part, and before probing
 
 #### Scenario: Plus 5 cut presses the cutter once
 - **WHEN** the filament is cut on a Plus 5, by QIDI's tool change and unload or by Valve Oil's macros
@@ -1647,6 +1647,7 @@ On the Smart 5, Valve Oil's macros SHALL use the Smart 5's homing sequence, posi
 #### Scenario: Smart 5 rear moves stay inside its chute window
 - **WHEN** a Valve Oil macro or a project Smart 5 slicer pack moves the toolhead behind Y 180 on a Smart 5
 - **THEN** the toolhead stays between X 66 and X 100 for the whole move, including where it crosses Y 180
+- **AND** a move from behind Y 180 onto the bed comes straight forward to Y 180 first, including the travel after a filament change, pause, or cancelled part, and before probing
 
 #### Scenario: Smart 5 rear-bed scrape follows the probed strip height
 - **WHEN** Valve Oil's print start scrapes the nozzle behind the bed on a Smart 5

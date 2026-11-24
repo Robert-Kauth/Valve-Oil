@@ -16,6 +16,7 @@ import configparser
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from installer.tests.gcode_flow.hardware import HarnessGap
 from installer.tests.klipper_fakes import BoxAutoFeed
 
 EMPTY_SLOT = "slot16"
@@ -130,14 +131,13 @@ class Task:
     """multi_color_controller's FlowTask: the flow, its steps left, the step running or failed, and whether it's
     paused on that step."""
 
-    def __init__(self, flow_id, steps, slot=None):
+    def __init__(self, flow_id, steps):
         self.flow_id = flow_id
         self.queue = list(steps)
         self.index = 0
         self.current_step = ""
         self.is_paused = False
         self.is_cancelled = False
-        self.slot = slot
 
     @property
     def current_queue(self):
@@ -225,7 +225,6 @@ class BoxExtras:
 
     def __init__(self, vendor):
         self.vendor = vendor
-        self.flow_pauses = []
 
     @property
     def b_endstop_state(self):
@@ -245,7 +244,6 @@ class BoxExtras:
         # Marks the task paused on that step and sends nothing (harness, 2026-11-03).
         if manager.current_task is not None:
             manager.current_task.is_paused = True
-        self.flow_pauses.append(step)
 
     def filament_printing_manager_box1(self, tool):
         """T_MANAGER's tool change on a USB Box, 01.01.07.01.
@@ -278,10 +276,7 @@ class BoxExtras:
         """
         vendor = self.vendor
         variables = vendor.variables()
-        record = {"tool": tool, "flow": None, "steps": []}
-        vendor.flows.append(record)
         if vendor.exclude_tool:
-            record["flow"] = "exclude_tool"
             return
         previous = variables.get("extrude_state", -1)
         target = variables.get(f"value_t{tool}") or f"slot{tool}"
@@ -289,21 +284,18 @@ class BoxExtras:
         if previous != -1 and previous_slot == target:
             vendor.stepper(target).slot_sync(True)
             vendor.save("extrude_state", tool)
-            record["flow"] = "same slot"
             return
         vendor.save("extrude_state", tool)
         loaded = variables.get("last_load_slot", EMPTY_SLOT)
         number = _slot_number(target)
         if number is None or number >= variables.get("box_count", 0) * 4 or target == EMPTY_SLOT \
                 or loaded in ("", EMPTY_SLOT):
-            record["flow"] = "QDE_004_027"
             vendor.report("QDE_004_027")
             vendor.script("PAUSE")
             return
         detected = vendor.toolhead_detects()
         if target != loaded and variables.get("auto_reload_detect", 0) == 1 \
                 and loaded not in vendor.inlets and detected:
-            record["flow"] = "auto-reload"
             if not self.flush_all_filament():
                 vendor.report("QDE_004_017")
                 vendor.script("PAUSE")
@@ -311,17 +303,14 @@ class BoxExtras:
             raise AttributeError("'BoxExtruderStepper' object has no attribute 'loaded_stepper'")
         if loaded == target and detected:
             vendor.stepper(target).slot_sync(True)
-            record["flow"] = "already loaded"
             return
         manager = vendor.controller.task_queue_manager
         steps = ["BOX_UNLOAD", "BOX_LOAD"] if loaded == target else ["BOX_CUT", "BOX_UNLOAD", "BOX_LOAD"]
-        manager.current_task = Task(13, steps, slot=target)
-        record["flow"] = 13
+        manager.current_task = Task(13, steps)
         adapter = vendor.controller.box_adapter
         adapter.target_slot = target
         for step in steps:
             manager.current_task.current_step = step
-            record["steps"].append(step)
             if not adapter.tool_change_step(step):
                 self._pause_print_retry_flow(manager, step)
                 vendor.script("PAUSE")
@@ -361,13 +350,12 @@ class BoxExtras:
         - filament at the hub and the toolhead: CUT_FILAMENT_1 and MOVE_TO_TRASH, then as below;
         - filament at the hub: M109, unload last_load_slot, load the target.
         A load or unload that fails sends M104 S0 and `M118 Printer resume failed` and doesn't resume. Otherwise it
-        clears the task manager's external flow and sends RESUME_PRINT. An operator report (2026-11-03, console
-        screenshot) of "Extrude below minimum temp" on every resume until the nozzle was heated by hand matches
-        the cut running on the nozzle stock PAUSE turned off."""
+        clears the task manager's external flow and sends RESUME_PRINT. The cut runs before the M109, on the nozzle
+        stock PAUSE turned off; an operator report (2026-11-03, console screenshot, Box setup and version not
+        reported) of "Extrude below minimum temp" on every resume until the nozzle was heated by hand is unresolved,
+        and that order accounts for it."""
         vendor = self.vendor
         variables = vendor.variables()
-        record = {"tool": variables.get("extrude_state"), "flow": "resume", "steps": []}
-        vendor.flows.append(record)
         vendor.script("MOVE_TO_TRASH")
         tool = variables.get("extrude_state", -2)
         if tool == -2:
@@ -379,7 +367,6 @@ class BoxExtras:
             "saved_extruder_temp", 250)
         detected = vendor.toolhead_detects()
         if loaded == target and variables.get("slot_sync") == target and detected:
-            record["steps"].append("slot_sync")
             vendor.stepper(target).slot_sync(True)
         else:
             if vendor.hub_slot is None:
@@ -389,14 +376,11 @@ class BoxExtras:
                 return
             else:
                 if detected:
-                    record["steps"].append("BOX_CUT")
-                    vendor.script("CUT_FILAMENT_1\nM400\nMOVE_TO_TRASH")
+                    vendor.script("CUT_FILAMENT_1\nMOVE_TO_TRASH")
                 vendor.script("M109 S%s" % (temperature,))
-                record["steps"].append("BOX_UNLOAD")
                 if not vendor.stepper(loaded).extruder_unload_single_func():
                     vendor.script("M104 S0\nM118 Printer resume failed")
                     return
-            record["steps"].append("BOX_LOAD")
             if not vendor.stepper(target).extruder_load_single_func():
                 vendor.script("M104 S0\nM118 Printer resume failed")
                 return
@@ -446,12 +430,15 @@ class BoxStepper:
     def extruder_unload_single_func(self):
         """Unload from the toolhead to the Box (box_stepper.so, harness 2026-10-31 and 2026-11-20, all three
         printers' builds). The slot is geared to the extruder for the pull-back, and every extruder move is G-code
-        through its own gcode attribute, never forward: G1 E-30 F300, then G1 E-120 F600, then while the toolhead
-        sensor still detects filament up to seven G1 E-10 F300, then shake_for_unload_toolhead's G1 ... E-6.5 and
-        G1 E-1 F60, three rounds in all, before QDE_004_008 (Extruder unloading failure) and False. These moves pass
-        Klipper's extruder check, which refuses them below min_extrude_temp. With the toolhead empty and filament at
-        the hub it skips the extruder. Once the hub clears it saves last_load_slot slot16, retracts the slot 260 mm
-        more, disables the slot motor, and sends MOVE_TO_TRASH."""
+        through its own gcode attribute, never forward: G1 E-30 F300, then G1 E-120 F600 (E-100 F800 on the Plus 5's
+        first attempt), then while the toolhead sensor still detects filament up to seven G1 E-10 F300. The two
+        lengths come from box_extras.get_value_by_key (exl_1, exl_2), which Valve Oil's vo_box_feed_motion answers
+        only on the QIDI builds it checks, not here. An exception from the slot's gcode during the 10 mm pulls leaves
+        the function at once. With filament still at the toolhead QIDI tries twice more with toolhead moves recorded
+        only for the Max 4, then reports QDE_004_008 (Extruder unloading failure); those attempts have no stand-in.
+        These moves pass Klipper's extruder check, which refuses them below min_extrude_temp. With the toolhead empty
+        and filament at the hub it skips the extruder. Once the hub clears it saves last_load_slot slot16, retracts
+        the slot 260 mm more, disables the slot motor, and sends MOVE_TO_TRASH."""
         vendor = self.vendor
         if vendor.toolhead_detects():
             self.enabled = True
@@ -459,19 +446,16 @@ class BoxStepper:
             self.gcode.run_script_from_command("M83\nG1 E-30 F300\nM400")
             if not vendor.caught:
                 vendor.printer.set_filament_detected(False)
-            self.gcode.run_script_from_command("G1 E-120 F600\nM400")
-            for _round in range(3):
-                for _pull in range(7):
-                    if not vendor.toolhead_detects():
-                        break
-                    self.gcode.run_script_from_command("G1 E-10 F300\nM400")
+            second = "G1 E-100 F800" if vendor.printer.printer_id == "plus5" else "G1 E-120 F600"
+            self.gcode.run_script_from_command(second + "\nM400")
+            for _pull in range(7):
                 if not vendor.toolhead_detects():
                     break
-                self.gcode.run_script_from_command("G1 E-6.5 F300\nG1 E-1 F60\nM400")
-            self.sync_unbind_extruder()
+                self.gcode.run_script_from_command("G1 E-10 F300\nM400")
             if vendor.toolhead_detects():
-                vendor.report("QDE_004_008")
-                return False
+                raise HarnessGap("QIDI's second and third unload attempts, with filament still at the toolhead "
+                                 "after seven 10 mm pulls, have no stand-in")
+            self.sync_unbind_extruder()
         if vendor.unload_error:
             raise vendor.printer.command_error(vendor.unload_error)
         vendor.hub_slot = None
@@ -575,9 +559,9 @@ class BoxAdapterV1:
                                    "BOX_EJECT": self.eject})
         manager.method_map["BOX_WIPE"] = self.wipe
         external = ExternalAdapter(self.vendor)
-        manager.method_map.update({"EXT_HEAT": external.heat, "EXT_BITE": external.bite, "EXT_LOAD": external.load,
-                                   "EXT_WIPE": external.wipe, "EXT_CUT": external.cut,
-                                   "EXT_UNLOAD": external.unload})
+        manager.method_map.update({"EXT_HEAT": external.heat, "EXT_CUT": external.cut, "EXT_UNLOAD": external.unload})
+        for step in ("EXT_BITE", "EXT_LOAD", "EXT_WIPE"):
+            manager.method_map[step] = _no_stand_in(step)
 
     def flow_decision_func(self, action, slot):
         """Which flow a Load, Unload, or Eject of `slot` runs, from the toolhead sensor, the hub sensor, and
@@ -652,29 +636,15 @@ class BoxAdapterV1:
 
     def load_filament(self):
         """BOX_LOAD (harness, 2026-11-23): MOVE_TO_TRASH, then with the hub clear, M109 to current_flow_temp and the
-        target's load. With filament at the hub and last_load_slot slot16 or missing, `检测到有耗材通过HUB...` and
-        False; beyond box_count * 4, `无法识别到已进料耗材` and False; any other slot: M109, CUT_FILAMENT_1 only with
-        filament at the toolhead, unload last_load_slot (`退料失败，请手动退料` and False if it fails), then the load."""
+        target's load. With filament at the hub, which no flow here reaches and so has no stand-in: last_load_slot
+        slot16 or missing, `检测到有耗材通过HUB...` and False; beyond box_count * 4, `无法识别到已进料耗材` and False;
+        any other slot: M109, CUT_FILAMENT_1 only with filament at the toolhead, unload last_load_slot
+        (`退料失败，请手动退料` and False if it fails), then the load."""
         vendor = self.vendor
         vendor.script("MOVE_TO_TRASH")
-        temperature = vendor.controller.task_queue_manager.current_flow_temp
         if vendor.hub_slot is not None:
-            loaded = vendor.variables().get("last_load_slot", EMPTY_SLOT) or EMPTY_SLOT
-            number = _slot_number(loaded)
-            if loaded == EMPTY_SLOT:
-                vendor.gcode.respond_info("检测到有耗材通过HUB，请手动清理")
-                return False
-            if number is None or number >= vendor.variables().get("box_count", 0) * 4:
-                vendor.gcode.respond_info("无法识别到已进料耗材")
-                return False
-            vendor.script("M109 S%s" % (temperature,))
-            if vendor.toolhead_detects():
-                vendor.script("CUT_FILAMENT_1")
-            if not vendor.stepper(loaded).extruder_unload_single_func():
-                vendor.gcode.respond_info("退料失败，请手动退料")
-                return False
-        else:
-            vendor.script("M109 S%s" % (temperature,))
+            raise HarnessGap("QIDI's BOX_LOAD with filament at the hub has no stand-in")
+        vendor.script("M109 S%s" % (vendor.controller.task_queue_manager.current_flow_temp,))
         return vendor.stepper(self.target_slot).extruder_load_single_func()
 
     def wipe(self):
@@ -702,45 +672,28 @@ class BoxAdapterV1:
 class ExternalAdapter:
     """multi_color_controller.so's external-spool steps (harness, 2026-11-23, the Max 4 and Plus 5 build b7e3bc21...;
     the Smart 5's caee552f... also sends G1 Y180 F10000 after WIPE_NOZZLE_DROP in EXT_WIPE and EXT_UNLOAD). It has no
-    flow decision or resume of its own. EXT_WIPE always returns False, so flow 6 ends paused at it after a complete
-    wipe (runtime, Smart 5, 2026-11-16 and 2026-11-17: every load logged `Step EXT_WIPE failed. Pausing flow.`)."""
+    flow decision or resume of its own.
+
+    The external-spool load's own steps (flow 6) have no stand-in, since no flow here runs them; recorded on that
+    harness run:
+    - EXT_BITE saves last_load_slot slot16 (SAVE_VARIABLE) unless it already is, and returns True with filament at
+      the toolhead; without, it responds `No filament detected. Please insert filament and try again.`, returns
+      False, and has a reactor callback send FLOW_RETRY, so the step repeats until filament comes.
+    - EXT_LOAD sends G92 E0, G1 E80 F400, M400 and returns True.
+    - EXT_WIPE sends MOVE_TO_TRASH, M109 S<flow temperature>, G92 E0, G1 E120 F300, M400, M106 S255, G92 E0,
+      G1 E-4 F1000, M104 S140, TEMPERATURE_WAIT SENSOR=extruder MAXIMUM=<flow temperature - 30>, WIPE_NOZZLE_DROP,
+      M400, M106 S0, M104 S0, M118 cleaning complete. It always returns False, so flow 6 ends paused at it after a
+      complete wipe (runtime, Smart 5, 2026-11-16 and 2026-11-17: every load logged `Step EXT_WIPE failed. Pausing
+      flow.`)."""
 
     def __init__(self, vendor):
         self.vendor = vendor
 
-    def _temperature(self):
-        return self.vendor.controller.task_queue_manager.current_flow_temp
-
-    def _after_wipe(self):
-        return "\nG1 Y180 F10000" if self.vendor.printer.printer_id == "smart5" else ""
-
     def heat(self):
-        temperature = self._temperature()
+        temperature = self.vendor.controller.task_queue_manager.current_flow_temp
         self.vendor.script("DISABLE_ALL_SENSOR\nG28 O\nMOVE_TO_TRASH\nM109 S%s\nM109 S%s\nM118 Heat up complete"
                            % (temperature, temperature))
         return True
-
-    def bite(self):
-        vendor = self.vendor
-        if vendor.variables().get("last_load_slot", EMPTY_SLOT) != EMPTY_SLOT:
-            vendor.script("SAVE_VARIABLE VARIABLE=last_load_slot VALUE='slot16'")
-        if vendor.toolhead_detects():
-            return True
-        # Without filament it says so and has a reactor callback send FLOW_RETRY, so the step repeats until it comes.
-        vendor.gcode.respond_info("No filament detected. Please insert filament and try again.")
-        return False
-
-    def load(self):
-        self.vendor.script("G92 E0\nG1 E80 F400\nM400")
-        return True
-
-    def wipe(self):
-        temperature = self._temperature()
-        self.vendor.script(
-            "MOVE_TO_TRASH\nM109 S%s\nG92 E0\nG1 E120 F300\nM400\nM106 S255\nG92 E0\nG1 E-4 F1000\nM104 S140\n"
-            "TEMPERATURE_WAIT SENSOR=extruder MAXIMUM=%s\nWIPE_NOZZLE_DROP%s\nM400\nM106 S0\nM104 S0\n"
-            "M118 cleaning complete" % (temperature, temperature - 30, self._after_wipe()))
-        return False
 
     def cut(self):
         self.vendor.script("CUT_FILAMENT_1\nMOVE_TO_TRASH\nG92 E0\nG1 E-60 F300")
@@ -748,8 +701,9 @@ class ExternalAdapter:
         return True
 
     def unload(self):
+        after_wipe = "\nG1 Y180 F10000" if self.vendor.printer.printer_id == "smart5" else ""
         self.vendor.script("M104 S0\nWIPE_NOZZLE_DROP%s\nM106 S0\nM400\n_KM_BEEP_IF_AVAILABLE BEEPS=8\n"
-                           "M118 Unload finish" % (self._after_wipe(),))
+                           "M118 Unload finish" % (after_wipe,))
         return True
 
 
@@ -763,10 +717,10 @@ class BoxAdapterV2:
 
     def init_steps_method(self, manager):
         for step in set(step for steps in FLOW_MAP.values() for step in steps):
-            manager.method_map[step] = _unrecorded_step(step)
+            manager.method_map[step] = _no_stand_in(step)
 
     def flow_decision_func(self, action, slot):
-        raise AssertionError("harness: QIDI's RS-485 adapter's flow decisions have no stand-in")
+        raise HarnessGap("QIDI's RS-485 adapter's flow decisions have no stand-in")
 
 
 class MultiColorController:
@@ -774,7 +728,8 @@ class MultiColorController:
 
     It registers INIT_RFID_READ in its constructor and sets save_vars and box_adapter, both None until then, in its
     klippy:ready handler, one of the last; INIT_RFID_READ before that raises AttributeError ('NoneType' object has
-    no attribute 'allVariables'), an internal error that shuts Klipper down (harness, 2026-11-11). Stock
+    no attribute 'allVariables'), or with only save_vars set, 'NoneType' object has no attribute 'box_count'; either
+    is an internal error that shuts Klipper down (harness, 2026-11-11). Stock
     INIT_GLOBALS runs it 5 s into the ready callbacks, so a callback before the controller's that waits 5 s let it
     run first; a Max 4 start shut down that way (issue 265).
 
@@ -818,6 +773,8 @@ class MultiColorController:
                         "last_load_slot": variables.get("last_load_slot", EMPTY_SLOT),
                         "is_tool_change": self.vendor.is_tool_change,
                         "b_endstop_state": 1 if self.vendor.hub_slot is None else 0},
+                # QIDI keeps operation.active_slot on a paused flow's target slot (harness, 2026-10-31); nothing
+                # Valve Oil reads it, so it isn't modelled.
                 "extra": {}, "operation": {"active_slot": ""}, "box_warning_info": []}
 
     def normal_complete_script(self, task):
@@ -841,7 +798,7 @@ class MultiColorController:
         slot = "slot%d" % (gcmd.get_int("SLOT"),)
         flow = self.box_adapter.flow_decision_func(action, slot)
         if flow == -1:
-            raise AssertionError(f"harness: what QIDI does with flow -1 for {action} isn't recorded")
+            raise HarnessGap(f"what QIDI does with flow -1 for {action} isn't recorded")
         self.task_queue_manager.start_flow(flow, self.normal_complete_script)
 
     def cmd_UNLOAD_FILAMENT_CONTROL(self, gcmd):
@@ -857,16 +814,16 @@ class MultiColorController:
         self.task_queue_manager.retry(gcmd.get_int("RETRY", 0))
 
     def cmd_FLOW_STOP(self, gcmd):
+        # The multi_color_controller/flow_stop endpoint makes the same call; Valve Oil's code only sends FLOW_STOP.
         self.task_queue_manager.stop()
 
     def cmd_T_MANAGER(self, gcmd):
         # T_MANAGER returns without a flow when saved enable_box is not 1 (harness, 2026-10-29). On printers without
         # a Box, and in issue #397's klippy.log (Max 4, no Box, 2026-11-23), no Box activity was logged either.
         if self.vendor.variables().get("enable_box", 0) != 1:
-            self.vendor.flows.append({"tool": gcmd.get_int("T"), "flow": "box off", "steps": []})
             return
         if not isinstance(self.box_adapter, BoxAdapterV1):
-            raise AssertionError("harness: QIDI's RS-485 tool change has no stand-in")
+            raise HarnessGap("QIDI's RS-485 tool change has no stand-in")
         self.vendor.box_extras.filament_printing_manager_box1(gcmd.get_int("T"))
 
     def cmd_BOX_PRINT_START(self, gcmd):
@@ -874,10 +831,12 @@ class MultiColorController:
         2026-11-23, multi_color_controller.so b7e3bc21... and box_extras.so 0878b5b9...).
 
         Every call saves load_retry_num 0 and retry_step None, sends CLEAR_TOOLCHANGE_STATE, saves runout_0 to
-        runout_15 0, extrude_state as the tool, and BOX_DRYING_ROLL_ENABLE 0. With a USB Box and enable_box not 1
+        runout_15 0, extrude_state as the tool (an earlier record of -1 was wrong), and BOX_DRYING_ROLL_ENABLE 0. With a USB Box and enable_box not 1
         it returns there. Otherwise BoxExtras.box_print_start resolves a missing value_t<tool> to slot<tool> and
         looks up `box_stepper slot<N>` with no default: a slot on no configured Box, slot16 included, raises
-        "Unknown config object", an internal error that shuts Klipper down. Three OrcaSlicer prints starting on T4
+        "Unknown config object", an internal error that shuts Klipper down. With another Box slot loaded, QIDI cuts
+        it first and looks the target up only then (box_extras.py line 1510 against 1532); here the lookup comes
+        first, which differs only in a cut before that shutdown, and Valve Oil turns the Box off for such a tool. Three OrcaSlicer prints starting on T4
         with one Box shut down that way (operator klippy.log, 2026-11-17). Then MOVE_TO_TRASH and M109 to the
         temperature, and from the hub, last_load_slot, and the toolhead sensor:
         - the hub clear: load the target;
@@ -901,11 +860,9 @@ class MultiColorController:
         if variables.get("enable_box", 0) != 1:
             return
         if not isinstance(self.box_adapter, BoxAdapterV1):
-            raise AssertionError("harness: QIDI's RS-485 print start has no stand-in")
+            raise HarnessGap("QIDI's RS-485 print start has no stand-in")
         target = variables.get(f"value_t{tool}") or f"slot{tool}"
         stepper = vendor.stepper(target)
-        record = {"tool": tool, "flow": "print start", "steps": []}
-        vendor.flows.append(record)
         vendor.script("MOVE_TO_TRASH\nM109 S%s" % (max(0., temperature),))
         loaded = variables.get("last_load_slot", EMPTY_SLOT) or EMPTY_SLOT
         detected = vendor.toolhead_detects()
@@ -916,18 +873,14 @@ class MultiColorController:
                 return
             if loaded == target:
                 if detected:
-                    record["steps"].append("slot_sync")
                     stepper.slot_sync(True)
                     return
             else:
                 if detected:
-                    record["steps"].append("BOX_CUT")
                     vendor.script("MOVE_TO_TRASH\nCUT_FILAMENT_1\nMOVE_TO_TRASH")
-                record["steps"].append("BOX_UNLOAD")
                 if not vendor.stepper(loaded).extruder_unload_single_func():
                     vendor.script("PAUSE")
                     return
-        record["steps"].append("BOX_LOAD")
         if not stepper.extruder_load_single_func():
             vendor.script("PAUSE")
 
@@ -947,7 +900,7 @@ class MultiColorController:
             self.vendor.script("RESUME_PRINT" if self.vendor.toolhead_detects() else "M118 Please load filament")
             return
         if not isinstance(self.box_adapter, BoxAdapterV1):
-            raise AssertionError("harness: QIDI's RS-485 Box resume (try_resume_print_box2) has no stand-in")
+            raise HarnessGap("QIDI's RS-485 Box resume (try_resume_print_box2) has no stand-in")
         self.vendor.box_extras.try_resume_print_box1()
 
 
@@ -961,7 +914,6 @@ class Vendor:
         self.is_tool_change = False
         self.exclude_tool = False
         self.tool_change = None
-        self.flows: list[dict] = []
         self.codes: list[str] = []
         self.box_extras = None
         self.controller = None
@@ -1043,8 +995,6 @@ class Vendor:
             gcode.register_command("SET_LIMIT_A", self.autofeed.cmd_SET_LIMIT_A)
         elif module == "ai_func_manager":
             printer.add_object(section, _AiFuncManager())
-        elif module == "mcu" and section.startswith("mcu mcu_box"):
-            pass
         else:
             return False
         return True
@@ -1116,10 +1066,9 @@ class _ToolChange:
     def __init__(self, printer):
         self.gcode_move = printer.lookup_object("gcode_move")
         self.next_transform = self.gcode_move.set_move_transform(self, force=True)
-        self.dropped = []
 
     def move(self, newpos, speed):
-        self.dropped.append(tuple(newpos))
+        pass
 
     def get_position(self):
         return self.next_transform.get_position()
@@ -1142,13 +1091,13 @@ class _AiFuncManager:
         pass
 
 
-def _unrecorded_step(step):
+def _no_stand_in(step):
     def run():
-        raise AssertionError(f"harness: QIDI's {step} step isn't recorded, so it has no stand-in")
+        raise HarnessGap(f"QIDI's {step} step has no stand-in")
     return run
 
 
 def _unmodelled(command):
     def cmd(gcmd):
-        raise AssertionError(f"harness: QIDI's {command} has no stand-in yet ({gcmd.get_commandline()})")
+        raise HarnessGap(f"QIDI's {command} has no stand-in yet ({gcmd.get_commandline()})")
     return cmd
