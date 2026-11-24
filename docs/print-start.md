@@ -101,6 +101,12 @@ SAVE_VARIABLE VARIABLE=vo_keep_loaded_between_prints VALUE=1
 
 This works with files you've already sliced and survives Klipper restarts.
 
+## Stopping a print
+
+When you stop or cancel a print from Fluidd, the touchscreen, or the console (`CANCEL_PRINT`), the nozzle heater turns off and the part fan runs at 100% straight away. The toolhead then parks where QIDI's cancel parks it, up to Z200 and, on the Max 4, back to Y380 (Z100 on the Smart 5). The part fan keeps running until the nozzle is below 170°C, then turns off. QIDI's cancel kept the nozzle heating at the print's temperature through the slow lift and turned it off only after parking.
+
+If a new print starts while the nozzle cools, or you turn the part fan off or change its speed, the fan is left as the print or you set it.
+
 ## Long pauses
 
 A print left paused for 72 hours is cancelled, as Fluidd's **Cancel** does, and the console says why. QIDI's pause turns the heaters off at 72 hours, and before this the print stayed paused after that. Moving the toolhead during the pause starts the count again.

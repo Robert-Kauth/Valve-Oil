@@ -723,6 +723,17 @@ patches:
         - firmwares: ["01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
           expected_normalized_sha256: "866bc3a0ab78901653e69116a13ad723f700622dd5df0d0541fcfac12099293b"
 
+    - id: pause_resume_cancel_cancel_print
+      file: "config/klipper-macros-qd/pause_resume_cancel.cfg"
+      section: "gcode_macro CANCEL_PRINT"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected_normalized_sha256: "95885860997dfc3a8dd324b63f4d2e2666ccce2a87e39a0d464965123a8fa032"
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+          expected_normalized_sha256: "56d8d42de82eb09919fbe01dea7bf5cf24938490cda4d23b61af14139aa76c67"
+        - firmwares: ["01.01.02.01", "smart5-01.01.02.01"]
+          expected_normalized_sha256: "210b1e0029cf2dcb03d6444b09f711f8548ff748f7260120fe850abebbbe4c0c"
+
     - id: filament_cut_filament_1
       file: "config/klipper-macros-qd/filament.cfg"
       section: "gcode_macro CUT_FILAMENT_1"
@@ -764,6 +775,13 @@ patches:
           expected_normalized_sha256: "2d4964dccaf400fe1c6c25a47f80db0817eeae34e276688a0b3a448f5c272a84"
         - firmwares: ["smart5-01.01.02.01"]
           expected_normalized_sha256: "40813f8a8e267e429cc52870536cd4bf7a0373c788270315d61a4f671b5da307"
+
+    - id: fans_m107
+      file: "config/klipper-macros-qd/fans.cfg"
+      section: "gcode_macro M107"
+      variants:
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
+          expected_normalized_sha256: "ae9cded70775f7b20903d3d6b43d12bfb0c7d26a6241643a38243d8e64b74885"
 
     - id: kinematics_homing_override
       file: "config/klipper-macros-qd/kinematics.cfg"

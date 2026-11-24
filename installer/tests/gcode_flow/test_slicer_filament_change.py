@@ -283,9 +283,6 @@ class CancelledPartFilamentChangeTests(checks.FlowTestCase):
                 self.assertEqual(printer.status("print_stats")["state"], "paused")
                 printer.command("CANCEL_PRINT")
                 self.assertEqual(printer.status("print_stats")["state"], "cancelled")
-                # Stock CANCEL_PRINT ends with RESET_FAN_SCALING and _RESET_LAYER_GCODE, which no config here
-                # defines (config/klipper-macros-qd/start_end.cfg); that isn't what this case is about.
-                printer.unknown_commands.clear()
                 printer.responses.lines.clear()
                 printer.vendor.caught = False
 

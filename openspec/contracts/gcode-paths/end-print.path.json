@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "path": "end_print",
-  "title": "End print and cancel on error (QIDI Max 4)",
+  "title": "End print, cancel, and cancel on error (QIDI Max 4)",
   "entrypoints": [
     {
       "name": "OrcaSlicer end",
@@ -261,6 +261,49 @@
       ],
       "must_not_include": [
         "SAVE_VARIABLE"
+      ]
+    },
+    {
+      "name": "cancel_cools_before_parking",
+      "source_macro": "CANCEL_PRINT",
+      "condition": "the operator stops the print from Fluidd, the touchscreen, or the console",
+      "slice": {
+        "start": "_KM_CHECK_IS_PRINTING"
+      },
+      "must_include_order": [
+        "_KM_CHECK_IS_PRINTING",
+        "_VO_CANCEL_COOLDOWN",
+        "_VO_CANCEL_PARK",
+        "PRINT_END",
+        "SET_GCODE_VARIABLE MACRO=_VO_CANCEL_COOLDOWN VARIABLE=holding VALUE=0",
+        "CLEAR_PAUSE",
+        "_KM_CANCEL_PRINT_BASE"
+      ],
+      "must_not_include": [
+        "M106 S0",
+        "TEMPERATURE_WAIT"
+      ]
+    },
+    {
+      "name": "cancel_cooldown_without_waiting",
+      "source_macro": "_VO_CANCEL_COOLDOWN",
+      "condition": "the nozzle is at or above 170C when the print is stopped",
+      "slice": {
+        "start": "M104 S0"
+      },
+      "must_include_order": [
+        "M104 S0",
+        "M106 S255",
+        "SET_GCODE_VARIABLE MACRO=_VO_CANCEL_COOLDOWN VARIABLE=holding VALUE=1",
+        "UPDATE_DELAYED_GCODE ID=_vo_cancel_cooldown_check DURATION=1"
+      ],
+      "must_not_include": [
+        "G0 ",
+        "G1 ",
+        "G4",
+        "M400",
+        "M109",
+        "TEMPERATURE_WAIT"
       ]
     },
     {

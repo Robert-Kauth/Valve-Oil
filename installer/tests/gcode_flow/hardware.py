@@ -41,9 +41,10 @@ class HarnessGap(AssertionError):
         GAPS.append(str(self))
 
 
-class LockBusy(Exception):
+class LockBusy(BaseException):
     """A timer reached the G-code lock while a command held it; it runs again once the lock is free, as it would wait
-    on the printer."""
+    on the printer. Not an Exception, so a timer that catches every Exception, as Klipper's delayed_gcode does, can't
+    swallow it and never run."""
 
 
 class Mutex:
@@ -139,6 +140,11 @@ class Reactor:
                 timer.waketime = timer.callback(self.now)
             except LockBusy:
                 busy.append(timer)
+                # Klipper's delayed_gcode marks itself inside its timer before it takes the lock, and would stay
+                # marked, so an UPDATE_DELAYED_GCODE before the retry would only set it to repeat.
+                owner = getattr(timer.callback, "__self__", None)
+                if hasattr(owner, "inside_timer"):
+                    owner.inside_timer = owner.repeat = False
             finally:
                 self._advancing = self.in_callback = False
 
