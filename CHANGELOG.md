@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.11.23.3
+- On the Max 4, Y no longer comes out of homing shifted toward the back. Homing backed the toolhead only 20 mm off the front after homing Y before it homed X, and that left every Y position a little further back than Klipper thought, so the toolhead couldn't reach the full 390 mm of the plate. It now backs off 30 mm.
+
 ## 26.11.23.2
 - Valve Oil UI's **Updates** screen has **Uninstall**, to uninstall Valve Oil from the browser. It runs the installed release's uninstall, as `install.sh --uninstall` does over SSH, after asking first, with **Also undo the OS optimizations** on unless you turn it off; when undoing them needs a restart, the printer restarts by itself at the end. Valve Oil UI then shows only the uninstall until it has removed itself, and leads to Fluidd, now QIDI's. It's unavailable, and says why, during a print, with a heater on, while another install or update runs, or while a QIDI firmware update hasn't finished. See [Updates](docs/valve-oil-ui.md#updates).
 - Uninstall puts QIDI's boot logo back again on printers that updated to 26.11.22.3 or 26.11.23.1 from an earlier release. It said `QIDI's boot logo could not be put back (The boot partition's backup is missing: …/tltg_optimized_system_backups/…)` and left Valve Oil's logo, because the update had moved QIDI's saved boot partition to `vo_system_backups` without updating the record of where it was. Uninstall now finds it there.
