@@ -6,7 +6,8 @@ rebuilds the library only when a source file is newer than it, so the installer 
 
 The installer builds the tree in /home/qidi/vo-klipper for the detected printer and firmware: klipper/klippy, the
 printer's files from klipper/printers/<printer>/klippy over it, Valve Oil's own Klipper modules where QIDI's tree has
-them, QIDI's compiled modules copied from the printer's ~/klipper/klippy, the prebuilt c_helper.so, and klippy/.version.
+them, QIDI's compiled modules copied from the printer's ~/klipper/klippy, the prebuilt c_helper.so, klippy/.version, and
+config/ and docs/ for Moonraker, each with only a README.
 Other compiled modules in QIDI's klippy/ are passed over when the tree has its own Python module of that name, such as a
 compiled heater_feng an earlier QIDI image left beside heater_feng.py: Valve Oil's Klipper imports only its own tree, so
 they never reach it. Any other compiled module the tree doesn't have keeps Valve Oil's Klipper from being installed or
@@ -58,6 +59,10 @@ QIDI_CHELPER = "chelper/c_helper.so"
 MODULES_REPORT = "vo_klipper_modules.json"
 CHELPER = "klippy/chelper/c_helper.so"
 VERSION_FILE = "klippy/.version"
+# Moonraker serves Klipper's config/ and docs/ to Fluidd as config_examples and docs, and warns that the path is invalid
+# when either is missing. The tree has neither upstream's examples nor its docs, so each holds a README pointing at them.
+MOONRAKER_DIRS = ("config", "docs")
+SUPPORT_FILES = ("COPYING", *(f"{name}/README.md" for name in MOONRAKER_DIRS))
 
 # The launcher klipper.service runs in place of QIDI's command (see vo_klipper_launch.py).
 LAUNCHER_OPERATION = "vo_klipper_launcher"
@@ -178,8 +183,9 @@ def plan(*, source: Path, printer: str, firmware: str, package_version: str,
             if path.is_symlink() or not path.is_file():
                 raise KlipperTreeError(f"Valve Oil's Klipper has an unexpected entry: {relative}")
             files[relative] = path
-    if (source / "COPYING").is_file():
-        files["COPYING"] = source / "COPYING"
+    for relative in SUPPORT_FILES:
+        if (source / relative).is_file():
+            files[relative] = source / relative
     for module_source, destination in extra_modules:
         if destination in files or not module_source.is_file():
             raise KlipperTreeError(f"Valve Oil's Klipper can't take the module {destination}.")
@@ -324,6 +330,8 @@ def stage(tree: Plan, target: Path, *, qidi_klippy: Path, soc: dict, chelper: Pa
     target.chmod(0o755)
     for relative, source in tree.files:
         _copy(source, target / relative)
+    for name in MOONRAKER_DIRS:
+        (target / name).mkdir(mode=0o755, exist_ok=True)
     qidi: dict[str, dict] = {}
     for relative, pin in tree.qidi_modules:
         source = qidi_klippy / relative
