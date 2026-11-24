@@ -56,10 +56,10 @@ class InstallerCompatibilityTests(unittest.TestCase):
         ).hexdigest()
         self.assertEqual(self.envelope.schema_version, 2)
         self.assertEqual(len(self.envelope.allowed_patch_targets), 37)
-        self.assertEqual(len(self.envelope.source_patches), 19)
+        self.assertEqual(len(self.envelope.source_patches), 25)
         self.assertEqual(
             digest,
-            "f3c18db7b1e7f7b3a3caec6dfe8c5d6f28bcc5bbd2854347991924f1baa514e2",
+            "dcfa471a9eb949554bab258bd7f955faba3b37a74319b2b51f4329df3dbb5801",
         )
 
     def test_manifest_rejects_printers_that_share_an_identity(self) -> None:
@@ -226,12 +226,15 @@ class InstallerCompatibilityTests(unittest.TestCase):
         with self.assertRaises(CompatibilityValidationError):
             validate_manifest_compatibility(self.manifest, missing_target)
 
-        needed = self.manifest.install.source_patches[0].variants[0].desired_sha256
+        box_patch = next(
+            patch for patch in self.manifest.install.source_patches
+            if patch.id == "qidi_box_heater_fan"
+        )
         missing_source = replace(
             self.envelope,
             source_patches=tuple(
                 item for item in self.envelope.source_patches
-                if item.desired_sha256 != needed
+                if item.id != box_patch.id
             ),
         )
         with self.assertRaises(CompatibilityValidationError):

@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.11.24.1
+- USB QIDI Box circulation now uses temperature hysteresis, reports both heater-outlet temperatures, and saves settings for each physical Box. The default threshold remains 35 °C; both fans run at full speed while heating, with no manual protection override. Valve Oil UI shows commanded fan speeds, the reason for circulation, and settings with a warning about raising the threshold. See [automatic circulation](docs/qidi-box.md#automatic-circulation).
+
 ## 26.11.23.3
 - On the Max 4, Y no longer comes out of homing shifted toward the back. Homing backed the toolhead only 20 mm off the front after homing Y before it homed X, and that left every Y position a little further back than Klipper thought, so the toolhead couldn't reach the full 390 mm of the plate. It now backs off 30 mm.
 - On the Max 4 and Plus 5, print start homes Z again after it levels the bed (`Z_TILT_ADJUST`) and before it meshes or loads a saved mesh, as Klipper's documentation says to. Levelling moves the Z motors against each other, so Z=0 was no longer where it had homed. Valve Oil's re-home had been there since March but never ran: Klipper reads a command name only up to the end of its first number, so it ran `_VO_G29_HOME_Z_OR_FULL` as `_VO_G29`, which doesn't exist, and QIDI's Klipper skips unknown commands without a word. A fresh mesh measured from that Z=0 made up for it, which is why first layers came out right; a saved mesh loaded with `vo_start_bed_mesh_profile` didn't. Print start takes a few seconds longer.

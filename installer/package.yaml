@@ -7,7 +7,7 @@ package:
   # moves to this id (earlier_names).
   id: valve-oil
   display_name: Valve Oil
-  version: "26.11.23.3"
+  version: "26.11.24.1"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 # target_firmware is the QIDI firmware this release brings the printer to: its newest listed firmware, downloaded only
 # from this project's mirror release and checked against the archive's size and SHA-256. Every other listed firmware
@@ -290,6 +290,9 @@ install:
     - id: box_dry_guard
       source: "klipper/extras/box_dry_guard.py"
       destination: "klippy/extras/vo_box_dry_guard.py"
+    - id: box_circulation
+      source: "klipper/extras/box_circulation.py"
+      destination: "klippy/extras/vo_box_circulation.py"
     - id: box_rfid
       source: "klipper/extras/box_rfid.py"
       destination: "klippy/extras/vo_box_rfid.py"
@@ -383,6 +386,29 @@ install:
           source: "klipper/qidi/homing-smart5.py"
           expected_sha256: "9c2d0a479f0fc43e1ec2234e1357e6a19b9d9dadff7fcbd3f85a0d2bf3f9b00f"
           desired_sha256: "0419d86046b771bdb482a29f862e59518e03dcfa7b8af150b9003190ef474bf3"
+
+    - id: qidi_box_heater_fan
+      source: "klipper/qidi/box_heater_fan.py"
+      destination: "klippy/extras/box_heater_fan.py"
+      variants:
+        - firmware: "01.01.06.03"
+          expected_sha256: "8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755"
+          desired_sha256: "5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206"
+        - firmware: "01.01.06.04"
+          expected_sha256: "8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755"
+          desired_sha256: "5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206"
+        - firmware: "01.01.06.05"
+          expected_sha256: "8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755"
+          desired_sha256: "5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206"
+        - firmware: "01.01.07.01"
+          expected_sha256: "8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755"
+          desired_sha256: "5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206"
+        - firmware: "01.01.02.01"
+          expected_sha256: "8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755"
+          desired_sha256: "5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206"
+        - firmware: "smart5-01.01.02.01"
+          expected_sha256: "8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755"
+          desired_sha256: "5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206"
 
 patches:
   set_options:

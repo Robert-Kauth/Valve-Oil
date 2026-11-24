@@ -30,6 +30,20 @@ Box heater targets can be set from Fluidd, up to 65 °C, the Box's advertised ma
 
 Each Box's processor temperature shows in Fluidd's temperature card as **Box1 MCU** through **Box4 MCU**. These sensors have no limits, so they never stop a print.
 
+### Automatic circulation
+
+In Valve Oil UI, each USB Box card shows the commanded speeds of both circulation fans and why they are running. These are not measured RPM: the stock fans do not report their speed. The Box board fan is controlled separately.
+
+Both circulation fans run at full speed while heating. After heating stops, air-temperature hysteresis and the run-on period determine when they stop. Motor activity also keeps circulation running.
+
+The default start threshold remains **35 °C**. The stop threshold is lower by the configured hysteresis; after reaching it, the fans retain the stock **60-second** run-on. This keeps small temperature fluctuations from repeatedly switching the fans on and off. If the Box cannot cool to the stop threshold, circulation continues: there is no forced-stop timer.
+
+Both heater-outlet temperatures are reported for observation; valid outlet readings do not set circulation thresholds or prevent settings changes. While Klipper is running, invalid or stale readings turn heating off and keep circulation active. During a Klipper shutdown, its normal output shutdown rules apply; the module does not bypass them.
+
+Under Box settings → **Air circulation**, set a threshold of **35–45 °C** and hysteresis of **0.2–2 °C** (default 0.5 °C). Raising the threshold increases the risk of filament softening; the slot's material does not select a threshold automatically. Settings can be changed only when printing, drying, heating, and motor activity are inactive and sensor readings are valid. Ordinary air-temperature circulation does not block changes; changing the threshold does not shorten the remaining run-on. There is no manual protection override.
+
+Settings belong to the physical USB Box, not its number: renumbering Boxes or connecting a different one does not transfer a raised threshold to another Box. Regenerating `box.cfg` when the connected Boxes change does not reset the settings. RS-485 Boxes are unaffected.
+
 ### Box heater switching speed
 
 To hold its target, the Box heater switches on and off 10 times a second, Klipper's default. If that makes lights on the same circuit flicker, it can switch faster, as `pwm_cycle_time` does for the bed and chamber heaters. QIDI's Box code takes no cycle time from `box.cfg`. In seconds, for every USB Box:

@@ -108,9 +108,10 @@ atexit.register(_cleanup_temp_roots)
 def copy_base_runtime(*, homing_patched: bool = False) -> Path:
     """A Max 4 01.01.06.03 printer_data, in a home of its own where the installer keeps its caches beside it.
 
-    homing_patched: Klipper's homing.py already carries Valve Oil's patch, so an install has no source patch to apply
-    or restore. For tests about other parts of an install: with QIDI's homing.py every state write carries its
-    40 KB original, which makes up most of an install's time here. test_source_patch_lifecycle_matrix covers the patch.
+    homing_patched: Klipper's homing.py already carries Valve Oil's patch, so an install has no homing source patch
+    to apply or restore. For tests about other parts of an install: with QIDI's homing.py every state write carries
+    its 40 KB original, which makes up most of an install's time here. test_source_patch_lifecycle_matrix covers the
+    source patches.
     """
     temp_root = temp_path("installer-runtime-") / "printer_data"
     shutil.copytree(BASE_RUNTIME_FIXTURE / "config", temp_root / "config")
@@ -120,6 +121,11 @@ def copy_base_runtime(*, homing_patched: bool = False) -> Path:
     homing = (REPO_ROOT / "installer/klipper/qidi/homing.py").read_bytes() if homing_patched else (
         homing_fixture_bytes("01.01.06.03"))
     (target / "homing.py").write_bytes(homing)
+    (target / "box_heater_fan.py").write_bytes((
+        REPO_ROOT
+        / "installer/klipper/qidi/stock"
+        / "box_heater_fan-8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755.py"
+    ).read_bytes())
     return temp_root
 
 

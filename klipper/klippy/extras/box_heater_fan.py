@@ -1,3 +1,5 @@
+import math
+
 from . import fan
 
 PIN_MIN_TIME = 0.100
@@ -22,6 +24,7 @@ class BoxHeaterFan:
         self.heater_names = config.getlist("heater", ("extruder",))
         self.last_on = self.idle_timeout
         self.last_speed = 0.
+        self.controller = None
     def handle_connect(self):
         # Heater lookup
         pheaters = self.printer.lookup_object('heaters')
@@ -37,8 +40,23 @@ class BoxHeaterFan:
                  "%s (valid steppers are: %s)"
                 % (self.stepper_names, ", ".join(all_steppers)))
     def handle_ready(self):
+        if self.controller is not None:
+            return
         reactor = self.printer.get_reactor()
         reactor.register_timer(self.callback, reactor.monotonic()+PIN_MIN_TIME)
+    def attach_controller(self, controller):
+        if self.controller is not None:
+            raise self.printer.config_error(
+                "Box heater fan already has a circulation controller")
+        self.controller = controller
+    def set_controller_speed(self, controller, speed):
+        if controller is not self.controller:
+            raise self.printer.config_error(
+                "Box heater fan circulation controller does not own this output")
+        if not math.isfinite(speed) or speed < 0. or speed > 1.:
+            raise self.printer.config_error(
+                "Box heater fan circulation speed must be between 0 and 1")
+        self._set_speed(speed)
     def get_status(self, eventtime):
         return self.fan.get_status(eventtime)
     def callback(self, eventtime):
@@ -59,12 +77,15 @@ class BoxHeaterFan:
         elif self.last_on < self.idle_timeout:
             speed = self.idle_speed
             self.last_on += 1
-        if speed != self.last_speed:
-            self.last_speed = speed
-            curtime = self.printer.get_reactor().monotonic()
-            print_time = self.fan.get_mcu().estimated_print_time(curtime)
-            self.fan.set_speed(print_time + PIN_MIN_TIME, speed)
+        self._set_speed(speed)
         return eventtime + 1.
+    def _set_speed(self, speed):
+        if speed == self.last_speed:
+            return
+        self.last_speed = speed
+        curtime = self.printer.get_reactor().monotonic()
+        print_time = self.fan.get_mcu().estimated_print_time(curtime)
+        self.fan.set_speed(print_time + PIN_MIN_TIME, speed)
 
 def load_config_prefix(config):
     return BoxHeaterFan(config)

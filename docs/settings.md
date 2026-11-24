@@ -25,6 +25,12 @@ Before 26.11.18.2 these were named `tltg_` instead of `vo_`, for example `tltg_k
 | [`vo_box_spool_roll`](qidi-box.md#turning-spools-while-the-box-heats) | `0` | `1` turns the spools of empty QIDI Box slots every 5 minutes while the Box heater is on. |
 | [`vo_box_heater_pwm_cycle_time`](qidi-box.md#box-heater-switching-speed) | `0.1` | Seconds per on-off cycle of each USB QIDI Box heater, from `0.01` to `0.1`. Shorter can stop lights flickering. Takes effect when Klipper next restarts. |
 
+## USB Box circulation settings
+
+`VO_BOX_CIRCULATION BOX=1 THRESHOLD=35 HYSTERESIS=0.5` sets the start temperature and the difference between the start and stop temperatures, in °C. Allowed ranges are `THRESHOLD=35..45` and `HYSTERESIS=0.2..2`. The command checks the printer's current state and saves settings only when heating, printing, drying, and motor activity are inactive and sensor readings are valid. Changing the threshold does not shorten the remaining run-on. This example saves the defaults; a higher threshold is not recommended for all materials.
+
+Settings are stored in `vo_box_circulation` in `saved_variables.cfg`, keyed by a hash of each Box's persistent USB identifier. Use the command or Box settings in Valve Oil UI rather than editing `box.cfg`. Values take effect as soon as the save succeeds; no restart is needed. See [automatic circulation](qidi-box.md#automatic-circulation).
+
 ## Commands
 
 Before 26.11.18.2 these were named `TLTG_` instead of `VO_`, and several print macros `OPTIMIZED_`. The earlier names still work for now: each runs the new command and says what it's called now. The `OPTIMIZED_` macros the slicer packs call kept their names.
