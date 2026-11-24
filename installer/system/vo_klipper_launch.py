@@ -64,13 +64,11 @@ def _safe(relative):
 
 
 def _same(path, record):
-    """Whether the file is the one recorded: by size and time, or by content when its time changed."""
+    """Whether the regular file has the size and SHA-256 recorded in the manifest."""
     try:
         status = os.lstat(path)
         if not stat.S_ISREG(status.st_mode) or status.st_size != record["size"]:
             return False
-        if status.st_mtime_ns == record["mtime_ns"]:
-            return True
         digest = hashlib.sha256()
         with open(path, "rb") as handle:
             for chunk in iter(lambda: handle.read(1 << 20), b""):
