@@ -23,12 +23,15 @@ NEWEST_STOCK = {
     "plus5": REPO_ROOT / "installer/stock/qidi-plus5-defaults/firmwares/01.01.02.01",
     "smart5": REPO_ROOT / "installer/stock/qidi-smart5-defaults/firmwares/01.01.02.01",
 }
-# Behind the bed some printers' toolheads fit only around the chute: (rear Y, lowest X, highest X).
-REAR_CHUTE_WINDOW = {
-    # Behind Y320 the Plus 5's toolhead can only be between X75 and X231 (the Max 4's rear is open in X).
-    "plus5": (320, 75, 231),
+# Toward the back, each printer's toolhead fits only between narrowing X limits: (behind Y, lowest X, highest X).
+REAR_LIMITS = {
+    # Behind Y384 the Max 4's toolhead clears the left motor mount from X54 and the right one up to X337;
+    # behind Y399 its cable reaches the cable chain mount past X189.
+    "max4": ((384, 54, 337), (399, 54, 189)),
+    # Behind Y320 the Plus 5's toolhead can only be between X75 and X231.
+    "plus5": ((320, 75, 231),),
     # Behind the Smart 5's bed QIDI moves only between X66 and X100.
-    "smart5": (180, 66, 100),
+    "smart5": ((180, 66, 100),),
 }
 TRAVEL = {"plus5": {"X": (-7, 326), "Y": (-5, 340)}, "smart5": {"X": (-2, 185), "Y": (-4, 200)}}
 
@@ -147,12 +150,12 @@ class MacroContractTests(unittest.TestCase):
             low, high = limits[axis.upper()]
             self.assertTrue(low <= float(value) <= high, f"{axis} {value}")
 
-    def test_rear_moves_stay_inside_the_chute_x_window(self):
-        for printer, window in REAR_CHUTE_WINDOW.items():
+    def test_rear_moves_stay_inside_the_rear_x_limits(self):
+        for printer, limits in REAR_LIMITS.items():
             with self.subTest(printer=printer):
-                self._assert_rear_moves_inside(printer, *window)
+                self._assert_rear_moves_inside(printer, limits)
 
-    def _assert_rear_moves_inside(self, printer, rear_y, x_low, x_high):
+    def _assert_rear_moves_inside(self, printer, limits):
         globals_cfg = (NEWEST_STOCK[printer] / "config/klipper-macros-qd/globals.cfg").read_text(encoding="utf-8")
         km = types.SimpleNamespace(**{
             name: float(re.search(rf"^variable_{name}: *([\d.]+)", globals_cfg, re.M).group(1))
@@ -179,11 +182,13 @@ class MacroContractTests(unittest.TestCase):
 
         def check(name, start, end):
             (x0, y0), (x1, y1) = start, end
-            points = [(x, y) for x, y in (start, end) if y > rear_y]
-            if (y0 > rear_y) != (y1 > rear_y):
-                points.append((x0 + (x1 - x0) * (rear_y - y0) / (y1 - y0), rear_y))
-            for x, y in points:
-                self.assertTrue(x_low <= x <= x_high, f"{name}: X{x:g} Y{y:g} on {start} -> {end}")
+            for rear_y, x_low, x_high in limits:
+                # X changes linearly along the part of the move behind rear_y, so its ends are its extremes.
+                points = [(x, y) for x, y in (start, end) if y > rear_y]
+                if (y0 > rear_y) != (y1 > rear_y):
+                    points.append((x0 + (x1 - x0) * (rear_y - y0) / (y1 - y0), rear_y))
+                for x, y in points:
+                    self.assertTrue(x_low <= x <= x_high, f"{name}: X{x:g} Y{y:g} on {start} -> {end}")
 
         def branch(condition, position):
             # Conditions on the toolhead position are evaluated; any other condition runs its block.
@@ -241,7 +246,7 @@ class MacroContractTests(unittest.TestCase):
 
         # Unknown, mid-bed, parked in the chute, and at the wipe's far end.
         center = km.print_max[0] / 2
-        wipe_end = {"plus5": (140.0, km.park_y), "smart5": (66.0, km.park_y)}[printer]
+        wipe_end = {"max4": (180.0, km.park_y), "plus5": (140.0, km.park_y), "smart5": (66.0, km.park_y)}[printer]
         starts = (None, (center, center), (km.park_x, km.park_y), wipe_end)
         for name in bodies:
             for start in starts:
