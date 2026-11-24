@@ -109,6 +109,7 @@ const SUBSCRIBE = [
   'multi_color_controller',
   'box_stepper ',
   'box_heater_fan ',
+  'vo_box_circulation',
   'aht20_f ',
   'vo_',
   'mcu',

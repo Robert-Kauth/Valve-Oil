@@ -92,6 +92,37 @@
     "vo_box_spool_roll_help": "While the Box heater is on, including during a print, each empty slot turns its spool every 5 minutes. Slots with filament fed never turn.",
     "no_reload_groups": "No loaded slots share the same filament, vendor, and color, so none can stand in for another."
   },
+  "circulation": {
+    "title": "Air circulation",
+    "advanced": "Advanced",
+    "commanded_speed": "Commanded fan speed",
+    "fans": "A {{a}} · B {{b}}",
+    "reason": "Reason: {{reason}}",
+    "outlets": "Outlets {{a}} · {{b}}",
+    "run_on_remaining": "{{seconds}} s remaining",
+    "sensor_fault": "Sensor fault: {{error}}",
+    "unknown_reason": "Unknown",
+    "reasons": {
+      "off": "Off",
+      "heating": "Heating",
+      "temperature": "Temperature",
+      "run_on": "Run-on",
+      "sensor_fault": "Sensor fault",
+      "motor": "Motor"
+    },
+    "dialog_title": "Box {{n}} circulation",
+    "threshold": "Start threshold · °C",
+    "hysteresis": "Hysteresis · °C",
+    "threshold_risk": "A higher threshold increases the risk of filament softening.",
+    "range": "Threshold 35–45 °C; hysteresis 0.2–2 °C.",
+    "unavailable": "Circulation settings aren't available.",
+    "blocked_printing": "Circulation settings are unavailable while printing or paused.",
+    "blocked_heating": "Turn off every Box heater or drying run first.",
+    "blocked_sensor_fault": "Fix the sensor fault first.",
+    "blocked_circulating": "Wait for the heater outlets to cool and the Box motors to stop.",
+    "settings_error": "Settings error: {{error}}",
+    "refresh_failed": "Couldn't refresh circulation settings."
+  },
   "motion": {
     "title": "Load/unload motion",
     "labels": {

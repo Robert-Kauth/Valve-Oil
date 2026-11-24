@@ -151,6 +151,10 @@ function baseStatus() {
     'heater_generic heater_box2': { temperature: 26, target: 0, power: 0 },
     'aht20_f heater_box1': { temperature: 31, humidity: 14 },
     'aht20_f heater_box2': { temperature: 26, humidity: 43 },
+    'box_heater_fan heater_fan_a_box1': { speed: 0, rpm: 0 },
+    'box_heater_fan heater_fan_b_box1': { speed: 0, rpm: 0 },
+    'box_heater_fan heater_fan_a_box2': { speed: 0, rpm: 0 },
+    'box_heater_fan heater_fan_b_box2': { speed: 0, rpm: 0 },
     fan: { speed: 0 },
     'fan_generic chamber_circulation_fan': { speed: 0 },
     'output_pin caselight': { value: 1 },
@@ -190,6 +194,9 @@ function baseStatus() {
       settings: { hub_speed: null, fast_length: 950, fast_speed_1: 85, fast_speed_2: 65, approach_speed: 15, load_accel: null, unload_speed_1: 65, unload_speed_2: 85, unload_accel: null, unload_extruder_length: 55, park_speed: null },
       problems: [],
       slots: {},
+    },
+    vo_box_circulation: {
+      boxes: Object.fromEntries([1, 2].map((box) => [box, { threshold: 35, release_temperature: 34.5, hysteresis: 0.5, reason: 'off', run_on_remaining: 0, outlet_a: null, outlet_b: null, sensor_fault: null, settings_error: null, configurable: true }])),
     },
     vo_printer_warnings: { warnings: [] },
     vo_klipper_health: { timers: 61, removed_timers: 0, main_thread_load: 0.22, timer_delay: 0.001 },
@@ -425,6 +432,18 @@ async function gcode(script) {
         set('vo_box_feed_motion', { settings: s })
       }
       pushConsole('// Box motion settings saved.')
+    } else if (C === 'VO_BOX_CIRCULATION') {
+      const box = Number(p.BOX)
+      const threshold = Number(p.THRESHOLD)
+      const hysteresis = Number(p.HYSTERESIS)
+      const circulation = state.status.vo_box_circulation?.boxes?.[box]
+      const boxes = state.status.vo_box_circulation?.boxes ?? {}
+      const heating = Object.entries(state.status).some(([name, value]) => name.startsWith('heater_generic heater_box') && (value?.target > 0 || value?.power > 0)) || state.status.box_extras?.boxes?.some((value) => value.dry_state)
+      if (!circulation?.configurable) throw rpcError(`Box ${p.BOX} circulation settings are unavailable`)
+      if (['printing', 'paused', 'extracting'].includes(state.status.print_stats.state) || heating || Object.values(boxes).some((value) => value.sensor_fault) || !['off', 'temperature', 'run_on'].includes(circulation.reason)) throw rpcError('Box circulation settings are not safe to change now')
+      if (!Number.isFinite(threshold) || threshold < 35 || threshold > 45 || !Number.isFinite(hysteresis) || hysteresis < 0.2 || hysteresis > 2) throw rpcError('THRESHOLD must be 35–45 and HYSTERESIS must be 0.2–2')
+      set('vo_box_circulation', { boxes: { ...boxes, [box]: { ...circulation, threshold, release_temperature: threshold - hysteresis, hysteresis } } })
+      pushConsole('// Box circulation settings saved.')
     } else if (C === 'VO_CUT_FILAMENT') {
       await new Promise((r) => setTimeout(r, 2000))
       pushConsole('// Filament cut.')

@@ -17,6 +17,24 @@ export type BoxClimate = { box: number; humidity: number | null; temperature: nu
 /** Valve Oil's turn spools while heating (vo_box_spool_roll): on, and the slot it's turning now. */
 export type SpoolRoll = { enabled: boolean; rolling: string | null }
 
+/** Valve Oil's two-fan circulation state for one USB Box. Fan speeds are commanded PWM, not measured RPM. */
+export type BoxCirculation = {
+  box: number
+  speedA: number | null
+  speedB: number | null
+  manager: boolean
+  threshold: number | null
+  releaseTemperature: number | null
+  hysteresis: number | null
+  reason: string | null
+  runOnRemaining: number
+  outletA: number | null
+  outletB: number | null
+  sensorFault: string | null
+  settingsError: string | null
+  configurable: boolean
+}
+
 export type BoxState = {
   boxCount: number
   hasController: boolean
@@ -71,9 +89,11 @@ export type BoxState = {
   /** The failed step's console error, then QIDI's Box warnings. */
   problems: string[]
   spoolRoll: SpoolRoll | null
+  circulation: BoxCirculation[]
 }
 
 const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : null)
+const stringValue = (v: unknown) => (typeof v === 'string' && v ? v : null)
 
 export function deriveBox(s: PrinterState, lists: Lists): BoxState {
   const st = s.status
@@ -99,6 +119,9 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
   }
 
   const climates: BoxClimate[] = []
+  const circulation: BoxCirculation[] = []
+  const circulationLive = s.conn === 'open' && s.klippy === 'ready'
+  const managedCirculation = st.vo_box_circulation?.boxes
   for (let b = 1; b <= boxCount; b++) {
     const aht = st[`aht20_f heater_box${b}`]
     const heaterName = `heater_generic heater_box${b}`
@@ -111,6 +134,25 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
       target: num(heater?.target),
       heater: heater ? heaterName : null,
       drying: Number(dry?.dry_state) === 1,
+    })
+    const a = st[`box_heater_fan heater_fan_a_box${b}`]
+    const fanB = st[`box_heater_fan heater_fan_b_box${b}`]
+    const managed = managedCirculation && typeof managedCirculation === 'object' ? (managedCirculation as Record<string, Record<string, unknown>>)[String(b)] : null
+    circulation.push({
+      box: b,
+      speedA: circulationLive ? num(a?.speed) : null,
+      speedB: circulationLive ? num(fanB?.speed) : null,
+      manager: !!managed,
+      threshold: num(managed?.threshold),
+      releaseTemperature: num(managed?.release_temperature),
+      hysteresis: num(managed?.hysteresis),
+      reason: circulationLive ? stringValue(managed?.reason) : null,
+      runOnRemaining: Math.max(0, num(managed?.run_on_remaining) ?? 0),
+      outletA: circulationLive ? num(managed?.outlet_a) : null,
+      outletB: circulationLive ? num(managed?.outlet_b) : null,
+      sensorFault: stringValue(managed?.sensor_fault),
+      settingsError: stringValue(managed?.settings_error),
+      configurable: circulationLive && managed?.configurable === true,
     })
   }
 
@@ -173,6 +215,7 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
     flowPaused,
     problems: [...new Set([...(lastError ? [lastError.code ? `${lastError.message} (${lastError.code})` : lastError.message] : []), ...warnings])],
     spoolRoll: roll ? { enabled: roll.enabled === true, rolling: typeof roll.rolling === 'string' ? roll.rolling : null } : null,
+    circulation,
   }
 }
 
@@ -271,6 +314,32 @@ export const boxCommands = {
   // TIME is whole hours.
   dry: (boxNumber: number, temp: number, hours: number) => gcode`BOX_START_DRYING BOX=${boxNumber} TEMP=${temp} TIME=${hours}`,
   stopDry: (boxNumber: number) => gcode`BOX_STOP_DRYING BOX=${boxNumber}`,
+  circulation: (boxNumber: number, threshold: number, hysteresis: number) => gcode`VO_BOX_CIRCULATION BOX=${boxNumber} THRESHOLD=${threshold} HYSTERESIS=${hysteresis}`,
+}
+
+export const CIRCULATION_THRESHOLD = { min: 35, max: 45, default: 35 }
+export const CIRCULATION_HYSTERESIS = { min: 0.2, max: 2, default: 0.5 }
+
+/** The backend is authoritative; defaults only make a missing or invalid published setting editable safely. */
+export function circulationSettingValues(circulation: Pick<BoxCirculation, 'threshold' | 'hysteresis'>) {
+  const value = (v: number | null, limits: { min: number; max: number; default: number }) => v != null && v >= limits.min && v <= limits.max ? v : limits.default
+  return { threshold: value(circulation.threshold, CIRCULATION_THRESHOLD), hysteresis: value(circulation.hysteresis, CIRCULATION_HYSTERESIS) }
+}
+
+export function circulationSettingsValid(threshold: number, hysteresis: number) {
+  return Number.isFinite(threshold) && threshold >= CIRCULATION_THRESHOLD.min && threshold <= CIRCULATION_THRESHOLD.max && Number.isFinite(hysteresis) && hysteresis >= CIRCULATION_HYSTERESIS.min && hysteresis <= CIRCULATION_HYSTERESIS.max
+}
+
+export type CirculationSettingsBlocker = 'unavailable' | 'printing' | 'heating' | 'sensor_fault' | 'circulating' | null
+
+/** Match the backend's safety gate before sending, while still letting its rejection settle stale dialogs. */
+export function circulationSettingsBlocker(box: Pick<BoxState, 'printState' | 'climates'>, circulation: BoxCirculation): CirculationSettingsBlocker {
+  if (!circulation.manager || !circulation.configurable) return 'unavailable'
+  if (['printing', 'paused', 'extracting'].includes(box.printState.toLowerCase())) return 'printing'
+  if (box.climates.some((c) => c.drying || (c.target ?? 0) > 0)) return 'heating'
+  if (circulation.sensorFault) return 'sensor_fault'
+  if (!circulation.reason || !['off', 'temperature', 'run_on'].includes(circulation.reason)) return 'circulating'
+  return null
 }
 
 /** Box slot indexes of a Box: Box 1 holds slots 0-3. */

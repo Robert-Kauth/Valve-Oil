@@ -1,11 +1,13 @@
 // Whether prints use the Box, and QIDI's Box settings, saved variables its Box modules read, set to 1 or 0 as QIDI's Fluidd did; Valve Oil's turn
 // spools while heating when its module is installed; and the printer's own load and unload motion. Detection on insertion
 // goes through QIDI's own command where the printer has it, so RS-485 Boxes get it too (boxCommands.setting).
+import { useState } from 'react'
 import { Dialog, Toggle } from '../ui'
 import { attempt } from '../toast'
 import { boxCommands, type BoxSetting, type BoxState } from '../../state/box'
 import { runGcode, usePrinter } from '../../state/printer'
 import { BoxMotion } from './BoxMotion'
+import { CirculationSettingsDialog } from './CirculationSettingsDialog'
 import { t, type MessageKey } from '../../i18n'
 
 // Each setting's title and help are box.settings.<key> and box.settings.<key>_help.
@@ -21,6 +23,7 @@ const SPOOL_ROLL: BoxSetting = 'vo_box_spool_roll'
 const row = (key: BoxSetting, value: boolean) => ({ key, title: t(`box.settings.${key}` as MessageKey), help: t(`box.settings.${key}_help` as MessageKey), value })
 
 export function BoxSettingsDialog({ box, open, onClose }: { box: BoxState; open: boolean; onClose: () => void }) {
+  const [circulation, setCirculation] = useState<number | null>(null)
   const variables = usePrinter((s) => s.status.save_variables?.variables ?? {})
   const ready = usePrinter((s) => s.klippy === 'ready')
   const hasMotion = usePrinter((s) => s.status.vo_box_feed_motion != null)
@@ -30,24 +33,39 @@ export function BoxSettingsDialog({ box, open, onClose }: { box: BoxState; open:
     ...(box.spoolRoll ? [row(SPOOL_ROLL, box.spoolRoll.enabled)] : []),
   ]
   return (
-    <Dialog open={open} onClose={onClose} title={t('box.screen.settings')} size="wide">
-      <div className="grid">
-        {rows.map((r, i) => (
-          <label key={r.key} className={`flex items-center gap-4 py-3 ${i > 0 ? 'border-t border-line' : 'pt-0'}`}>
-            <div className="min-w-0 flex-1">
-              <div className="font-semibold">{r.title}</div>
-              <div className="text-[12.5px] text-ink-3">{r.help}</div>
-            </div>
-            <Toggle checked={r.value} label={r.title} disabled={!ready} onChange={(v) => attempt(() => runGcode(boxCommands.setting(r.key, v, box)))} />
-          </label>
-        ))}
-        {box.autoReload && Object.keys(box.reloadGroups).length === 0 && <div className="-mt-1 pb-3 text-[12.5px] text-ink-3">{t('box.settings.no_reload_groups')}</div>}
-      </div>
-      {hasMotion && (
-        <div className="mt-1 border-t border-line pt-4">
-          <BoxMotion />
+    <>
+      <Dialog open={open} onClose={onClose} title={t('box.screen.settings')} size="wide">
+        <div className="grid">
+          {rows.map((r, i) => (
+            <label key={r.key} className={`flex items-center gap-4 py-3 ${i > 0 ? 'border-t border-line' : 'pt-0'}`}>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold">{r.title}</div>
+                <div className="text-[12.5px] text-ink-3">{r.help}</div>
+              </div>
+              <Toggle checked={r.value} label={r.title} disabled={!ready} onChange={(v) => attempt(() => runGcode(boxCommands.setting(r.key, v, box)))} />
+            </label>
+          ))}
+          {box.autoReload && Object.keys(box.reloadGroups).length === 0 && <div className="-mt-1 pb-3 text-[12.5px] text-ink-3">{t('box.settings.no_reload_groups')}</div>}
         </div>
-      )}
-    </Dialog>
+        {box.circulation.some((c) => c.manager) && (
+          <div className="border-t border-line pt-4">
+            <div className="mb-2 text-[12.5px] font-semibold text-ink-2">{t('box.circulation.title')}</div>
+            <div className="flex flex-wrap gap-2">
+              {box.circulation.filter((c) => c.manager).map((c) => (
+                <button key={c.box} className="btn btn-sm" disabled={!c.configurable} onClick={() => setCirculation(c.box)}>
+                  {t('box.box_n', { n: c.box })} · {t('box.circulation.advanced')}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {hasMotion && (
+          <div className="mt-1 border-t border-line pt-4">
+            <BoxMotion />
+          </div>
+        )}
+      </Dialog>
+      {circulation != null && <CirculationSettingsDialog box={box} boxNumber={circulation} onClose={() => setCirculation(null)} />}
+    </>
   )
 }
