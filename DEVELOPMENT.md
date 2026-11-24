@@ -27,7 +27,9 @@ Run both again to pick up newer dev changes.
 ## Working on the code
 
 - **Try a local build on your printer:** `scripts/build_copy_dry_run.sh --host <printer-ip>` builds a dev bundle from your checkout, copies it over, and runs a dry run. Options: `--user <name>` (default `qidi`), `--password '<password>'` (needs `sshpass`), `--debug`.
-- **Before opening a PR,** run the checks for what you touched, listed under **Validation** in [AGENTS.md](AGENTS.md#validation).
+- **Before opening a PR,** run the checks for what you touched, listed under **Checks** in [AGENTS.md](AGENTS.md#checks).
+- **Docs:** the [README](README.md) is the operator's landing page: install, then a line per feature linking to [`docs/`](docs/README.md), where the detail goes. Describe behavior for every supported printer, and name the printer a position, firmware version, piece of hardware, or measurement applies to. Adding a printer: [community-supported printers](docs/community-printers.md).
+- **Run slicer G-code without a printer:** `installer/tests/gcode_flow/` installs Valve Oil into each printer's stock config and runs the slicer packs' G-code through Klipper's own G-code and macro code, with stand-ins for the hardware and QIDI's Box code, then checks where the printer moved, purged, and cut. `python3 scripts/run_installer_core_tests.py` runs it with the other tests.
 - **Trace QIDI's Box code:** `scripts/box_trace/box_trace.sh install qidi@<printer-ip>` adds a log-only tracer that records each QIDI Box call, the settings it reads, its G-code, and the Box motor positions during loads and unloads. `fetch` copies the log back and `remove` takes the tracer off. See [`scripts/box_trace/README.md`](scripts/box_trace/README.md).
 - **THR firmware:** building and checking the FIFO fix is in [`firmware/README.md`](firmware/README.md). It never flashes a printer.
 - **Fake printer:** `VO_PRINTER_DATA_ROOT`, `VO_FIRMWARE_MANIFEST`, and `VO_MOONRAKER_URL` point the installer at a fixture directory instead of a live printer, as `installer/tests/helpers.py` and `scripts/smoke_test_installer_bundle.py` do.

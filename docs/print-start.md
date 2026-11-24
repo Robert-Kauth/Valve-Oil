@@ -12,7 +12,7 @@ Prints sliced with this project's [start G-code](install.md#slicer-start-g-code)
 - **Filament stays loaded** between prints, so the next print with the same slot skips the unload and reload. See [below](#end-of-print-filament).
 - **Filament changes** to a slot that's already loaded skip heating to the filament-change temperature and waiting to cool back down, saving about 25 seconds per change.
 
-The start also cleans the nozzle at the rear chute and scrapes it on the rear of the bed before leveling, and draws the front prime line just ahead of your print when there's room.
+The start also cleans the nozzle at the rear chute and scrapes it on the rear of the bed before leveling, homes Z again after leveling on the Max 4 and Plus 5, and draws the front prime line just ahead of your print when there's room.
 
 The prime line ends with a 0.8 mm retract, so the nozzle doesn't ooze on the way to your print, which can be across the bed. Klipper puts it back right before the print first extrudes, after that travel, so the print's first line starts where it should instead of a few millimetres late. This comes with Valve Oil's start G-code for OrcaSlicer and QIDI Studio; see [Slicer start G-code](install.md#slicer-start-g-code).
 

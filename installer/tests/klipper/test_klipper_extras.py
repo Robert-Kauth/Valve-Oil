@@ -955,3 +955,54 @@ class KlipperSwitchTest(unittest.TestCase):
         (sim.data / klipper_switch.CHOICE_FILE).write_text('{"use": "valve_oil"}')
         self.assertEqual(sim.switch.get_status()["version"], "v0.14.0-vo1")
         self.assertIsNone(sim.switch.fallback())
+
+
+box_eject = load_extra("box_eject")
+
+
+class BoxEjectTest(unittest.TestCase):
+    """QIDI parks the toolhead over the chute for every Box flow, homing an unhomed printer first. An eject that only
+    pulls a slot back into the Box (flow 4) needs no park; a flow that heats or unloads at the chute must keep it."""
+
+    def start(self, steps):
+        class Gcode:
+            def __init__(self):
+                self.scripts = []
+
+            def run_script_from_command(self, script):
+                self.scripts.append(script)
+
+        manager = types.SimpleNamespace(current_task=None, operation_adapter=types.SimpleNamespace(gcode=Gcode()))
+        manager.start_flow = lambda flow_id: setattr(manager, "current_task", types.SimpleNamespace(queue=steps))
+        controller = types.SimpleNamespace(task_queue_manager=manager, gcode=Gcode(),
+                                           box_adapter=types.SimpleNamespace(gcode=Gcode()))
+        handlers = {}
+        printer = types.SimpleNamespace(
+            register_event_handler=handlers.__setitem__,
+            lookup_object=lambda name, default=None: controller if name == "multi_color_controller" else default)
+        box_eject.load_config(types.SimpleNamespace(get_printer=lambda: printer))
+        handlers["klippy:ready"]()
+        manager.start_flow(4)
+        return controller
+
+    def sent(self, controller, script):
+        owners = (controller, controller.box_adapter, controller.task_queue_manager.operation_adapter)
+        for owner in owners:
+            owner.gcode.run_script_from_command(script)
+        return [owner.gcode._gcode.scripts for owner in owners]
+
+    def test_an_eject_only_flow_drops_the_park_and_sends_the_rest(self):
+        controller = self.start(["BOX_EJECT"])
+        self.assertEqual(self.sent(controller, "MOVE_TO_TRASH\n"), [[], [], []])
+        self.assertEqual(self.sent(controller, "MOVE_TO_TRASH\nM104 S0\n"), [["M104 S0\n"]] * 3)
+
+    def test_a_flow_that_unloads_before_ejecting_keeps_the_park(self):
+        controller = self.start(["BOX_HEAT", "BOX_CUT", "BOX_UNLOAD", "BOX_EJECT"])
+        self.assertEqual(self.sent(controller, "MOVE_TO_TRASH\n"), [["MOVE_TO_TRASH\n"]] * 3)
+
+    def test_without_qidis_box_controller_it_stays_out_of_the_way(self):
+        handlers = {}
+        printer = types.SimpleNamespace(register_event_handler=handlers.__setitem__,
+                                        lookup_object=lambda name, default=None: default)
+        box_eject.load_config(types.SimpleNamespace(get_printer=lambda: printer))
+        handlers["klippy:ready"]()

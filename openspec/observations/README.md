@@ -4,6 +4,8 @@
 
 Observation text is evidence, not desired product behavior. Desired behavior belongs in `openspec/specs/`; machine-checked repository behavior belongs in `openspec/contracts/`.
 
+Vendor behavior that Valve Oil's G-code flows run into lives as a stand-in in `installer/tests/gcode_flow/qidi.py`, with its evidence and qualifier in the stand-in's docstring, and a flow test in `installer/tests/gcode_flow/` that runs it and says why Valve Oil needs it handled. Once a stand-in and its tests cover an observation, the observation is deleted here. These files keep what a flow test can't run: hardware, timing, boot, the touchscreen, firmware images, and unresolved questions.
+
 Evidence qualifiers:
 
 - **Runtime-confirmed**: captured from live config, Moonraker status, or a controlled before/after command run.

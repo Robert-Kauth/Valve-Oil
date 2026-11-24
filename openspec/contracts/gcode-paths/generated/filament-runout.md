@@ -60,7 +60,7 @@ Forbidden patterns:
 
 Condition: `the print is paused`
 
-Source: `installer/klipper/macros/filament.cfg:448-468`
+Source: `installer/klipper/macros/filament.cfg:468-488`
 
 Direct visible macro calls in branch slice:
 

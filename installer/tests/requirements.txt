@@ -1,0 +1,6 @@
+# What the G-code flow tests (installer/tests/gcode_flow/) need to run Klipper's own G-code and macro modules.
+# The printers run Jinja2 2.11.3, MarkupSafe 1.1.1, and greenlet 2.0.2 on Python 3.9 (openspec/observations/
+# qidi-platform.md), which don't install on current Python; these are releases that do.
+Jinja2==3.1.6
+MarkupSafe==3.0.2
+greenlet==3.2.4

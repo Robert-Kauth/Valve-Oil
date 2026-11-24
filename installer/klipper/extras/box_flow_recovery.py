@@ -425,6 +425,48 @@ class _UnloadWatch:
         return getattr(self._gcode, name)
 
 
+class _LeaveChute:
+    """Until the next move in X or Y: when that move starts behind the bed,
+    leave the chute straight forward first, as each printer's move to the
+    chute arrives, then make it. Moves in Z and E alone stay where they are,
+    so filament the slicer pushes out after a change still goes into the
+    chute."""
+
+    def __init__(self, gcode_move, rear_y, exit_y, speed):
+        self.gcode_move = gcode_move
+        self.rear_y, self.exit_y, self.speed = rear_y, exit_y, speed
+        self.next_transform = gcode_move.set_move_transform(self, force=True)
+
+    @classmethod
+    def install(cls, printer):
+        gcode_move = printer.lookup_object("gcode_move", None)
+        km = printer.lookup_object("gcode_macro _km_globals", None)
+        variables = getattr(km, "variables", None) or {}
+        try:
+            rear_y = float(variables["print_max"][1])
+            exit_y = float(variables["park_y"]) - 30.
+            speed = float(variables["travel_speed_xy"]) / 60.
+        except (KeyError, IndexError, TypeError, ValueError):
+            logging.info("vo_box_flow_recovery: chute exit not watched: "
+                         "_km_globals has no print_max, park_y, or "
+                         "travel_speed_xy")
+            return
+        if gcode_move is not None:
+            cls(gcode_move, rear_y, exit_y, speed)
+
+    def get_position(self):
+        return self.next_transform.get_position()
+
+    def move(self, newpos, speed):
+        pos = self.next_transform.get_position()
+        if newpos[0] != pos[0] or newpos[1] != pos[1]:
+            self.gcode_move.set_move_transform(self.next_transform, force=True)
+            if pos[1] > self.rear_y:
+                self.next_transform.move(
+                    [pos[0], self.exit_y] + list(pos[2:]), self.speed)
+        self.next_transform.move(newpos, speed)
+
+
 class BoxFlowRecovery:
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -1142,7 +1184,13 @@ class BoxFlowRecovery:
 
     def cmd_TOOL_CHANGE_END(self, gcmd):
         try:
-            return self.originals["TOOL_CHANGE_END"](gcmd)
+            result = self.originals["TOOL_CHANGE_END"](gcmd)
+            # A change between two tools on one slot parks at the chute and
+            # QIDI drops the change's moves, the slicer's own exit from the
+            # chute among them, so the next travel would leave it diagonally.
+            if self._print_state() in ("printing", "paused"):
+                _LeaveChute.install(self.printer)
+            return result
         finally:
             self._end_filament_change()
 

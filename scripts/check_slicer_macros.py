@@ -68,14 +68,14 @@ BANNED_SLICER_SNIPPETS = {
 }
 
 QIDISTUDIO_BANNED_SNIPPETS = {
-    "activate_air_filtration_on_completion[": "QIDI Studio rejects indexed completion-air-filtration placeholders in end G-code; keep them out of the QIDI Studio pack.",
-    "complete_print_exhaust_fan_speed[": "QIDI Studio rejects indexed completion-air-filtration placeholders in end G-code; keep them out of the QIDI Studio pack.",
+    "activate_air_filtration_on_completion[": "QIDI Studio 2.6 rejects indexed completion-air-filtration placeholders (Not a variable name); use EXHAUST_SPEED=0 unless a QIDI Studio-tested replacement exists.",
+    "complete_print_exhaust_fan_speed[": "QIDI Studio 2.6 rejects indexed completion-air-filtration placeholders (Not a variable name); use EXHAUST_SPEED=0 unless a QIDI Studio-tested replacement exists.",
 }
 
 QIDISTUDIO_BANNED_PATTERNS = (
     (
         re.compile(r"\bM106\s+P4\b", re.IGNORECASE),
-        "Direct polar cooler controls are not allowed in QIDI Studio G-code.",
+        "Direct polar cooler controls are not allowed in QIDI Studio G-code unless requested and validated in QIDI Studio.",
     ),
 )
 
@@ -160,6 +160,11 @@ def validate_qidistudio_compatibility(repo_root: Path, path: Path) -> list[str]:
     failures: list[str] = []
     for line_number, raw_line in enumerate(path.read_text().splitlines(), start=1):
         line = raw_line.split(";", 1)[0]
+        if CONTROL_BLOCK_RE.search(line) and CONTROL_BLOCK_RE.sub("", line).strip():
+            failures.append(
+                f"{path.relative_to(repo_root)}:{line_number}: QIDI Studio needs each {{if}}, {{else}}, and {{endif}} "
+                "on a line of its own"
+            )
         for snippet, reason in QIDISTUDIO_BANNED_SNIPPETS.items():
             if snippet in line:
                 failures.append(
@@ -170,6 +175,24 @@ def validate_qidistudio_compatibility(repo_root: Path, path: Path) -> list[str]:
                 failures.append(
                     f"{path.relative_to(repo_root)}:{line_number}: QIDI Studio-incompatible G-code '{line.strip()}': {reason}"
                 )
+    return failures
+
+
+def validate_pack_alignment(repo_root: Path, printer: str, macros: set[str]) -> list[str]:
+    """A printer's OrcaSlicer and QIDI Studio files call the same Valve Oil macros, each in its own syntax."""
+    called: dict[str, dict[str, set[str]]] = {}
+    for pack in ("orcaslicer_gcode", "qidistudio_gcode"):
+        for path in sorted((repo_root / pack / printer).glob("*.gcode")):
+            called.setdefault(path.name, {})[pack] = {command for _, command, _, _ in iter_commands(path)
+                                                      if command in macros}
+    failures: list[str] = []
+    for name, packs in sorted(called.items()):
+        orca, qidi = packs.get("orcaslicer_gcode", set()), packs.get("qidistudio_gcode", set())
+        if orca != qidi:
+            failures.append(
+                f"{printer}/{name}: OrcaSlicer and QIDI Studio packs call different Valve Oil macros: "
+                f"only OrcaSlicer {sorted(orca - qidi)}, only QIDI Studio {sorted(qidi - orca)}"
+            )
     return failures
 
 
@@ -189,6 +212,7 @@ def validate_repo(
         failures.extend(_validate_files(repo_root, files, macros))
         checked_files.extend(files)
         all_macros |= macros
+        failures.extend(validate_pack_alignment(repo_root, printer, macros))
     # Every pack file belongs to one printer's folder; anything else would go unchecked.
     for pack in ("orcaslicer_gcode", "qidistudio_gcode"):
         for path in sorted((repo_root / pack).rglob("*.gcode")):

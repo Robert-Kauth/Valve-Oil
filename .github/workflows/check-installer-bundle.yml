@@ -9,13 +9,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          # The version check compares with the last release tag.
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+      - name: Install test requirements
+        run: python3 -m pip install -r installer/tests/requirements.txt
       - name: Run installer core tests
         run: python3 scripts/run_installer_core_tests.py
       - name: Validate installer compatibility metadata
         run: python3 scripts/check_installer_known_versions.py
+      - name: Check config/ against QIDI's stock config
+        run: python3 scripts/check_stock_config.py
+      - name: Check for hardware identifiers
+        run: python3 scripts/check_identifiers.py
       - uses: actions/setup-node@v6
         with:
           node-version-file: ui/.nvmrc

@@ -25,6 +25,7 @@ Valve Oil's configuration SHALL reduce homing, probing, mesh, and filament-trans
 - **THEN** normal homing performs the requested axes, lazy homing skips requested axes already known, and Z homes required unknown X/Y first
 - **AND** temporary motion settings are restored
 - **AND** Z tilt and the selected fresh adaptive or named saved-mesh preparation run without redundant homing or stale active mesh state
+- **AND** after Z tilt adjust, Z homes again before the mesh is measured or loaded
 
 #### Scenario: Unshaped axes use QIDI's default input shaper
 - **WHEN** Klipper starts, or X/Y homing finishes, with `[input_shaper]` loaded and no live frequency on X or Y
@@ -1570,6 +1571,7 @@ On the Plus 5, Valve Oil's macros SHALL use the Plus 5's homing sequence, positi
 #### Scenario: Plus 5 rear moves stay inside the chute window
 - **WHEN** a Valve Oil macro or a project Plus 5 slicer pack moves the toolhead behind Y 320 on a Plus 5
 - **THEN** the toolhead stays between X 75 and X 231 for the whole move, including where it crosses Y 320
+- **AND** a move from the chute to anywhere in front of Y 320 leaves the chute straight forward first
 
 #### Scenario: Plus 5 cut presses the cutter once
 - **WHEN** the filament is cut on a Plus 5, by QIDI's tool change and unload or by Valve Oil's macros
@@ -1642,7 +1644,7 @@ On the Smart 5, Valve Oil's macros SHALL use the Smart 5's homing sequence, posi
 - **WHEN** Valve Oil's cut, wipe, chute, scrape, park, or print-start moves run on a Smart 5
 - **THEN** they use the Smart 5's coordinates, all inside its configured X −2–185 and Y −4–200 travel
 
-#### Scenario: Smart 5 rear moves stay inside QIDI's chute range
+#### Scenario: Smart 5 rear moves stay inside its chute window
 - **WHEN** a Valve Oil macro or a project Smart 5 slicer pack moves the toolhead behind Y 180 on a Smart 5
 - **THEN** the toolhead stays between X 66 and X 100 for the whole move, including where it crosses Y 180
 
