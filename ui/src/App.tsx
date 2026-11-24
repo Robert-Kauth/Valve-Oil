@@ -90,6 +90,7 @@ export function App() {
   const conn = usePrinter((s) => s.conn)
   const klippy = usePrinter((s) => s.klippy)
   const boxPresent = useBoxPresent()
+  const klippyMessage = usePrinter((s) => s.klippyMessage)
   const shown: Route = route === 'filaments' && !boxPresent && klippy === 'ready' ? 'home' : route
   // Uninstalling removes Valve Oil UI itself, so nothing else on the page is used until it ends.
   const uninstalling = useUninstallShown()
@@ -98,6 +99,7 @@ export function App() {
   // Updates talks to Valve Oil's status service, not Moonraker, so it stays up while an update restarts Moonraker.
   if (shown === 'updates') body = <UpdatesScreen />
   else if (conn !== 'open') body = <NotReady title={conn === 'connecting' ? t('app.conn.connecting') : t('app.conn.unreachable')} detail={t('app.conn.trying', { url: client.wsUrl })} />
+  else if (klippy === 'unknown' && NEEDS_KLIPPER.includes(shown)) body = <NotReady title={t('common.loading')} detail={klippyMessage} />
   else if (klippy !== 'ready' && NEEDS_KLIPPER.includes(shown)) body = <KlippyNotReady />
   else body = <Suspense fallback={<Loading className="py-16" size={24} />}>{SCREENS[shown]()}</Suspense>
 
@@ -125,7 +127,7 @@ export function App() {
         <TopBar />
         <UpdateBanner />
         <Warnings />
-        {klippy !== 'ready' && conn === 'open' && !NEEDS_KLIPPER.includes(shown) && shown !== 'updates' && <KlippyStrip />}
+        {klippy !== 'ready' && klippy !== 'unknown' && conn === 'open' && !NEEDS_KLIPPER.includes(shown) && shown !== 'updates' && <KlippyStrip />}
         <div className="min-h-0 flex-1 overflow-auto">
           <div className={cockpit ? 'h-full p-3.5 pb-24 md:p-[18px] md:pb-[18px]' : `mx-auto grid grid-cols-1 content-start gap-3.5 p-3.5 pb-24 md:p-[18px] md:pb-[18px] ${shown === 'system' ? '' : 'max-w-[1500px]'}`}>{body}</div>
         </div>
@@ -230,6 +232,7 @@ function StatusPill() {
   const klippy = usePrinter((s) => s.klippy)
   const busy = useBoxBusy()
   const idle = usePrinter((s) => s.status.idle_timeout?.state as string | undefined)
+  if (conn === 'connecting' || (conn === 'open' && klippy === 'unknown')) return <span className="pill">{t('common.loading')}</span>
   if (conn !== 'open') return <span className="pill tone-bad">{t('app.status.offline')}</span>
   if (klippy !== 'ready') return <span className="pill tone-bad">{klippyPill(klippy)}</span>
   if (job.state === 'printing') return <span className="pill tone-accent">{t('app.status.printing', { pct: Math.floor(jobProgress(job) * 100) })}</span>

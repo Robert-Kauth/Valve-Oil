@@ -8,7 +8,7 @@ export type KlippyState = 'startup' | 'ready' | 'error' | 'shutdown' | 'disconne
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Status = Record<string, Record<string, any>>
 
-export type ConsoleLine = { id: number; time: number; text: string; kind: 'command' | 'response' | 'error' }
+export type ConsoleLine = { id: number; time: number; text: string; kind: 'command' | 'response' | 'error'; origin: 'live' | 'history' }
 
 /** `end` counts every sample this page has had for the series, so the chart can tell samples apart as old ones drop off. */
 export type TempSeries = { temperatures: number[]; targets?: number[]; end?: number }
@@ -218,7 +218,19 @@ setInterval(() => {
 let lineId = 0
 const CONSOLE_MAX = 300
 export function pushConsole(text: string, kind: ConsoleLine['kind']) {
-  printer.set((s) => ({ ...s, console: [...s.console.slice(-(CONSOLE_MAX - 1)), { id: ++lineId, time: Date.now(), text, kind }] }))
+  printer.set((s) => ({ ...s, console: [...s.console.slice(-(CONSOLE_MAX - 1)), { id: ++lineId, time: Date.now(), text, kind, origin: 'live' }] }))
+}
+
+/** Replaces the bounded diagnostic projection from the canonical console store. */
+export function replaceConsoleHistory(entries: readonly { message: string; time: number; type: 'command' | 'response' }[]) {
+  const console = entries.slice(-CONSOLE_MAX).map((entry) => ({
+    id: ++lineId,
+    time: entry.time * 1000,
+    text: entry.message,
+    kind: entry.type === 'command' ? ('command' as const) : entry.message.startsWith('!!') ? ('error' as const) : ('response' as const),
+    origin: 'history' as const,
+  }))
+  printer.set((state) => ({ ...state, console }))
 }
 
 /**
@@ -246,69 +258,73 @@ let klippyLoad = 0
 
 async function initKlippy() {
   if (klippyPoll) clearTimeout(klippyPoll)
+  if (printer.get().conn !== 'open') return
   const load = ++klippyLoad
   const stale = () => load !== klippyLoad
-  let info: { klippy_state: KlippyState; components?: string[]; registered_directories?: string[]; warnings?: string[] }
+  if (printer.get().klippy === 'ready') printer.set((s) => ({ ...s, klippy: 'unknown', klippyMessage: '' }))
   try {
-    info = await client.call('server.info')
-  } catch {
-    return
-  }
-  if (stale()) return
-  printer.set((s) => ({ ...s, server: { components: info.components ?? [], registered_directories: info.registered_directories ?? [], warnings: info.warnings ?? [] } }))
-  if (info.klippy_state !== 'ready') {
-    let message = ''
-    try {
-      const pi = await client.call<{ state_message: string }>('printer.info')
-      message = pi.state_message
-    } catch {}
+    const info = await client.call<{ klippy_state: KlippyState; components?: string[]; registered_directories?: string[]; warnings?: string[] }>('server.info')
     if (stale()) return
-    printer.set((s) => ({ ...s, klippy: info.klippy_state, klippyMessage: message }))
-    klippyPoll = setTimeout(initKlippy, 2000)
-    return
-  }
-  const { objects } = await client.call<{ objects: string[] }>('printer.objects.list')
-  if (stale()) return
-  const sub: Record<string, string[] | null> = {}
-  for (const o of objects) if (FIELDS[o]) sub[o] = FIELDS[o]
-  else if (wanted(o)) sub[o] = null
-  const res = await client.call<{ status: Status }>('printer.objects.subscribe', { objects: sub })
-  if (stale()) return
-  // Store the snapshot before awaiting anything else: Moonraker sends each field only when it changes, so a change
-  // applied to the old status and then overwritten by this snapshot would never come again (a restart's start-up
-  // commands left the top bar on Busy). Updates still queued from before the snapshot are older than it.
-  queued = null
-  printer.set((s) => ({ ...s, objects, status: res.status }))
-  let temps: Record<string, TempSeries> = {}
-  try {
-    const store = await client.call<Record<string, TempSeries>>('server.temperature_store', { include_monitors: false })
-    temps = Object.fromEntries(Object.entries(store).filter(([k]) => isTempObject(k)))
-  } catch {}
-  for (const o of objects) if (isTempObject(o) && !temps[o]) temps[o] = { temperatures: [] }
-  // Large, rarely-changing fields are queried once rather than subscribed.
-  let commands: string[] = []
-  let heaterSettings: PrinterState['heaterSettings'] = {}
-  let allSettings: PrinterState['settings'] = {}
-  try {
-    const q = await client.call<{ status: Status }>('printer.objects.query', { objects: { gcode: ['commands'], configfile: ['settings'] } })
-    commands = Object.keys(q.status.gcode?.commands ?? {}).map((c) => c.toUpperCase())
+    printer.set((s) => ({ ...s, server: { components: info.components ?? [], registered_directories: info.registered_directories ?? [], warnings: info.warnings ?? [] } }))
+    if (info.klippy_state !== 'ready') {
+      // Show a confirmed failure immediately, even if its detailed message is slow to arrive.
+      printer.set((s) => ({ ...s, klippy: info.klippy_state }))
+      klippyPoll = setTimeout(initKlippy, 2000)
+      const pi = await client.call<{ state_message: string }>('printer.info')
+      if (!stale()) printer.set((s) => ({ ...s, klippyMessage: pi.state_message }))
+      return
+    }
+    printer.set((s) => ({ ...s, klippy: 'unknown', klippyMessage: '' }))
+    const { objects } = await client.call<{ objects: string[] }>('printer.objects.list')
+    if (stale()) return
+    const sub: Record<string, string[] | null> = {}
+    for (const o of objects) if (FIELDS[o]) sub[o] = FIELDS[o]
+    else if (wanted(o)) sub[o] = null
+    // Status and safety settings are independent reads; neither history nor client identification gates readiness.
+    const [, q] = await Promise.all([
+      client.call<{ status: Status }>('printer.objects.subscribe', { objects: sub }).then((res) => {
+        if (stale()) return
+        // Apply the snapshot immediately so later notifications cannot be overwritten by it.
+        queued = null
+        printer.set((s) => ({ ...s, objects, status: res.status }))
+      }),
+      client.call<{ status: Status }>('printer.objects.query', { objects: { gcode: ['commands'], configfile: ['settings'] } }),
+    ])
+    if (stale()) return
     const settings = q.status.configfile?.settings ?? {}
-    allSettings = settings
+    const commands = Object.keys(q.status.gcode?.commands ?? {}).map((c) => c.toUpperCase())
+    const heaterSettings: PrinterState['heaterSettings'] = {}
     for (const [k, v] of Object.entries(settings)) if (k === 'extruder' || k === 'heater_bed' || k.startsWith('heater_generic ')) heaterSettings[k] = v as PrinterState['heaterSettings'][string]
-  } catch {}
-  // Recent console history, so a Box failure that happened before this page opened still shows its error.
-  let consoleLines = printer.get().console
-  try {
-    const g = await client.call<{ gcode_store: { message: string; time: number; type: 'command' | 'response' }[] }>('server.gcode_store', { count: 200 })
-    consoleLines = g.gcode_store.map((l) => ({ id: ++lineId, time: l.time * 1000, text: l.message, kind: l.type === 'command' ? 'command' : l.message.startsWith('!!') ? 'error' : 'response' }))
-  } catch {}
-  if (stale()) return
-  printer.set((s) => ({ ...s, klippy: 'ready', klippyMessage: '', temps, commands, heaterSettings, settings: allSettings, console: consoleLines }))
-  client
-    .call<ProcStat>('machine.proc_stats')
-    .then((p) => applyHost(p, true))
-    .catch(() => {})
-  for (const fn of readyHandlers) fn()
+    const temps = Object.fromEntries(objects.filter(isTempObject).map((o) => [o, { temperatures: [], ...(typeof printer.get().status[o]?.target === 'number' ? { targets: [] } : {}) }]))
+    printer.set((s) => ({ ...s, klippy: 'ready', klippyMessage: '', temps, commands, heaterSettings, settings }))
+
+    void client.call<Record<string, TempSeries>>('server.temperature_store', { include_monitors: false }).then((store) => {
+      if (stale()) return
+      printer.set((s) => {
+        const temps = { ...s.temps }
+        for (const [name, history] of Object.entries(store)) {
+          if (!isTempObject(name)) continue
+          const live = s.temps[name]
+          temps[name] = {
+            temperatures: [...history.temperatures, ...(live?.temperatures ?? [])].slice(-TEMP_POINTS),
+            targets: history.targets ? [...history.targets, ...(live?.targets ?? [])].slice(-TEMP_POINTS) : live?.targets,
+            end: history.temperatures.length + (live?.end ?? 0),
+          }
+        }
+        return { ...s, temps }
+      })
+    }).catch(() => {})
+    void client.call<ProcStat>('machine.proc_stats').then((p) => {
+      if (!stale()) applyHost(p, true)
+    }).catch(() => {})
+    for (const fn of readyHandlers) fn()
+  } catch (error) {
+    if (stale()) return
+    ++klippyLoad
+    if (klippyPoll) clearTimeout(klippyPoll)
+    printer.set((s) => ({ ...s, klippyMessage: error instanceof Error ? error.message : String(error) }))
+    klippyPoll = setTimeout(initKlippy, 2000)
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -339,24 +355,29 @@ export function startPrinterConnection() {
   if (started) return
   started = true
   client.onState((conn) => {
-    printer.set((s) => ({ ...s, conn, ...(conn !== 'open' ? { klippy: 'unknown' as const } : {}) }))
+    ++klippyLoad
+    if (klippyPoll) clearTimeout(klippyPoll)
+    queued = null
+    printer.set((s) => ({ ...s, conn, klippy: 'unknown', klippyMessage: '' }))
     if (conn === 'open') {
       client
         .call('server.connection.identify', { client_name: 'Valve Oil UI', version: __APP_VERSION__, type: 'web', url: 'https://github.com/thelegendtubaguy/Valve-Oil' })
         .catch(() => {})
-        .finally(initKlippy)
+      void initKlippy()
     }
   })
   client.on('notify_status_update', (p) => queueStatus(p[0] as Status))
   client.on('notify_klippy_ready', () => initKlippy())
-  client.on('notify_klippy_shutdown', () => initKlippy())
-  client.on('notify_klippy_disconnected', () => {
-    printer.set((s) => ({ ...s, klippy: 'disconnected' }))
-    klippyPoll = setTimeout(initKlippy, 2000)
+  client.on('notify_klippy_shutdown', () => {
+    printer.set((s) => ({ ...s, klippy: 'shutdown', klippyMessage: '' }))
+    void initKlippy()
   })
-  client.on('notify_gcode_response', (p) => {
-    const text = String(p[0] ?? '')
-    pushConsole(text, text.startsWith('!!') ? 'error' : 'response')
+  client.on('notify_klippy_disconnected', () => {
+    ++klippyLoad
+    if (klippyPoll) clearTimeout(klippyPoll)
+    queued = null
+    printer.set((s) => ({ ...s, klippy: 'disconnected', klippyMessage: '' }))
+    klippyPoll = setTimeout(initKlippy, 2000)
   })
   client.on('notify_proc_stat_update', (p) => applyHost(p[0] as ProcStat, false))
   client.on('notify_filelist_changed', () => printer.set((s) => ({ ...s, filesRev: s.filesRev + 1 })))
