@@ -410,6 +410,8 @@ def fake_klipper_tree(system_root: Path, manifest, firmware: str, *, unit: bool 
         "printers/plus5/klippy/extras/heaters.py": "# Plus 5 heaters\n",
         "printers/smart5/klippy/mcu.py": "# Smart 5 mcu\n",
         "COPYING": "GPLv3\n",
+        "config/README.md": "# Klipper's example configs\n",
+        "docs/README.md": "# Klipper's documentation\n",
     }.items():
         (source / relative).parent.mkdir(parents=True, exist_ok=True)
         (source / relative).write_text(text, encoding="utf-8")
