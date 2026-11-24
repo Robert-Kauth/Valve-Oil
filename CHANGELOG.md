@@ -1,5 +1,13 @@
 # Changelog
 
+## 26.11.24.2
+- The mobile header keeps its controls on one row and wraps printer status below them when needed. Notification and health panels stay within narrow screens.
+- Valve Oil UI follows the device's light or dark theme by default and responds to system theme changes without reloading. Existing manual choices are preserved; Settings offers System, Dark and Light.
+- Valve Oil UI shows loading instead of “Klipper not running” while its state is being read. Status and safety settings load together; client identification and temperature/console history no longer delay the main screen. Confirmed Klipper errors remain visible.
+- Valve Oil UI declares the selected language before the app and translations download, so Chromium no longer mistakes the Russian interface for an English page during startup. Browser translation remains available.
+- Service and printer actions recheck print and update state after confirmation. Both temperature panels use the same turn-off-heating action; opening an empty temperature preset list leads to its settings.
+- Camera streams recover after temporary failures and can be retried manually. Printing coordinates are visibly read-only, keyboard and screen-reader navigation are improved, and mobile controls and Russian homing labels are clearer.
+
 ## 26.11.23.3
 - On the Max 4, Y no longer comes out of homing shifted toward the back. Homing backed the toolhead only 20 mm off the front after homing Y before it homed X, and that left every Y position a little further back than Klipper thought, so the toolhead couldn't reach the full 390 mm of the plate. It now backs off 30 mm.
 - On the Max 4 and Plus 5, print start homes Z again after it levels the bed (`Z_TILT_ADJUST`) and before it meshes or loads a saved mesh, as Klipper's documentation says to. Levelling moves the Z motors against each other, so Z=0 was no longer where it had homed. Valve Oil's re-home had been there since March but never ran: Klipper reads a command name only up to the end of its first number, so it ran `_VO_G29_HOME_Z_OR_FULL` as `_VO_G29`, which doesn't exist, and QIDI's Klipper skips unknown commands without a word. A fresh mesh measured from that Z=0 made up for it, which is why first layers came out right; a saved mesh loaded with `vo_start_bed_mesh_profile` didn't. Print start takes a few seconds longer.

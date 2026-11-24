@@ -1,10 +1,11 @@
 /// <reference types="vitest/config" />
-import { defineConfig } from 'vite'
+import { build, defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import { fileURLToPath } from 'node:url'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
 // The installer bundle passes the package version; local builds use package.json's.
@@ -18,6 +19,32 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [
+    {
+      // A deferred module is too late: browsers can classify the empty shell before locales load.
+      name: 'valve-oil-document-language',
+      transformIndexHtml: {
+        order: 'pre',
+        async handler() {
+          const result = await build({
+            configFile: false,
+            logLevel: 'silent',
+            build: {
+              write: false,
+              target: 'es2015',
+              rolldownOptions: {
+                input: fileURLToPath(new URL('./src/i18n/document-language.ts', import.meta.url)),
+                output: { format: 'iife' },
+              },
+            },
+          })
+          const bundles = Array.isArray(result) ? result : [result]
+          const script = bundles.flatMap((bundle) => 'output' in bundle ? bundle.output : [])
+            .find((file) => file.type === 'chunk' && file.isEntry)
+          if (!script || script.type !== 'chunk') throw new Error('Document language script was not built')
+          return [{ tag: 'script', attrs: { id: 'vo-document-language' }, children: script.code, injectTo: 'head' }]
+        },
+      },
+    },
     react(),
     tailwindcss(),
     {
