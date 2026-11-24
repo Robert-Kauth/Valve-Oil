@@ -105,7 +105,7 @@ export function JobsCard() {
               label: (
                 <>
                   {o.label}
-                  <span className="text-[11.5px] font-semibold opacity-60">{counts[o.value] ?? 0}</span>
+                  <span className="text-[11.5px] font-semibold text-ink-2">{counts[o.value] ?? 0}</span>
                 </>
               ),
             }))}
@@ -122,7 +122,7 @@ export function JobsCard() {
           {/* Phones: one row per job with the essentials; the dialog has the rest. */}
           <div className="grid gap-1.5 md:hidden">
             {rows.map((j) => (
-              <button key={j.job_id} className={`flex items-center gap-3 rounded-xl border-0 bg-inset p-2.5 text-left text-ink ${j.exists ? '' : 'opacity-60'}`} style={{ boxShadow: 'inset 0 0 0 1px var(--line)' }} onClick={() => setOpen(j.job_id)}>
+              <button key={j.job_id} className={`flex items-center gap-3 rounded-xl border-0 bg-inset p-2.5 text-left text-ink ${j.exists ? '' : 'text-ink-2'}`} style={{ boxShadow: 'inset 0 0 0 1px var(--line)' }} onClick={() => setOpen(j.job_id)}>
                 <Thumb filename={j.filename} meta={j.metadata} exists={j.exists} size={46} />
                 <span className="grid min-w-0 flex-1 gap-1">
                   <span className="truncate font-semibold">{displayName(j.filename)}</span>
@@ -152,7 +152,7 @@ export function JobsCard() {
               </thead>
               <tbody>
                 {rows.map((j) => (
-                  <tr key={j.job_id} className={`cursor-pointer ${j.exists ? '' : 'opacity-60'}`} onClick={() => setOpen(j.job_id)}>
+                  <tr key={j.job_id} className={`cursor-pointer ${j.exists ? '' : 'text-ink-2'}`} onClick={() => setOpen(j.job_id)}>
                     <td className="!py-1.5 !pl-4">
                       <Thumb filename={j.filename} meta={j.metadata} exists={j.exists} size={36} />
                     </td>

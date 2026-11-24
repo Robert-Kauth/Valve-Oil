@@ -30,7 +30,7 @@ export function FilamentImportDialog({ items, busy, onImport, onClose }: { items
           <p className="mt-0 mb-3 text-ink-2">{t('box.filaments.import.intro')}</p>
           <div className="grid gap-1">
             {items.map((item) => (
-              <label key={item.key} className={`flex items-start gap-2.5 rounded-lg px-2 py-1.5 ${item.status === 'conflict' ? 'opacity-60' : 'hover:bg-hover'}`}>
+              <label key={item.key} className={`flex items-start gap-2.5 rounded-lg px-2 py-1.5 ${item.status === 'conflict' ? 'text-ink-2' : 'hover:bg-hover'}`}>
                 <input type="checkbox" className="mt-1 accent-[var(--accent)]" disabled={item.status === 'conflict'} checked={selected.includes(item.key)} onChange={(e) => toggle(item.key, e.target.checked)} />
                 <span className="min-w-0">
                   <span className="font-semibold">{item.key}</span> <span className="code text-ink-3">{item.id}</span>

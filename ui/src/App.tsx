@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Cpu,
   Ellipsis,
@@ -109,7 +109,7 @@ export function App() {
   return (
     <div className="flex h-full">
       <aside className="rail hidden md:flex">
-        <a href={href('home')} className="mb-2 grid place-items-center pt-1 pb-1" title="Valve Oil">
+        <a href={href('home')} className="mb-2 grid place-items-center pt-1 pb-1" title="Valve Oil" aria-label={t('app.nav.home')}>
           <LogoMark height={46} />
         </a>
         {NAV.map((n) => (
@@ -161,22 +161,62 @@ function RailItem({ item, on }: { item: NavItem; on: boolean }) {
 
 function MobileNav({ nav, route }: { nav: NavItem[]; route: Route }) {
   const [more, setMore] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const main = nav.filter((n) => n.mobile)
   const rest = [...nav.filter((n) => !n.mobile), ...NAV_END]
   const inRest = rest.some((n) => n.route === route)
   const cls = (on: boolean) => `grid justify-items-center gap-1 px-2 text-[10.5px] font-semibold ${on ? 'text-accent-ink' : 'text-ink-3'}`
+  const closeMore = (restoreFocus = true) => {
+    setMore(false)
+    if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus())
+  }
+  useEffect(() => {
+    if (!more) return
+    const focusable = () => Array.from(panelRef.current?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)') ?? [])
+    focusable()[0]?.focus()
+    const keys = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeMore()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const items = focusable()
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (!first || !last) return
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', keys)
+    return () => window.removeEventListener('keydown', keys)
+  }, [more])
   return (
     <>
       {more && (
-        <div className="fixed inset-0 z-40 md:hidden" onClick={() => setMore(false)}>
-          <div className="absolute inset-x-2 bottom-[72px] grid grid-cols-4 gap-1 rounded-2xl bg-surface p-2" style={{ boxShadow: 'var(--shadow-overlay)' }}>
+        <div className="fixed inset-0 z-40 md:hidden" onClick={() => closeMore()}>
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('app.nav.more')}
+            className="absolute inset-x-2 bottom-[72px] grid grid-cols-3 gap-1 rounded-2xl bg-surface p-2 sm:grid-cols-4"
+            style={{ boxShadow: 'var(--shadow-overlay)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
             {rest.map((n) => (
-              <a key={n.route} href={href(n.route)} className={`rail-item w-auto ${route === n.route ? 'on' : ''}`}>
+              <a key={n.route} href={href(n.route)} className={`rail-item ${route === n.route ? 'on' : ''}`} onClick={() => setMore(false)}>
                 {n.icon}
                 {t(n.labelKey)}
               </a>
             ))}
-            <a href={fluiddUrl()} className="rail-item w-auto">
+            <a href={fluiddUrl()} className="rail-item" onClick={() => setMore(false)}>
               <ExternalLink size={20} />
               Fluidd
             </a>
@@ -190,7 +230,13 @@ function MobileNav({ nav, route }: { nav: NavItem[]; route: Route }) {
             {t(n.labelKey)}
           </a>
         ))}
-        <button className={`border-0 bg-transparent ${cls(inRest || more)}`} onClick={() => setMore((m) => !m)} aria-expanded={more}>
+        <button
+          ref={triggerRef}
+          className={`border-0 bg-transparent ${cls(inRest || more)}`}
+          onClick={() => (more ? closeMore() : setMore(true))}
+          aria-expanded={more}
+          aria-haspopup="dialog"
+        >
           <Ellipsis size={I} />
           {t('app.nav.more')}
         </button>
@@ -320,32 +366,27 @@ function TopBar() {
   // The model the installer detected (QIDI Max 4, Plus 5, or Smart 5), from Valve Oil's status service.
   const name = useStore(valveOil, (s) => s.status?.printer.name ?? null)
   return (
-    <div className="relative flex flex-wrap items-center gap-3 border-b border-line px-3.5 py-2.5 pt-[max(10px,env(safe-area-inset-top))] sm:flex-nowrap md:px-[18px]" style={{ background: 'var(--page)' }}>
-      <a href={href('home')} className="flex items-center gap-2.5 md:hidden">
+    <div className="topbar relative flex flex-wrap items-center gap-x-2 border-b border-line px-3.5 py-2.5 pt-[max(10px,env(safe-area-inset-top))] lg:gap-x-3 md:px-[18px]" style={{ background: 'var(--page)' }}>
+      <a href={href('home')} className="flex flex-none items-center gap-2.5 md:hidden" aria-label={t('app.nav.home')}>
         <LogoMark height={30} />
       </a>
       {/* i18n-ignore: the product's wordmark */}
-      <span className="wordmark hidden sm:inline">VALVE OIL</span>
+      <span className="wordmark hidden md:inline">VALVE OIL</span>
       {name && (
         <>
-          <span className="hidden text-ink-3 sm:inline">|</span>
-          <span className="hidden min-w-0 truncate font-semibold text-ink-2 sm:inline">{name}</span>
+          <span className="hidden text-ink-3 xl:inline">|</span>
+          <span className="hidden min-w-0 truncate font-semibold text-ink-2 xl:inline">{name}</span>
         </>
       )}
-      <StatusPill />
-      <div className="order-1 flex-1 sm:order-none" />
-      {/* On phones this is the top bar's second row, under the logo and E-stop; the Health and Notifications popups open below it. */}
-      <div className="order-2 flex w-full items-center justify-end gap-3 sm:contents">
-        <SaveConfigButton />
-        <MiniTemps />
-        <HealthButton />
-        <NotificationsButton />
-        <button className="iconbtn" onClick={toggleTheme} aria-label={t('app.topbar.switch_theme')} title={t('app.topbar.switch_theme')}>
-          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-        </button>
-      </div>
+      <div className="flex-1" />
+      <MiniTemps />
+      <HealthButton />
+      <NotificationsButton />
+      <button className="iconbtn" onClick={toggleTheme} aria-label={t('app.topbar.switch_theme')} title={t('app.topbar.switch_theme')}>
+        {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+      </button>
       <button
-        className="estop order-1 sm:order-none"
+        className="estop flex-none"
         disabled={conn !== 'open'}
         onClick={async () => {
           // Fluidd's "Confirm emergency stop" setting, shared with it.
@@ -354,9 +395,14 @@ function TopBar() {
         }}
         title={t('app.topbar.estop_title')}
       >
-        <X size={14} /> <span className="hidden sm:inline">{t('app.topbar.estop')}</span>
-        <span className="sm:hidden">{t('app.topbar.estop_short')}</span>
+        <X size={14} /> <span className="hidden lg:inline">{t('app.topbar.estop')}</span>
+        <span className="lg:hidden">{t('app.topbar.estop_short')}</span>
       </button>
+      {/* Status text must not displace the controls. */}
+      <div className="topbar-state flex w-full min-w-0 flex-wrap items-center gap-2 empty:hidden [&:not(:empty)]:mt-2 [&_.pill]:max-w-full [&_.pill]:whitespace-normal [&_.pill]:[overflow-wrap:anywhere]">
+        <StatusPill />
+        <SaveConfigButton />
+      </div>
     </div>
   )
 }
@@ -400,7 +446,7 @@ const more = (to: string, text: string, external?: boolean) => (
 
 function NotReady({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="mx-auto mt-[8vh] grid w-full max-w-[560px] justify-items-center gap-3 p-6 text-center">
+    <div role="status" className="mx-auto mt-[8vh] grid w-full max-w-[560px] justify-items-center gap-3 p-6 text-center">
       <LogoMark height={84} />
       <div className="mt-2 text-[20px] font-bold">{title}</div>
       <div className="whitespace-pre-line text-ink-2">{detail}</div>
