@@ -1,6 +1,7 @@
 # Changelog
 
 ## 26.11.23.3
+- On the Plus 5 and Smart 5, the extruder motor now runs at 0.6 A instead of QIDI's 0.857 A. At 0.857 A the Plus 5's driver on the toolhead board ran hot enough in a hot chamber for Fluidd to warn that it was overheating (issue #417). The Max 4 runs the same extruder gearing at 0.428 A, and Plus 5 Box loads and unloads ran without slipping at 0.428 A.
 - Automatic updates no longer install a release older than the one installed. If the latest release on GitHub was older, as when a release is withdrawn after printers updated to it, the hourly check put the older release in the `valve-oil` folder and ran its installer, which refused, and then `install.sh` from that folder couldn't uninstall or reinstall until the next release. It now leaves the printer and the folder as they are.
 - After an install over SSH that ran a QIDI firmware update, Valve Oil UI's Updates screen now shows how the update's install ended. It showed `Last install over SSH, <date> went on in the QIDI firmware update.` instead, when the SSH install ended after the update's own install had finished.
 - With Valve Oil's Klipper chosen, a QIDI firmware update now ends with Valve Oil's Klipper running. Its last Klipper restart came while the update still counted as running, when QIDI's Klipper starts instead, so the printer stayed on QIDI's Klipper, with the warning `QIDI's Klipper is running instead of Valve Oil's.`, until Klipper was next restarted. Klipper now restarts once more when the update ends, once the printer is idle.

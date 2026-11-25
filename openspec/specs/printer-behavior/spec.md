@@ -1634,6 +1634,13 @@ On the Plus 5, Valve Oil's macros SHALL use the Plus 5's homing sequence, positi
 - **WHEN** a print sliced with the project's Plus 5 OrcaSlicer or QIDI Studio pack starts
 - **THEN** its start path follows the Plus 5 start-print contract, including the Plus 5 prime line and `M1006 Z` temperature compensation
 
+### Requirement: Plus 5 and Smart 5 extruder current
+On the Plus 5 and Smart 5, Valve Oil SHALL run the extruder motor at 0.6 A, below QIDI's 0.857 A, so its toolhead driver doesn't overheat in a hot chamber.
+
+#### Scenario: Extruder runs at 0.6 A
+- **WHEN** Klipper starts on a Plus 5 or Smart 5 with Valve Oil installed
+- **THEN** the TMC2209 extruder driver's `run_current` is 0.6 A, where QIDI set 0.857 A
+
 ### Requirement: Writing a slot's filament to a spool tag
 On a USB Box running the Valve Oil Box firmware, Valve Oil configuration SHALL, on operator request, write a filament from the printer's filament database, by default the slot's own, and up to four colors to the tag of the spool in that slot, then read the tag back and report whether the write took. It MUST NOT write a tag that is locked, a Bambu Lab tag, or a tag holding another brand's data.
 

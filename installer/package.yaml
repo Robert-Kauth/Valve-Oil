@@ -628,6 +628,18 @@ patches:
           expected: "stepper_z,stepper_z1"
           desired: "stepper_x,stepper_y,stepper_z,stepper_z1"
 
+    # At 0.857 A the Plus 5's extruder driver gave overheat warnings in a hot chamber (issue #417). The Max 4 runs
+    # the same extruder gearing at 0.428 A, and Plus 5 Box loads and unloads ran cleanly at 0.428 A. The Smart 5
+    # ships the same 0.857 A.
+    - id: extruder_run_current
+      file: "config/printer.cfg"
+      section: "tmc2209 extruder"
+      option: "run_current"
+      variants:
+        - firmwares: ["01.01.02.01", "01.01.02.02", "smart5-01.01.02.01"]
+          expected: "0.857"
+          desired: "0.6"
+
     - id: timelapse_take_frame_verbose
       file: "config/timelapse.cfg"
       section: "gcode_macro TIMELAPSE_TAKE_FRAME"

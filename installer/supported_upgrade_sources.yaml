@@ -96,6 +96,9 @@ allowed_patch_targets:
 - file: config/printer.cfg
   section: controller_fan board_fan
   option: stepper
+- file: config/printer.cfg
+  section: tmc2209 extruder
+  option: run_current
 - file: config/klipper-macros-qd/qd_macro.cfg
   section: gcode_macro MOVE_TO_TRASH
   option: __section__
