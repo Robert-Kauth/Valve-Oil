@@ -469,7 +469,7 @@ def _execute_uninstall(
             if remove_extra_module(paths=paths, module=module):
                 journal.note_write()
         for removed in earlier_names.remove_earlier_klipper_modules(
-            paths, manifest.install.extra_modules, journal=journal
+            paths, [module.destination for module in manifest.install.extra_modules], journal=journal
         ):
             reporter.debug(event="uninstall.earlier_module.removed", path=removed)
 

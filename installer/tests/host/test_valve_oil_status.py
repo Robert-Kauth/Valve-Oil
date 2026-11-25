@@ -157,25 +157,26 @@ class StatusServiceTests(unittest.TestCase):
                 return exc.code, json.load(exc)
 
     def test_only_exclusive_locks_block_actions_with_the_correct_reason(self) -> None:
-        import fcntl
-        from installer.runtime.locking import acquire
-
-        with mock.patch.object(self.server, "_run_active", return_value=False), \
+        # Linux's /proc/locks, as a print start in Klipper (READ) and an installer run (WRITE) leave it.
+        lock = self.server.INSTALLER_LOCK
+        lock.touch()
+        info = lock.stat()
+        device = f"{os.major(info.st_dev):02x}:{os.minor(info.st_dev):02x}:{info.st_ino}"
+        table = self.paths.printer_data_root / "proc-locks"
+        with mock.patch.object(self.server, "PROC_LOCKS", table), \
+                mock.patch.object(self.server, "_run_active", return_value=False), \
                 mock.patch.object(self.server.Handler.jobs, "busy", return_value=False):
-            self.assertFalse(self.request("/api/status", method="GET")[1]["busy"])
-            with acquire(self.server.INSTALLER_LOCK):
-                body = self.request("/api/status", method="GET")[1]
-                self.assertTrue(body["busy"])
-                for action in ("update_now", "uninstall"):
-                    self.assertFalse(body[action]["allowed"])
-                    self.assertIn("installer_busy", [item["code"] for item in body[action]["blocked_by"]])
-            with self.server.INSTALLER_LOCK.open("rb") as handle:
-                fcntl.flock(handle, fcntl.LOCK_SH | fcntl.LOCK_NB)
-                body = self.request("/api/status", method="GET")[1]
-                self.assertFalse(body["busy"])
-                self.assertTrue(body["update_now"]["allowed"])
-                self.assertTrue(body["uninstall"]["allowed"])
-            self.assertFalse(self.request("/api/status", method="GET")[1]["busy"])
+            table.write_text(f"1: FLOCK  ADVISORY  READ  4242 {device} 0 EOF\n", encoding="utf-8")
+            body = self.request("/api/status", method="GET")[1]
+            self.assertFalse(body["busy"])
+            self.assertTrue(body["update_now"]["allowed"])
+            self.assertTrue(body["uninstall"]["allowed"])
+            table.write_text(f"1: FLOCK  ADVISORY  WRITE 4242 {device} 0 EOF\n", encoding="utf-8")
+            body = self.request("/api/status", method="GET")[1]
+            self.assertTrue(body["busy"])
+            for action in ("update_now", "uninstall"):
+                self.assertFalse(body[action]["allowed"])
+                self.assertIn("installer_busy", [item["code"] for item in body[action]["blocked_by"]])
 
     def test_only_marked_same_origin_json_posts_switch_enrollment(self) -> None:
         marker = self.server.ENROLLMENT_FILE

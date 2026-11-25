@@ -18,11 +18,11 @@ import shutil
 import subprocess
 from contextlib import suppress
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable
 
 from .errors import InstallerError
 from .fs_atomic import atomic_write_text, fsync_directory
-from .models import ExtraModuleSpec, RuntimePaths
+from .models import RuntimePaths
 from .naming import BUNDLE_ROOT_NAME, LEGACY_BUNDLE_ROOT_NAME, has_marker
 from .sudo import run_sudo
 
@@ -462,25 +462,21 @@ def _map(root: Path, absolute: str) -> Path:
 
 
 # ---- Klipper modules -------------------------------------------------------------------------------------------------
-def remove_earlier_klipper_modules(
-    paths: RuntimePaths, modules: Iterable[ExtraModuleSpec], *, journal
-) -> list[Path]:
-    """Remove legacy tltg modules and manifest-declared predecessors once replacements are in place."""
+def remove_earlier_klipper_modules(paths: RuntimePaths, module_destinations: list[str], *, journal) -> list[Path]:
+    """Remove klippy/extras/tltg_<name>.py for each klippy/extras/vo_<name>.py module the package installs. Klipper
+    loads a module only for its config section, so the earlier ones load nothing once their sections are renamed."""
     removed = []
-    for module in modules:
-        destination = module.destination
+    for destination in module_destinations:
         directory, _, name = destination.rpartition("/")
-        predecessors = list(module.replaces)
-        if directory == "klippy/extras" and name.startswith("vo_"):
-            predecessors.insert(0, f"{directory}/tltg_{name[len('vo_'):]}")
-        for predecessor in predecessors:
-            for candidate in (predecessor, predecessor + "c"):
-                target = paths.managed_klipper_root / candidate
-                if target.is_file() and not target.is_symlink():
-                    journal.track_file(target)
-                    journal.note_write()
-                    target.unlink()
-                    removed.append(target)
+        if directory != "klippy/extras" or not name.startswith("vo_"):
+            continue
+        for candidate in (f"tltg_{name[len('vo_'):]}", f"tltg_{name[len('vo_'):]}c"):
+            target = paths.managed_klipper_root / directory / candidate
+            if target.is_file() and not target.is_symlink():
+                journal.track_file(target)
+                journal.note_write()
+                target.unlink()
+                removed.append(target)
     return removed
 
 

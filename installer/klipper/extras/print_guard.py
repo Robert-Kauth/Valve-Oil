@@ -1,34 +1,31 @@
-# Print admission shared by updates, SD starts/resumes and QIDI Box drying.
+# Valve Oil print guard: no print or Box drying starts while Valve Oil's
+# installer runs.
+#
+# An installer run (install, update, uninstall, the hourly update check on a
+# printer with automatic updates) holds ~/printer_data/.vo_installer.lock
+# exclusively, checks that the printer is idle, and then changes files and
+# restarts Klipper. A print that starts after that check would be cut off.
+# So the commands that start a print or Box drying take the same lock shared,
+# without waiting, and keep it while QIDI's code selects or extracts the file
+# and schedules the print. If an installer run holds it, they stop with an
+# error; if they hold it, the installer can't start, and once they return it
+# sees the print (virtual_sdcard.is_active).
+#
+# A QIDI firmware update restarts the services and the host and doesn't hold
+# the lock in between, so its pending record also stops a start.
+#
+# Commands run inside a print that has already started (a resume, M24 on a
+# paused print) aren't held up: the installer doesn't run while a print does.
+
 import errno
 import fcntl
 import logging
 import os
-import stat
-from enum import Enum, auto
 
-
-class Admission(Enum):
-    SELECT = auto()
-    START = auto()
-    RESUME = auto()
-    START_OR_RESUME = auto()
-    DRY = auto()
-
-
-COMMANDS = {
-    "M23": Admission.SELECT,
-    "M24": Admission.START_OR_RESUME,
-    "PRINT_START": Admission.START,
-    "SDCARD_PRINT_FILE": Admission.START,
-    "SDCARD_POWER_OFF_CONTINUES_PINT_FILE": Admission.START,
-    "RESUME": Admission.RESUME,
-    "RESUME_PRINT": Admission.RESUME,
-    "TRY_RESUME_PRINT": Admission.RESUME,
-    "BOX_START_DRYING": Admission.DRY,
-    "ENABLE_BOX_DRY": Admission.DRY,
-}
+COMMANDS = ("SDCARD_PRINT_FILE", "SDCARD_POWER_OFF_CONTINUES_PINT_FILE", "M24",
+            "BOX_START_DRYING", "ENABLE_BOX_DRY")
 INSTALLER_LOCK = ".vo_installer.lock"
-FIRMWARE_UPDATE_MARKER = ".vo_firmware_update_pending.json"
+FIRMWARE_UPDATE_RECORD = ".vo_firmware_update_pending.json"
 
 
 class PrintGuard:
@@ -36,105 +33,51 @@ class PrintGuard:
         self.printer = config.get_printer()
         self.gcode = self.printer.lookup_object("gcode")
         config_file = self.printer.get_start_args()["config_file"]
-        self.data_dir = os.path.dirname(os.path.dirname(os.path.abspath(config_file)))
-        self.commands = dict(COMMANDS)
-        # QIDI and user macros may rename native commands. Guard those names
-        # too: M24.6245197 and _KM_RESUME_BASE otherwise bypass the public macro.
-        renames = {section.get_name().split(None, 1)[1].upper(): renamed.upper()
-                   for section in config.get_prefix_sections("gcode_macro ")
-                   if (renamed := section.get("rename_existing", None)) is not None}
-        pending = list(self.commands)
-        while pending:
-            name = pending.pop()
-            renamed = renames.get(name)
-            if renamed is not None and renamed not in self.commands:
-                self.commands[renamed] = self.commands[name]
-                pending.append(renamed)
+        data = os.path.dirname(os.path.dirname(os.path.abspath(config_file)))
+        self.lock_path = os.path.join(data, INSTALLER_LOCK)
+        self.record_path = os.path.join(data, FIRMWARE_UPDATE_RECORD)
         self.printer.register_event_handler("klippy:ready", self._ready)
 
     def _ready(self):
-        for name, admission in self.commands.items():
+        for name in COMMANDS:
             original = self.gcode.register_command(name, None)
             if original is not None:
-                self.gcode.register_command(
-                    name, self._guarded(name, original, admission),
-                    desc=self.gcode.gcode_help.get(name))
+                self.gcode.register_command(name, self._guarded(name, original),
+                                            desc=self.gcode.gcode_help.get(name))
 
-    def _guarded(self, name, original, admission):
+    def _print_active(self):
+        eventtime = self.printer.get_reactor().monotonic()
+        print_stats = self.printer.lookup_object("print_stats", None)
+        sd = self.printer.lookup_object("virtual_sdcard", None)
+        return ((print_stats is not None and print_stats.get_status(eventtime).get("state")
+                 in ("printing", "paused", "extracting"))
+                or (sd is not None and sd.is_active()))
+
+    def _guarded(self, name, original):
         def handler(gcmd):
-            # Admission already happened before SD work became active. Hourly
-            # checks must not interrupt PRINT_START or a paused print's resume.
-            if admission is not Admission.DRY and self._print_active():
+            if self._print_active():
                 return original(gcmd)
-            handle = None
             try:
-                handle = os.open(os.path.join(self.data_dir, INSTALLER_LOCK),
-                                 os.O_CREAT | os.O_RDONLY | os.O_NOFOLLOW
-                                 | os.O_CLOEXEC | os.O_NONBLOCK, 0o600)
-                if not stat.S_ISREG(os.fstat(handle).st_mode):
-                    raise OSError("Installer lock is not a regular file")
-                fcntl.flock(handle, fcntl.LOCK_SH | fcntl.LOCK_NB)
-            except OSError as exc:
-                if handle is not None:
-                    os.close(handle)
-                if handle is not None and exc.errno in (errno.EAGAIN, errno.EACCES):
-                    logging.info("vo_print_guard: %s refused: installer busy", name)
-                    raise gcmd.error("Another printer operation is in progress. Wait for it to finish before starting a print or drying.")
-                logging.exception("vo_print_guard: %s could not acquire %s", name, INSTALLER_LOCK)
-                raise gcmd.error("Cannot verify Valve Oil update safety. Check the Klipper log before printing.")
+                handle = os.open(self.lock_path, os.O_RDONLY | os.O_CREAT | os.O_CLOEXEC, 0o644)
+            except OSError:
+                logging.exception("vo_print_guard: can't open %s", self.lock_path)
+                raise gcmd.error("Valve Oil can't tell whether its installer is running. Check klippy.log.")
             try:
-                # Firmware updates span service restarts and reboots; a broken
-                # marker also blocks admission until the updater repairs it.
-                if os.path.lexists(os.path.join(self.data_dir, FIRMWARE_UPDATE_MARKER)):
-                    raise gcmd.error("A firmware update has not finished. Finish or recover it before printing or drying.")
-                self._check_drying(gcmd, admission)
-                # Keep the lock through extraction and scheduling. After the
-                # handler returns the updater sees virtual_sdcard.is_active.
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                except OSError as exc:
+                    if exc.errno not in (errno.EAGAIN, errno.EACCES):
+                        raise
+                    logging.info("vo_print_guard: %s refused: installer running", name)
+                    raise gcmd.error("Valve Oil's installer is running. Start again when it has finished.")
+                if os.path.lexists(self.record_path):
+                    logging.info("vo_print_guard: %s refused: firmware update pending", name)
+                    raise gcmd.error("A QIDI firmware update hasn't finished. Finish it with Update now "
+                                     "or ./install.sh first.")
                 return original(gcmd)
             finally:
                 os.close(handle)
         return handler
-
-    def _print_state(self):
-        print_stats = self.printer.lookup_object("print_stats", None)
-        if print_stats is None:
-            return None
-        return print_stats.get_status(self.printer.get_reactor().monotonic()).get("state")
-
-    def _print_active(self):
-        sd = self.printer.lookup_object("virtual_sdcard", None)
-        return self._print_state() in ("extracting", "printing", "paused") or (sd is not None and sd.is_active())
-
-    def _check_drying(self, gcmd, admission):
-        if admission is Admission.DRY:
-            if self._print_active():
-                raise gcmd.error("Box drying can't start during a print. Set the Box heater target instead.")
-            return
-        if admission not in (Admission.START, Admission.START_OR_RESUME):
-            return
-        try:
-            boxes = self.drying_boxes()
-        except Exception:
-            logging.exception("vo_print_guard: Box status failed")
-            raise gcmd.error("Cannot read Box drying state. Check the Klipper log before printing.")
-        if boxes:
-            raise gcmd.error(
-                "%s drying. Stop drying before starting a print."
-                % (("Box %d is" % boxes[0]) if len(boxes) == 1
-                   else "Boxes %s and %d are" % (
-                       ", ".join(str(box) for box in boxes[:-1]), boxes[-1])))
-
-    def drying_boxes(self):
-        """Numbers of the Boxes QIDI's drying is running on, from 1."""
-        box_extras = self.printer.lookup_object("box_extras", None)
-        if box_extras is None:
-            return []
-        eventtime = self.printer.get_reactor().monotonic()
-        boxes = box_extras.get_status(eventtime).get("boxes")
-        if not isinstance(boxes, list) or any(not hasattr(box, "get") for box in boxes):
-            raise ValueError("Invalid Box drying status")
-        return [number for number, box in enumerate(boxes, 1)
-                if box.get("dry_state") == 1]
 
 
 def load_config(config):

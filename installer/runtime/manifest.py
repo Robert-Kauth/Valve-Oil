@@ -170,19 +170,6 @@ def parse_manifest(raw: Any) -> Manifest:
         raise ManifestValidationError(
             "install.source_patches and install.extra_modules must not share an id or destination."
         )
-    replacement_paths = tuple(
-        replacement for module in extra_modules for replacement in module.replaces
-    )
-    occupied_paths = {
-        *(patch.destination for patch in source_patches),
-        *(module.destination for module in extra_modules),
-    }
-    if len(replacement_paths) != len(set(replacement_paths)) or (
-        set(replacement_paths) & occupied_paths
-    ):
-        raise ManifestValidationError(
-            "Extra module replacement paths must be unique and cannot be installed destinations."
-        )
     install = InstallSpec(
         ensure_directories=tuple(
             _validate_relative_path(item, allowed_roots=("config",))
@@ -603,14 +590,6 @@ def _parse_extra_modules(install_raw: dict[str, Any]) -> tuple[ExtraModuleSpec, 
                 f"Duplicate extra module destination: {destination}"
             )
         destinations.add(destination)
-        replaces = tuple(
-            _validate_relative_path(path, allowed_roots=("klippy",))
-            for path in _optional_list_of_str(item, "replaces")
-        )
-        if any(not path.startswith("klippy/extras/") or not path.endswith(".py") for path in replaces):
-            raise ManifestValidationError(
-                "Extra module replacement paths must be .py files under klippy/extras/."
-            )
         modules.append(
             ExtraModuleSpec(
                 id=module_id,
@@ -618,7 +597,6 @@ def _parse_extra_modules(install_raw: dict[str, Any]) -> tuple[ExtraModuleSpec, 
                     _require_str(item, "source"), allowed_roots=("klipper",)
                 ),
                 destination=destination,
-                replaces=replaces,
             )
         )
     return tuple(modules)

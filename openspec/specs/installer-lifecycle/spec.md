@@ -81,17 +81,14 @@ Every installer launcher, including the release download, automatic updates, res
 Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-printer transactions with validated inputs, recoverable preimages, atomic committed state, and drift-safe reversal.
 
 #### Scenario: Print admission and updating cannot race
-- **WHEN** an installed Valve Oil printer receives a print start from any client
-- **THEN** Klipper holds a shared installer lock through admission, including SD selection, 3MF extraction, and scheduling the print loop
-- **AND** a running installer holding the exclusive lock refuses that start before any print side effects
-- **AND** if print admission wins, an updater either fails to acquire the lock or observes extracting, printing, paused, or active virtual SD work and refuses mutation
-- **AND** a pending QIDI firmware update blocks print admission across service restarts and reboots until completion or recovery removes its marker
-- **AND** missing or malformed virtual SD state prevents an update rather than implying idle
-- **AND** the same admission owner enforces Box drying exclusion, rejects drying during scheduled SD work, and guards public resume commands plus their configured `rename_existing` names
-- **AND** an already active or paused print continues through `PRINT_START` and resume commands without repeating admission during an hourly check
-- **AND** a check on a printer not enrolled in automatic updates holds only a shared lock, so it cannot block print admission
-- **AND** Box drying blocks admission only when QIDI reports `dry_state` 1
-- **AND** installing that owner removes the replaced guard modules declared by `extra_modules.replaces` and obsolete configuration rather than loading parallel wrappers
+- **WHEN** an installed Valve Oil printer receives a print or Box drying start (`SDCARD_PRINT_FILE`, `M24` outside a paused print, QIDI's power-loss resume, `BOX_START_DRYING`, `ENABLE_BOX_DRY`)
+- **THEN** Klipper takes the installer lock shared without waiting and holds it until the start command returns
+- **AND** a start while an installer run holds the lock exclusively stops with an error before any print side effect
+- **AND** an installer run that starts during the command fails to take the lock, and one that starts after it sees printing, paused, extracting, or active virtual SD work and changes nothing
+- **AND** a missing or malformed virtual SD state stops an installer run rather than reading as idle
+- **AND** a pending QIDI firmware update record stops a start across service restarts and reboots until the update finishes or is recovered
+- **AND** commands inside a print that has started, including resumes, are not held up
+- **AND** an update check on a printer not enrolled in automatic updates holds the lock only shared, so it does not stop a start
 
 #### Scenario: A competing update cannot replace active progress
 - **WHEN** Update now races another installer or automatic update for the installer lock

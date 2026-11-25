@@ -349,7 +349,7 @@ def printer_busy(moonraker=MOONRAKER):
     status = _get(moonraker + "/printer/objects/query?print_stats=state&virtual_sdcard=is_active&heaters=available_heaters")["status"]
     state = status.get("print_stats", {}).get("state")
     active = status.get("virtual_sdcard", {}).get("is_active")
-    if state not in ("standby", "printing", "paused", "extracting", "complete", "cancelled", "error") or not isinstance(active, bool):
+    if not isinstance(active, bool):
         return "the print state is unknown"
     if state in ("printing", "paused", "extracting") or active:
         return "a print is running"

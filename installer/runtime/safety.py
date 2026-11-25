@@ -94,23 +94,18 @@ def query_printer_state(
     timeout: int = 5,
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> str:
-    try:
-        status = _query_objects(url, ("print_stats", "virtual_sdcard"), timeout=timeout, urlopen=urlopen)
-    except (OSError, urllib.error.URLError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        raise PrinterStateError() from exc
-    return print_state(status)
+    return print_state(_query_objects(url, ("print_stats", "virtual_sdcard"), timeout=timeout, urlopen=urlopen))
 
 
 def print_state(status: dict) -> str:
-    """Validate a Klipper snapshot, including SD work not yet reflected in print_stats."""
+    """print_stats' state, or "printing" once virtual_sdcard has work scheduled: a print start returns before
+    print_stats changes."""
     try:
         state = status["print_stats"]["state"]
         active = status["virtual_sdcard"]["is_active"]
     except (KeyError, TypeError) as exc:
         raise PrinterStateError() from exc
-    if (not isinstance(state, str) or state not in {
-            "standby", "printing", "paused", "extracting", "complete", "cancelled", "error"}
-            or not isinstance(active, bool)):
+    if not isinstance(state, str) or not state or not isinstance(active, bool):
         raise PrinterStateError()
     return "printing" if active else state
 

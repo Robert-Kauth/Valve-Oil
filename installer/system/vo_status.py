@@ -191,7 +191,7 @@ KLIPPER_SWITCH_BLOCKERS = {
     "printing": "a print is running or paused",
     "printer_state_unknown": "Moonraker didn't answer, so whether a print is running isn't known",
     "run_in_progress": "a Valve Oil update is running",
-    "installer_busy": "another printer operation is in progress",
+    "installer_busy": "another installer run is in progress",
     "firmware_update_pending": "a QIDI firmware update hasn't finished; finish it with Update now or ./install.sh first",
     "valve_oil_unavailable": "Valve Oil's Klipper isn't available",
 }
@@ -235,7 +235,7 @@ LIVE_BLOCKERS = {
 OUTSIDE_WINDOW = "it's outside the update window"
 UPDATE_NOW_BLOCKERS = {
     "run_in_progress": "another update is still running",
-    "installer_busy": "another printer operation is in progress",
+    "installer_busy": "another installer run is in progress",
     "installer_missing": "Valve Oil's installer is not in " + str(BUNDLE),
 }
 UNINSTALL_BLOCKERS = {
@@ -1009,8 +1009,6 @@ def live_printer() -> tuple[str, ...] | None:
         return ("printer_state_unknown",)
     if active or state in ("printing", "paused", "extracting"):
         return ("printing",)
-    if state not in ("standby", "complete", "cancelled", "error"):
-        return ("printer_state_unknown",)
     if _record(status.get("webhooks")).get("state") != "ready":
         return ("klipper_not_ready",)
     heaters = _record(status.get("heaters")).get("available_heaters")
@@ -1105,7 +1103,8 @@ def _uninstall(busy: bool, live: tuple[str, ...] | None) -> dict:
 
 
 def installer_lock_held() -> bool:
-    """Whether an exclusive installer lock is held, without mistaking a shared admission or probe for an update."""
+    """Whether an installer run holds its lock, from the kernel's lock table, without taking the lock. Shared holds (a print
+    start in Klipper, an update check that only reads, the Box monitor's probe) don't count."""
     try:
         info = INSTALLER_LOCK.stat()
         table = PROC_LOCKS.read_text(encoding="utf-8")

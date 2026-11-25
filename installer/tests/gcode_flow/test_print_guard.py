@@ -5,7 +5,7 @@ from unittest import mock
 
 from installer.runtime import safety
 from installer.runtime.errors import ActivePrintError, LockAcquisitionError, PrinterStateError
-from installer.runtime.locking import acquire
+from installer.runtime.locking import acquire, acquire_shared
 from installer.tests.gcode_flow.printer import FIRMWARE, FlowPrinter
 from installer.tests.gcode_flow.qidi import BoxSetup
 from installer.tests.helpers import MOONRAKER_QUERY_URL, moonraker_urlopen, load_source, REPO_ROOT
@@ -16,41 +16,43 @@ class PrintGuardTests(unittest.TestCase):
     def printer(self, printer_id="max4"):
         return FlowPrinter(printer_id, box=BoxSetup())
 
-    def test_update_refuses_every_print_entry_on_every_printer(self):
-        """API/slicer starts, SD selection/resume and QIDI recovery cannot bypass an update."""
+    def test_installer_run_refuses_every_print_and_drying_start_on_every_printer(self):
+        """Slicer and API starts, the touchscreen's M24, QIDI's power-loss resume and Box drying."""
         module = load_extra("print_guard")
         for printer_id in FIRMWARE:
             printer = self.printer(printer_id)
-            lock = printer.root / module.INSTALLER_LOCK
-            commands = (*module.COMMANDS, "_KM_RESUME_BASE", "M24.6245197")
-            self.assertIn("_KM_RESUME_BASE", printer.gcode.ready_gcode_handlers)
-            self.assertIn("M24.6245197", printer.gcode.ready_gcode_handlers)
-            for command in commands:
+            for command in module.COMMANDS:
                 if command not in printer.gcode.ready_gcode_handlers:
-                    continue  # QIDI recovery is not present on every model.
+                    continue  # not every printer's firmware has QIDI's recovery or ENABLE_BOX_DRY
                 with self.subTest(printer=printer_id, command=command):
-                    with acquire(lock), self.assertRaisesRegex(printer.command_error, "Another printer operation is in progress"):
+                    with acquire(printer.root / module.INSTALLER_LOCK), \
+                            self.assertRaisesRegex(printer.command_error, "installer is running"):
                         printer.run(command)
                     self.assertFalse(printer.status("virtual_sdcard")["is_active"])
                     self.assertEqual(printer.status("extruder")["target"], 0.)
-            # Releasing the installer lock restores printing; no sticky latch.
+            # Once the installer run ends, prints start again.
             printer.print_file("M118 MSG=print_admission_pass\n")
             self.assertEqual(printer.status("print_stats")["state"], "complete")
 
-    def test_paused_print_and_native_aliases_resume_during_an_hourly_check(self):
+    def test_paused_print_resumes_while_the_installer_lock_is_held(self):
         from installer.tests.gcode_flow import slicer
 
         for printer_id in FIRMWARE:
-            for pack in slicer.PACKS:
-                for command in ("RESUME", "_KM_RESUME_BASE", "RESUME_PRINT", "TRY_RESUME_PRINT", "M24.6245197"):
-                    with self.subTest(printer=printer_id, slicer=pack, command=command):
-                        printer = self.printer(printer_id)
-                        printer.start_print(slicer.print_with_pause(pack, printer_id).text, nozzle=220.)
-                        self.assertEqual(printer.status("print_stats")["state"], "paused")
-                        with acquire(printer.root / ".vo_installer.lock"):
-                            printer.run(command)
-                            printer.reactor.advance(printer.reactor.monotonic())
-                        self.assertEqual(printer.status("print_stats")["state"], "complete")
+            for command in ("RESUME", "M24"):
+                with self.subTest(printer=printer_id, command=command):
+                    printer = self.printer(printer_id)
+                    printer.start_print(slicer.print_with_pause("orca", printer_id).text, nozzle=220.)
+                    self.assertEqual(printer.status("print_stats")["state"], "paused")
+                    with acquire(printer.root / ".vo_installer.lock"):
+                        printer.run(command)
+                        printer.reactor.advance(printer.reactor.monotonic())
+                    self.assertEqual(printer.status("print_stats")["state"], "complete")
+
+    def test_an_update_check_that_only_reads_lets_prints_start(self):
+        printer = self.printer()
+        with acquire_shared(printer.root / ".vo_installer.lock"):
+            printer.print_file("M118 MSG=shared_lock_pass\n")
+        self.assertEqual(printer.status("print_stats")["state"], "complete")
 
     def test_slicer_print_start_does_not_readmit_an_active_sd_print(self):
         from installer.tests.gcode_flow import sdcard, slicer
@@ -66,16 +68,6 @@ class PrintGuardTests(unittest.TestCase):
             with acquire(printer.root / ".vo_installer.lock"):
                 printer.reactor.advance(printer.reactor.monotonic())
             self.assertEqual(printer.status("print_stats")["state"], "complete")
-
-    def test_read_only_installer_lock_does_not_block_printing(self):
-        printer = self.printer()
-        lock = printer.root / ".vo_installer.lock"
-        lock.touch(mode=0o444)
-        try:
-            printer.print_file("M118 MSG=read_only_lock_pass\n")
-            self.assertEqual(printer.status("print_stats")["state"], "complete")
-        finally:
-            lock.chmod(0o600)
 
     def test_print_admission_holds_lock_until_sd_work_is_visible(self):
         """An update loses during start; after start it sees active SD before print_stats updates."""
@@ -110,7 +102,7 @@ class PrintGuardTests(unittest.TestCase):
         printer = self.printer()
         marker = printer.root / ".vo_firmware_update_pending.json"
         marker.write_text(json.dumps({"id": "test-update"}))
-        with self.assertRaisesRegex(printer.command_error, "firmware update has not finished"):
+        with self.assertRaisesRegex(printer.command_error, "firmware update hasn.t finished"):
             printer.run("SDCARD_PRINT_FILE FILENAME=missing.gcode")
         with acquire(printer.root / ".vo_installer.lock"):
             pass
@@ -121,14 +113,6 @@ class PrintGuardTests(unittest.TestCase):
             pass
         printer.print_file("M118 MSG=recovered\n")
         self.assertEqual(printer.status("print_stats")["state"], "complete")
-
-    def test_unsafe_lock_path_fails_closed(self):
-        printer = self.printer()
-        lock = printer.root / ".vo_installer.lock"
-        lock.symlink_to(printer.root / "missing-lock-target")
-        with self.assertLogs(level="ERROR"), self.assertRaisesRegex(printer.command_error, "Cannot verify"):
-            printer.run("M24")
-        self.assertFalse(printer.status("virtual_sdcard")["is_active"])
 
     def test_extracting_and_unknown_sd_state_are_not_idle(self):
         for state in ("printing", "paused", "extracting"):
@@ -142,7 +126,7 @@ class PrintGuardTests(unittest.TestCase):
     def test_status_service_reports_extracting_and_scheduled_start_as_busy(self):
         server = load_source("vo_status_print_guard", REPO_ROOT / "installer/system/vo_status.py")
         for state, active, expected in (("extracting", False, ("printing",)),
-                                         ("starting", False, ("printer_state_unknown",)),
+                                         ("standby", None, ("printer_state_unknown",)),
                                          ("standby", True, ("printing",)),
                                          ("standby", False, ())):
             status = {"print_stats": {"state": state}, "virtual_sdcard": {"is_active": active},

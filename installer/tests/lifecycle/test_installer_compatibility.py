@@ -77,32 +77,6 @@ class InstallerCompatibilityTests(unittest.TestCase):
                 with self.assertRaises(ManifestValidationError):
                     parse_manifest({**raw, "printers": [max4, other]})
 
-    def test_extra_module_replacements_are_safe_and_do_not_collide(self) -> None:
-        raw = yaml.safe_load((REPO_ROOT / "installer/package.yaml").read_text(encoding="utf-8"))
-        modules = raw["install"]["extra_modules"]
-        self.assertEqual(
-            next(module for module in parse_manifest(raw).install.extra_modules if module.id == "print_guard").replaces,
-            ("klippy/extras/vo_box_dry_guard.py",),
-        )
-
-        for replacement in (
-            "../outside.py",
-            "klippy/private.py",
-            "klippy/extras/not_python",
-            modules[0]["destination"],
-            raw["install"]["source_patches"][0]["destination"],
-        ):
-            with self.subTest(replacement=replacement):
-                document = copy.deepcopy(raw)
-                next(module for module in document["install"]["extra_modules"] if module["id"] == "print_guard")["replaces"] = [replacement]
-                with self.assertRaises(ManifestValidationError):
-                    parse_manifest(document)
-
-        document = copy.deepcopy(raw)
-        next(module for module in document["install"]["extra_modules"] if module["id"] == "print_guard")["replaces"] *= 2
-        with self.assertRaises(ManifestValidationError):
-            parse_manifest(document)
-
     def test_target_firmware_comes_only_from_the_mirror_and_updates_every_older_firmware(self) -> None:
         raw = yaml.safe_load((REPO_ROOT / "installer/package.yaml").read_text(encoding="utf-8"))
         target = raw["printers"][0]["target_firmware"]

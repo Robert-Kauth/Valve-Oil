@@ -68,7 +68,7 @@ class BoxConfigTests(unittest.TestCase):
 
         cases = (("printing", False, "printing"), ("paused", False, "printing"),
                  ("extracting", False, "printing"), ("standby", True, "printing"),
-                 ("standby", None, "printer_state_unknown"), ("unknown", False, "printer_state_unknown"),
+                 ("standby", None, "printer_state_unknown"),
                  ("standby", False, None), ("complete", False, None))
         for state, active, expected in cases:
             with self.subTest(state=state, active=active):

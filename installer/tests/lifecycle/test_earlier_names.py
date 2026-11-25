@@ -10,7 +10,6 @@ from unittest import mock
 from installer.runtime import earlier_names, valve_oil_status
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
-from installer.runtime.errors import PathSafetyError
 from installer.runtime.manifest import load_manifest
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.runner import run_install
@@ -39,54 +38,6 @@ class EarlierNamesTests(unittest.TestCase):
     def install(self) -> None:
         run_install(self.paths, self.manifest, PlainReporter(io.StringIO()),
                     urlopen=moonraker_urlopen(saved_variables_path=self.paths.config_root / "saved_variables.cfg"))
-
-    def test_declared_print_guard_predecessor_and_old_configs_are_removed_during_install(self) -> None:
-        self.install()
-        extras = self.paths.managed_klipper_root / "klippy/extras"
-        old_modules = [extras / "vo_box_dry_guard.py"]
-        never_shipped = [extras / name for name in ("vo_update_guard.py", "tltg_box_dry_guard.py")]
-        old_configs = [self.root / "config/vo-macros" / name for name in ("box_dry_guard.cfg", "update_guard.cfg")]
-        for path in old_modules + never_shipped + old_configs:
-            path.write_text("# old installer-owned guard\n")
-        self.install()
-        self.assertTrue((extras / "vo_print_guard.py").is_file())
-        self.assertTrue((self.root / "config/vo-macros/print_guard.cfg").is_file())
-        self.assertFalse(any(path.exists() for path in old_modules + old_configs))
-        self.assertTrue(all(path.is_file() for path in never_shipped))
-
-    def test_declared_print_guard_predecessor_is_removed_during_uninstall(self) -> None:
-        self.install()
-        predecessor = self.paths.managed_klipper_root / "klippy/extras/vo_box_dry_guard.py"
-        predecessor.write_text("# old installer-owned guard\n", encoding="utf-8")
-        compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
-
-        run_uninstall(self.paths, self.manifest, compatibility, PlainReporter(io.StringIO()), input_stream=io.StringIO("Y\n"),
-                      urlopen=moonraker_urlopen(saved_variables_path=self.paths.config_root / "saved_variables.cfg"))
-
-        self.assertFalse(predecessor.exists())
-
-    def test_declared_print_guard_predecessor_is_restored_when_install_rolls_back(self) -> None:
-        predecessor = self.paths.managed_klipper_root / "klippy/extras/vo_box_dry_guard.py"
-        predecessor.write_text("# old installer-owned guard\n", encoding="utf-8")
-
-        with mock.patch(
-            "installer.runtime.runner.apply_file_change_plan",
-            side_effect=RuntimeError("force failure after predecessor removal"),
-        ):
-            with self.assertRaisesRegex(RuntimeError, "force failure"):
-                self.install()
-
-        self.assertEqual(predecessor.read_text(encoding="utf-8"), "# old installer-owned guard\n")
-        self.assertFalse((self.paths.managed_klipper_root / "klippy/extras/vo_print_guard.py").exists())
-
-    def test_declared_print_guard_predecessor_cannot_be_a_symlink(self) -> None:
-        predecessor = self.paths.managed_klipper_root / "klippy/extras/vo_box_dry_guard.py"
-        predecessor.symlink_to(self.root / "outside.py")
-
-        with self.assertRaises(PathSafetyError):
-            self.install()
-
-        self.assertTrue(predecessor.is_symlink())
 
     def age(self) -> None:
         """Leave the printer as an earlier release did: the same install under the tltg names."""
