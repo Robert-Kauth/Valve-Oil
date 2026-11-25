@@ -6,7 +6,7 @@ import subprocess
 import urllib.request
 
 from .addons_cli import maybe_remove_addons
-from . import boot_logo, box_config, klipper_cfg, klipper_tree, messages, patches
+from . import boot_logo, box_config, filament_database, klipper_cfg, klipper_tree, messages, patches
 from .legacy_manual_install import install_started_path
 from .auto_update import (
     SYSTEM_ROOT_ENV,
@@ -511,6 +511,9 @@ def _execute_uninstall(
         # Valve Oil's Klipper is gone with the host changes: the operator's choice, the launcher's record, and Klipper's
         # acknowledgement go with it.
         klipper_tree.remove_state_files(paths.printer_data_root)
+        # vo_box_rfid is gone: the filaments it moved out of QIDI's list for being above the nozzle's limit go back.
+        for problem in filament_database.restore_removed(paths.printer_data_root):
+            reporter.line(f"  QIDI's filaments above the nozzle limit could not all be put back: {problem}.")
 
         if state_path.exists():
             journal.note_write()

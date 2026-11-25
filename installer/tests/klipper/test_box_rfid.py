@@ -314,18 +314,27 @@ class Jog:
 
 
 class Config:
-    def __init__(self, printer, directory):
-        self.printer, self.directory = printer, directory
+    def __init__(self, printer, directory, max_temp=None, record=None):
+        self.printer, self.directory, self.max_temp, self.record = printer, directory, max_temp, record
 
     def get_printer(self):
         return self.printer
 
     def get(self, name, default=None):
-        return str(self.directory) if name == "database_dir" else default
+        return {"database_dir": str(self.directory), "removed_record": self.record}.get(name) or default
+
+    def getfloat(self, name, default=None):
+        return self.max_temp if name == "max_temp" else default
+
+    def has_section(self, name):
+        return name == "extruder" and self.max_temp is not None
+
+    def getsection(self, name):
+        return self
 
 
-def entry(filament_id, vendor="QIDI"):
-    return {"type": "PLA", "filament_id": filament_id, "filament_vendor": vendor, "nozzle_temperature": [190, 240]}
+def entry(filament_id, vendor="QIDI", nozzle=(190, 240)):
+    return {"type": "PLA", "filament_id": filament_id, "filament_vendor": vendor, "nozzle_temperature": list(nozzle)}
 
 
 class BoxRfidTests(unittest.TestCase):
@@ -339,11 +348,12 @@ class BoxRfidTests(unittest.TestCase):
         for nozzle in ("0.2", "0.4", "0.6", "0.8"):
             (self.database / f"filament-{nozzle}.json").write_text(json.dumps(self.existing))
 
-    def module(self, tag=None, firmware="02.03.01.21-valve-oil.1"):
+    def module(self, tag=None, firmware="02.03.01.21-valve-oil.1", max_temp=None):
         self.reader = Reader(tag)
         self.rfid = BoxRfid(Mcu(self.reader, firmware))
         self.printer = Printer(self.rfid, self.root)
-        module = box_rfid.load_config(Config(self.printer, self.database))
+        record = str(self.root / box_rfid.REMOVED_RECORD)
+        module = box_rfid.load_config(Config(self.printer, self.database, max_temp, record))
         self.printer.handlers["klippy:connect"]()
         self.printer.handlers["klippy:ready"]()
         return module
@@ -369,6 +379,57 @@ class BoxRfidTests(unittest.TestCase):
         before = {path: path.read_bytes() for path in self.database.iterdir()}
         self.module()
         self.assertEqual(before, {path: path.read_bytes() for path in self.database.iterdir()})
+
+    def test_filaments_above_the_nozzle_limit_leave_the_list_until_the_nozzle_reaches_them(self):
+        # Issue #414: the Smart 5's nozzle stops at 315 C, and QIDI's Box loads heat to a filament's maximum, so
+        # QIDI's PPS-CF (300-350) and PET-CF (280-320) and the catalog's Bambu PPS-CF (310-340) failed every load.
+        qidi = {"QIDI PLA Basic": entry("QFA00"), "QIDI PPS-CF": entry("QFP01", nozzle=(300, 350)),
+                "QIDI PET-CF": entry("QFT01", nozzle=("280", "320")), "Generic PLA": entry("QFA90", "Generic"),
+                "Mine": entry("QFM01", "Mine", nozzle=(200, 315))}
+        for nozzle in ("0.2", "0.4", "0.6", "0.8"):
+            (self.database / f"filament-{nozzle}.json").write_text(json.dumps(qidi))
+        catalog = box_rfid.CATALOG["filaments"]
+        too_hot = {name for name, item in catalog.items() if item["entry"]["nozzle_temperature"][1] > 315}
+        self.assertIn("Bambu PPS-CF", too_hot)
+
+        module = self.module(max_temp=315.)
+        for nozzle in ("0.2", "0.4", "0.6", "0.8"):
+            entries = json.loads((self.database / f"filament-{nozzle}.json").read_text())
+            self.assertEqual([name for name in entries if name in qidi],
+                             ["QIDI PLA Basic", "Generic PLA", "Mine"])
+            self.assertFalse(too_hot & set(entries))
+            self.assertTrue(all(int(value["nozzle_temperature"][1]) <= 315 for value in entries.values()))
+        self.assertEqual(module.get_status(0)["filaments_removed"]["0.4"], ["QIDI PPS-CF", "QIDI PET-CF"])
+        before = {path: path.read_bytes() for path in self.database.iterdir()}
+        record = (self.root / box_rfid.REMOVED_RECORD).read_bytes()
+        self.module(max_temp=315.)
+        self.assertEqual(before, {path: path.read_bytes() for path in self.database.iterdir()})
+        self.assertEqual(record, (self.root / box_rfid.REMOVED_RECORD).read_bytes())
+
+        # A firmware update puts QIDI's list back; the next start moves them out again.
+        for nozzle in ("0.2", "0.4", "0.6", "0.8"):
+            (self.database / f"filament-{nozzle}.json").write_text(json.dumps(qidi))
+        self.module(max_temp=315.)
+        self.assertEqual(before, {path: path.read_bytes() for path in self.database.iterdir()})
+
+        # A nozzle that reaches them gets them back where they were, and the catalog's too.
+        self.module(max_temp=375.)
+        for nozzle in ("0.2", "0.4", "0.6", "0.8"):
+            entries = json.loads((self.database / f"filament-{nozzle}.json").read_text())
+            self.assertEqual([name for name in entries if name in qidi], list(qidi))
+            self.assertEqual({name: entries[name] for name in qidi}, qidi)
+            expected = {name for name in too_hot if nozzle in catalog[name]["nozzles"]}
+            self.assertEqual(expected & set(entries), expected)
+        self.assertFalse((self.root / box_rfid.REMOVED_RECORD).exists())
+
+    def test_without_a_record_nothing_is_moved_out(self):
+        (self.root / box_rfid.REMOVED_RECORD).write_text("{not json")
+        hot = dict(self.existing, **{"QIDI PPS-CF": entry("QFP01", nozzle=(300, 350))})
+        (self.database / "filament-0.4.json").write_text(json.dumps(hot))
+        self.module(max_temp=315.)
+        entries = json.loads((self.database / "filament-0.4.json").read_text())
+        self.assertIn("QIDI PPS-CF", entries)
+        self.assertNotIn("Bambu PPS-CF", entries)
 
     def test_vendor_tags_become_qidi_blocks_for_their_database_entries(self):
         self.module(Tag("ntag", ANYCUBIC))
