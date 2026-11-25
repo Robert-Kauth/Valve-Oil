@@ -66,6 +66,19 @@
 # for, klippy.log gets a warning naming the MCU, the command, how late it
 # is, and the Python calls that sent it. Other commands are not wrapped.
 # Steps go out from Klipper's C code and are not checked.
+#
+# Command stalls: Klipper's serial code resends each board the commands it
+# hasn't acknowledged, and reports "Lost communication" only when nothing at
+# all arrives from the board. A Max 4 THR stopped taking commands for 20 to 47
+# s during load-cell probing while it went on sending its temperature and
+# endstop sync reports (issue #412). Its heater updates waited in Klipper the
+# whole time, so the nozzle cooled and Klipper stopped with "Heater extruder
+# not heating at expected rate", or the late updates arrived at once and the
+# THR stopped with "Missed scheduling of next digital out event". Neither
+# error names the stall. Each board's serial counters are read every second:
+# when commands sent to it stay unacknowledged for COMMAND_STALL seconds, the
+# console and klippy.log say so, and again with the stall's length when it
+# takes commands again or Klipper shuts down first.
 
 import collections
 import copy
@@ -137,6 +150,10 @@ MAX_AHEAD_TICKS = 0x80000000
 LATE_COMMAND_REPEAT = 10.
 # Python calls listed with a late command, innermost first.
 LATE_COMMAND_STACK = 8
+# Seconds a board leaves sent commands unacknowledged before it is reported.
+# A board acknowledges within milliseconds, and Klipper's resends start after
+# 25 ms; counters read once a second can overstate a stall by up to a second.
+COMMAND_STALL = 3.
 
 # The KlipperHealth of the running Klipper; the endstop wrapper outlives a
 # RESTART, which creates a new one.
@@ -755,6 +772,89 @@ def lighten_status_copy(obj):
     return True
 
 
+def _clock_time(wall):
+    return time.strftime("%H:%M:%S", time.localtime(wall))
+
+
+class CommandStall:
+    """Whether a board takes Klipper's commands, from its serial counters
+    read once a second."""
+
+    def __init__(self, name, serial):
+        self.name = name
+        self.serial = serial
+        self.receive_seq = None
+        # When the board last had nothing waiting or acknowledged more, and
+        # its counters then.
+        self.progress = None
+        self.progress_wall = None
+        self.progress_stats = None
+        self.reported = False
+
+    def _read(self, eventtime):
+        stats = _parse_stats(self.serial.stats(eventtime))
+        if "send_seq" not in stats or "receive_seq" not in stats:
+            return None
+        return stats
+
+    def _resent(self, stats):
+        return int(stats.get("bytes_retransmit", 0.)
+                   - self.progress_stats.get("bytes_retransmit", 0.))
+
+    def _stalled(self, eventtime, stats):
+        return (stats["receive_seq"] == self.receive_seq
+                and stats["send_seq"] > stats["receive_seq"]
+                and eventtime - self.progress >= COMMAND_STALL)
+
+    def update(self, eventtime, wall):
+        """A message when a stall starts or ends, else None."""
+        stats = self._read(eventtime)
+        if stats is None:
+            return None
+        if self.progress is None or stats["receive_seq"] != self.receive_seq \
+                or stats["send_seq"] <= stats["receive_seq"]:
+            message = None
+            if self.reported:
+                message = (
+                    "%s took no commands from Klipper for about %d s, from "
+                    "%s; Klipper resent %d bytes to it meanwhile. Commands "
+                    "sent to it in that time, heater changes included, "
+                    "reached it late."
+                    % (self.name, round(eventtime - self.progress),
+                       _clock_time(self.progress_wall), self._resent(stats)))
+            self.receive_seq = stats["receive_seq"]
+            self.progress, self.progress_wall = eventtime, wall
+            self.progress_stats = stats
+            self.reported = False
+            return message
+        if self.reported or not self._stalled(eventtime, stats):
+            return None
+        self.reported = True
+        sending = (stats.get("bytes_read", 0.)
+                   > self.progress_stats.get("bytes_read", 0.))
+        return ("%s has taken no commands from Klipper for %d s%s. Commands "
+                "to it, heater changes included, wait until it takes them "
+                "again."
+                % (self.name, round(eventtime - self.progress),
+                   ", though it still sends its own reports" if sending
+                   else " and has sent nothing"))
+
+    def at_shutdown(self, eventtime):
+        """A message when Klipper shuts down during a stall, else None."""
+        if self.progress is None:
+            return None
+        stats = self._read(eventtime)
+        if stats is None or not self._stalled(eventtime, stats):
+            return None
+        self.reported = True
+        return ("%s had taken no commands from Klipper for %d s, from %s, "
+                "when Klipper shut down; Klipper resent %d bytes to it "
+                "meanwhile. Its commands, heater changes included, were "
+                "waiting, which can cause the shutdown's error."
+                % (self.name, round(eventtime - self.progress),
+                   _clock_time(self.progress_wall), self._resent(stats)))
+
+
 class KlipperHealth:
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -766,6 +866,7 @@ class KlipperHealth:
         self.last_warning = {}
         self.late_commands = {}
         self.sync_summary = None
+        self.command_stalls = []
         self._next_cleanup = 0.
         self._next_report = None
         self._waketime = None
@@ -787,6 +888,8 @@ class KlipperHealth:
                          "status reports")
         self.printer.register_event_handler("klippy:connect", self._connect)
         self.printer.register_event_handler("klippy:ready", self._ready)
+        self.printer.register_event_handler("klippy:shutdown",
+                                            self._shutdown)
 
     def _connect(self):
         air = sys.modules.get("extras.air")
@@ -808,7 +911,29 @@ class KlipperHealth:
         self._next_cleanup = now + CLEANUP_INTERVAL
         self._next_report = now + REPORT_INTERVAL
         self._waketime = now + SAMPLE_INTERVAL
+        self.command_stalls = []
+        for _name, mcu in self.printer.lookup_objects("mcu"):
+            serial = getattr(mcu, "_serial", None)
+            if serial is None or getattr(serial, "stats", None) is None \
+                    or getattr(mcu, "is_fileoutput", lambda: False)():
+                continue
+            self.command_stalls.append(CommandStall(mcu.get_name(), serial))
         self.reactor.register_timer(self._sample, self._waketime)
+
+    def _shutdown(self):
+        eventtime = self.reactor.monotonic()
+        for stall in self.command_stalls:
+            try:
+                message = stall.at_shutdown(eventtime)
+            except Exception:
+                logging.exception("vo_klipper_health: command stall check")
+                continue
+            if message:
+                self._say(message)
+
+    def _say(self, message):
+        logging.warning("vo_klipper_health: %s", message)
+        self.gcode.respond_info(message)
 
     # ---------------------------------------------------------------- timers
     def timer_count(self):
@@ -834,6 +959,15 @@ class KlipperHealth:
     def _sample(self, eventtime):
         delay = max(0., eventtime - self._waketime)
         self.samples.append((eventtime, time.thread_time(), delay))
+        wall = time.time()
+        for stall in self.command_stalls:
+            try:
+                message = stall.update(eventtime, wall)
+            except Exception:
+                logging.exception("vo_klipper_health: command stall check")
+                continue
+            if message:
+                self._say(message)
         if eventtime >= self._next_cleanup:
             self._next_cleanup = eventtime + CLEANUP_INTERVAL
             self.cleanup()

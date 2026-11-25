@@ -169,7 +169,10 @@ MAX_ISSUE_URL = 8000
 # The support issue: the bug report form (.github/ISSUE_TEMPLATE/bug-report.yml), whose printer choices these are.
 SUPPORT_ISSUE_TEMPLATE = "bug-report.yml"
 SUPPORT_ISSUE_PRINTERS = ("QIDI Max 4", "QIDI Plus 5", "QIDI Smart 5")
-SUPPORT_ISSUE_LOGS = "Drag in the valve-oil-support zip file that Valve Oil's settings downloaded."
+SUPPORT_ISSUE_LOGS = (
+    "Opening this issue downloaded valve-oil-support-....zip to your browser's downloads folder. Drag that file in "
+    "here: it has klippy.log, moonraker.log, and Valve Oil's reports."
+)
 INSTALL_SOURCES = {"release": "Release install command from the README", "dev": "Dev prerelease"}
 # Valve Oil's Klipper. The launcher in front of klipper.service starts the Klipper the choice file names, records each
 # start in the status file, and waits for the ready acknowledgement Valve Oil's Klipper extra (vo_klipper) writes.

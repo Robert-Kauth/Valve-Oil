@@ -247,6 +247,7 @@ class LoadCellProbeSyncFailureTest(unittest.TestCase):
         health.reactor.monotonic = lambda: 20.
         health.samples = collections.deque([(10., 1., 0.002), (15., 2.5, 0.040)])
         health.sync_summary = None
+        health.command_stalls = []
         self.health = health
         self.messages = []
         health.gcode = types.SimpleNamespace(respond_info=self.messages.append)
@@ -494,6 +495,125 @@ class LateCommandTest(unittest.TestCase):
         self.assertEqual(len(logs.output), 2)
         self.assertIn("(4 more since the last report)", logs.output[1])
         self.assertEqual(len(self.sent), 6)
+
+
+class CommandStallTest(unittest.TestCase):
+    """A board that keeps sending its own reports but stops taking Klipper's
+    commands, as the Max 4 THR did while probing in issue #412."""
+
+    def setUp(self) -> None:
+        test = self
+        self.counters = {"send_seq": 100, "receive_seq": 100,
+                         "bytes_read": 5000, "bytes_retransmit": 9}
+        self.now = [1000.]
+
+        class Serial:
+            def stats(self, eventtime):
+                return " ".join("%s=%d" % item for item in test.counters.items()) \
+                    + " srtt=0.001 rto=0.025"
+
+        class MCU:
+            def __init__(self, name, serial):
+                self.name = name
+                self._serial = serial
+
+            def get_name(self):
+                return self.name
+
+            def is_fileoutput(self):
+                return False
+
+        mcus = [("mcu", MCU("mcu", None)), ("mcu THR", MCU("THR", Serial()))]
+        self.handlers = {}
+        health = object.__new__(klipper_health.KlipperHealth)
+        health.printer = types.SimpleNamespace(
+            lookup_objects=lambda module=None: mcus if module == "mcu" else [])
+        health.reactor = Reactor()
+        health.reactor.monotonic = lambda: test.now[0]
+        health.samples = collections.deque(maxlen=klipper_health.HISTORY)
+        health.sync_summary = None
+        health.removed = 0
+        self.messages = []
+        health.gcode = types.SimpleNamespace(respond_info=self.messages.append)
+        health._ready()
+        self.health = health
+
+    def tick(self, seconds=1., sent=0, acked=0, read=40, resent=0):
+        self.now[0] += seconds
+        self.counters["send_seq"] += sent
+        self.counters["receive_seq"] += acked
+        self.counters["bytes_read"] += read
+        self.counters["bytes_retransmit"] += resent
+        self.health._sample(self.now[0])
+
+    def test_boards_without_a_serial_link_are_not_watched(self) -> None:
+        self.assertEqual([stall.name for stall in self.health.command_stalls], ["THR"])
+
+    def test_commands_answered_in_time_are_not_reported(self) -> None:
+        with self.assertNoLogs(level="WARNING"):
+            for _ in range(10):
+                # Commands still in flight at each reading, acknowledged by
+                # the next one.
+                self.tick(sent=8, acked=7)
+                self.tick(sent=3, acked=4)
+            # Nothing sent for a while.
+            for _ in range(5):
+                self.tick()
+        self.assertEqual(self.messages, [])
+
+    def test_a_stall_is_reported_when_it_starts_and_ends(self) -> None:
+        self.tick(sent=5, acked=5)
+        with self.assertLogs(level="WARNING") as logs:
+            # 12 commands go unacknowledged while the board sends reports.
+            self.tick(sent=12)
+            for _ in range(40):
+                self.tick(sent=1, resent=133)
+            self.tick(acked=53, resent=55)
+
+        self.assertEqual(len(self.messages), 2)
+        self.assertEqual(
+            self.messages[0],
+            "THR has taken no commands from Klipper for 3 s, though it still "
+            "sends its own reports. Commands to it, heater changes included, "
+            "wait until it takes them again.")
+        self.assertRegex(
+            self.messages[1],
+            r"^THR took no commands from Klipper for about 42 s, from "
+            r"\d\d:\d\d:\d\d; Klipper resent 5375 bytes to it meanwhile\. ")
+        self.assertEqual(len(logs.output), 2)
+        self.assertIn("vo_klipper_health: THR took no commands", logs.output[1])
+
+    def test_a_board_that_sends_nothing_either_says_so(self) -> None:
+        self.tick(sent=2)
+        self.tick(read=0)
+        self.tick(read=0)
+        self.tick(read=0)
+        self.assertIn("for 3 s and has sent nothing.", self.messages[0])
+
+    def test_shutdown_during_a_stall_names_it(self) -> None:
+        self.tick(sent=4, acked=4)
+        for _ in range(29):
+            self.tick(sent=1, resent=133)
+        self.now[0] += 0.4
+        self.messages.clear()
+
+        with self.assertLogs(level="WARNING"):
+            self.health._shutdown()
+
+        self.assertEqual(len(self.messages), 1)
+        self.assertRegex(
+            self.messages[0],
+            r"^THR had taken no commands from Klipper for 29 s, from "
+            r"\d\d:\d\d:\d\d, when Klipper shut down; Klipper resent 3857 bytes")
+        # The board taking commands again after the shutdown is reported too.
+        self.tick(acked=29)
+        self.assertIn("THR took no commands from Klipper for about 30 s", self.messages[1])
+
+    def test_shutdown_without_a_stall_says_nothing(self) -> None:
+        self.tick(sent=4, acked=3)
+        self.tick(sent=1)
+        self.health._shutdown()
+        self.assertEqual(self.messages, [])
 
 
 if __name__ == "__main__":

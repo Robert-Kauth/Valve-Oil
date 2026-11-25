@@ -238,3 +238,8 @@ While a release, a firmware update, or a board flash is waiting, `vo_printer_war
 - **THEN** this project's bug report form opens with the printer, its details from files only, and the install channel filled in
 - **AND** the browser downloads a support bundle holding the newest part of `klippy.log` and `moonraker.log` and of their last rotated copies, the Box link log, the last Update now, add-on change, and QIDI firmware update logs, Valve Oil's status, and the printer details
 - **AND** the bundle is fetched under the same authorization as the section's data, one at a time, and changes nothing on the printer
+- **AND** the form's logs field says the bundle was downloaded to the browser's downloads folder and asks for it to be attached
+
+#### Scenario: The support bundle is downloaded from Diagnostics
+- **WHEN** the operator chooses to download the support bundle from Valve Oil UI's Diagnostics fault check
+- **THEN** the browser downloads the same support bundle, and no issue opens

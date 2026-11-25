@@ -179,7 +179,8 @@ body:
       label: Logs and files
       description: |
         Drag files in here. See [Logs](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md#logs) for where to find them.
-        - **Printing or Klipper problems:** `klippy.log`, taken right after the problem, before restarting Klipper.
+        - **Best: the support bundle.** In Valve Oil UI (**Updates**) or Fluidd (**Settings → Valve Oil**), click **Report a problem → Open an issue**. It downloads `valve-oil-support-….zip` to your browser's downloads folder, with `klippy.log`, `moonraker.log`, and Valve Oil's reports, and opens this form filled in.
+        - **Printing or Klipper problems without the bundle:** `klippy.log`, taken right after the problem, before restarting Klipper.
         - **Install, update, or uninstall problems:** the full installer output, or `journalctl -u vo-auto-update.service` for automatic updates (`tltg-optimized-auto-update.service` for an update from a release before 26.11.22.3).
         - **Print problems:** the sliced `.gcode` or `.gcode.3mf`, zipped.
         - **Fluidd problems:** a screenshot and `moonraker.log`.
