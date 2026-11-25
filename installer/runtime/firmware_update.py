@@ -1012,12 +1012,16 @@ def _run_update(*, paths, reporter, environ, manifest, run, urlopen, mirror_urlo
             if step in record["done"]:
                 continue
             label = LABELS[step].format(target=ctx.target.version)
-            valve_oil_status.set_run_step(paths, status_run.id, step=step, step_label=label)
+            # A step with nothing to do runs without being announced.
+            silent = step == "closed_loop" and not _closed_loop_changes(ctx)
+            if not silent:
+                valve_oil_status.set_run_step(paths, status_run.id, step=step, step_label=label)
             if restop:
                 restop = False
                 reporter.line(LABELS["stop_services"] + "...")
                 _stop_services(ctx, check=False)
-            reporter.line(label + "...")
+            if not silent:
+                reporter.line(label + "...")
             _STEP_FUNCTIONS[step](ctx)
             record["done"].append(step)
             ctx.save()
@@ -1203,13 +1207,20 @@ def _stage(ctx: _Run):
     return staged
 
 
+def _closed_loop_changes(ctx: _Run) -> bool:
+    """Whether QIDI's package changes the closed-loop drivers; the Plus 5 and Smart 5 have none."""
+    return bool(ctx.target.board_version("closed_loop")
+                and ctx.target.changes_board("closed_loop", ctx.record["from_firmware"])
+                and ctx.target.closed_loop_image is not None)
+
+
 def _closed_loop(ctx: _Run) -> None:
     """Max 4: the closed-loop drivers, while the old Klipper runs (closed_loop_firmware.py, design D13). Klipper is
     the only service left running, and the run its only client, through its API socket."""
     target = ctx.target.board_version("closed_loop")
     previous = tuple(ctx.target.boards_for(ctx.record["from_firmware"]).get("closed_loop") or ())
     pin = ctx.target.closed_loop_image
-    if not target or not ctx.target.changes_board("closed_loop", ctx.record["from_firmware"]) or pin is None:
+    if not _closed_loop_changes(ctx):
         ctx.record["closed_loop"] = {"changes": False, "target": target, "outcome": "unchanged"}
         return
     component = _stage(ctx).component("CLOSED_LOOP_MOTOR")

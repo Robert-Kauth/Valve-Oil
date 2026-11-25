@@ -720,6 +720,21 @@ class FirmwareUpdateTests(unittest.TestCase):
         # The result was reported to the session that started it.
         self.assertIsNone(firmware_update.report_or_attach(paths=printer.paths, reporter=printer.reporter, environ={}))
 
+    def test_the_closed_loop_step_is_announced_only_when_the_package_changes_the_drivers(self):
+        # 01.01.06.05 to 01.01.07.01 changes the drivers, so the step says what it does.
+        printer = Printer()
+        self.assertEqual(printer.start().state, firmware_update.SUCCEEDED, printer.output.getvalue())
+        self.assertIn("Updating the closed-loop motor drivers...", printer.output.getvalue())
+        # A package that leaves them as they are, as every Plus 5 and Smart 5 package does, says nothing about them.
+        printer = Printer()
+        printer.printer = replace(printer.printer, target_firmware=replace(printer.printer.target_firmware,
+                                                                           closed_loop_image=None))
+        printer.manifest = replace(printer.manifest, printers=tuple(
+            printer.printer if p.id == printer.printer.id else p for p in printer.manifest.printers))
+        self.assertEqual(printer.start().state, firmware_update.SUCCEEDED, printer.output.getvalue())
+        self.assertNotIn("Updating the closed-loop motor drivers", printer.output.getvalue())
+        self.assertEqual(self.driver_commands(printer), [])
+
     def test_closed_loop_drivers_get_an_image_only_when_admitted_and_count_as_updated_only_once_verified(self):
         def board(printer):
             return {b.id: b for b in valve_oil_status.load_status(printer.paths).boards}["closed_loop"]
