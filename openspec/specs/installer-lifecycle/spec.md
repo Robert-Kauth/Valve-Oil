@@ -80,6 +80,22 @@ Every installer launcher, including the release download, automatic updates, res
 ### Requirement: Recoverable configuration lifecycle
 Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-printer transactions with validated inputs, recoverable preimages, atomic committed state, and drift-safe reversal.
 
+#### Scenario: Print admission and updating cannot race
+- **WHEN** an installed Valve Oil printer receives a print or Box drying start (`SDCARD_PRINT_FILE`, `M24` outside a paused print, QIDI's power-loss resume, `BOX_START_DRYING`, `ENABLE_BOX_DRY`)
+- **THEN** Klipper takes the installer lock shared without waiting and holds it until the start command returns
+- **AND** a start while an installer run holds the lock exclusively stops with an error before any print side effect
+- **AND** an installer run that starts during the command fails to take the lock, and one that starts after it sees printing, paused, extracting, or active virtual SD work and changes nothing
+- **AND** a missing or malformed virtual SD state stops an installer run rather than reading as idle
+- **AND** a pending QIDI firmware update record stops a start across service restarts and reboots until the update finishes or is recovered
+- **AND** commands inside a print that has started, including resumes, are not held up
+- **AND** an update check fetches the latest release before it takes the lock, so the network wait does not stop a start, and on a printer not enrolled in automatic updates it holds the lock only shared
+
+#### Scenario: A competing update cannot replace active progress
+- **WHEN** Update now races another installer or automatic update for the installer lock
+- **THEN** only the lock owner creates or finishes its update run and clears its pending release
+- **AND** the losing request reports the lock conflict without replacing the active run
+- **AND** the status API blocks mutations while an exclusive kernel lock is held, even before a run record exists, without claiming a shared print-admission lock or an unenrolled hourly check is an update
+
 #### Scenario: Mutation begins only after complete preflight
 - **WHEN** a mutating operation starts
 - **THEN** it validates printer state, prior state, targets, paths, bundle contents, and required storage before backup or writes
@@ -523,7 +539,7 @@ Fluidd SHALL show the bed mesh card on the Tune page and temperature sensors wit
 - **AND** a value saved from Fluidd's settings, including off, still applies
 
 ### Requirement: QIDI filament database in Fluidd
-Normal install and update SHALL expose QIDI's touchscreen filament database directory as `config/qidi_filament_config` in Fluidd's configuration files, independently of optional OS optimization policy, without copying or backing up the database files. Their contents SHALL change only by Valve Oil's configuration adding missing catalog filaments.
+Normal install and update SHALL expose QIDI's touchscreen filament database directory as `config/qidi_filament_config` in Fluidd's configuration files, independently of optional OS optimization policy, without copying or backing up the database files. Their contents SHALL change only by Valve Oil's configuration adding missing catalog filaments and moving out filaments the nozzle cannot reach, which uninstall SHALL put back.
 
 #### Scenario: Link is created where the database exists
 - **WHEN** the QIDI filament database directory exists and `config/qidi_filament_config` is absent
@@ -908,6 +924,13 @@ The reviewed patched builds of QIDI's touchscreen executable SHALL label each Bo
 #### Scenario: The slot's filament changes
 - **WHEN** a slot's filament changes while the touchscreen app runs, from the touchscreen, Fluidd, a spool tag, or `SAVE_VARIABLE`
 - **THEN** the slot's label follows the new filament's type, and the slot's edit screen preselects the slot's filament by vendor and full name
+
+### Requirement: Touchscreen never raises its MQTT connection error
+The reviewed patched builds of QIDI's touchscreen executable SHALL never raise the MQTT connection error `QDC_400_004_010_001`, while the app's other errors, its MQTT handling, and LAN only mode stay as QIDI wrote them. The patch travels with the firmware notice patch, with and without QIDI's package updates blocked.
+
+#### Scenario: Moonraker reports MQTT not connected
+- **WHEN** the touchscreen app starts, or Moonraker's MQTT status, the app's QIDI account, or LAN only mode changes, and QIDI's condition for the error holds
+- **THEN** the error is not raised, and the app's later check to clear it finds nothing to clear
 
 ### Requirement: Klipper C helper library carries upstream fixes
 Normal install and update SHALL replace a reviewed build of QIDI's Klipper C helper library, `klippy/chelper/c_helper.so`, with the package's build of the same Klipper sources with upstream's later fixes for expired pressure advance entries, trsync timeout extension, step queue appends far in the future, and serial queue pipe descriptors, independently of optional OS optimization policy, with the same preservation and restoration as the other guarded host patches.

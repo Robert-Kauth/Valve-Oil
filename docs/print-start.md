@@ -6,13 +6,13 @@ Prints sliced with this project's [start G-code](install.md#slicer-start-g-code)
 
 ## What's faster
 
-- **Homing:** print preparation doesn't home anything twice. On the Max 4, X and Y home at 65 mm/s instead of 50 and back off 20 mm instead of 50, and QIDI's closed-loop homing checks stay in place.
+- **Homing:** print preparation doesn't home anything twice. On the Max 4, X and Y home at 65 mm/s instead of 50 and back off less than QIDI's 100 mm, Y 30 mm and X 20 mm, and QIDI's closed-loop homing checks stay in place.
 - **Leveling and bed mesh:** the moves between probe points run at your printer's top speed instead of 150 mm/s (565 on the Max 4, 400 on the Plus 5), at its full acceleration (30000 mm/s² on the Max 4, 20000 on the Plus 5) instead of QIDI's 10000. Saving the new mesh no longer freezes Klipper for over two seconds.
 - **Filament handling:** less fixed waiting around the cutter, chute wipes, and saving settings. The [QIDI Box](qidi-box.md#load-and-unload-speed) loads and unloads faster.
 - **Filament stays loaded** between prints, so the next print with the same slot skips the unload and reload. See [below](#end-of-print-filament).
 - **Filament changes** to a slot that's already loaded skip heating to the filament-change temperature and waiting to cool back down, saving about 25 seconds per change.
 
-The start also cleans the nozzle at the rear chute and scrapes it on the rear of the bed before leveling, and draws the front prime line just ahead of your print when there's room.
+The start also cleans the nozzle at the rear chute and scrapes it on the rear of the bed before leveling, homes Z again after leveling on the Max 4 and Plus 5, and draws the front prime line just ahead of your print when there's room.
 
 The prime line ends with a 0.8 mm retract, so the nozzle doesn't ooze on the way to your print, which can be across the bed. Klipper puts it back right before the print first extrudes, after that travel, so the print's first line starts where it should instead of a few millimetres late. This comes with Valve Oil's start G-code for OrcaSlicer and QIDI Studio; see [Slicer start G-code](install.md#slicer-start-g-code).
 
@@ -100,6 +100,12 @@ SAVE_VARIABLE VARIABLE=vo_keep_loaded_between_prints VALUE=1
 ```
 
 This works with files you've already sliced and survives Klipper restarts.
+
+## Stopping a print
+
+When you stop or cancel a print from Fluidd, the touchscreen, or the console (`CANCEL_PRINT`), the nozzle heater turns off and the part fan runs at 100% straight away. The toolhead then parks where QIDI's cancel parks it, up to Z200 and, on the Max 4, back to Y380 (Z100 on the Smart 5). The part fan keeps running until the nozzle is below 170°C, then turns off. QIDI's cancel kept the nozzle heating at the print's temperature through the slow lift and turned it off only after parking.
+
+If a new print starts while the nozzle cools, or you turn the part fan off or change its speed, the fan is left as the print or you set it.
 
 ## Long pauses
 

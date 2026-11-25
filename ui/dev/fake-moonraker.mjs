@@ -193,7 +193,7 @@ function baseStatus() {
     },
     vo_printer_warnings: { warnings: [] },
     vo_klipper_health: { timers: 61, removed_timers: 0, main_thread_load: 0.22, timer_delay: 0.001 },
-    vo_box_rfid: { readers: {}, last_tag: {}, catalog_added: {}, last_report: null, job: { run: 0, running: false } },
+    vo_box_rfid: { readers: {}, last_tag: {}, catalog_added: {}, filaments_removed: {}, last_report: null, job: { run: 0, running: false } },
     mcu: { last_stats: { mcu_awake: 0.031, mcu_task_avg: 0.00002 } },
     'mcu THR': { last_stats: { mcu_awake: 0.012 } },
     'mcu mcu_box1': { last_stats: { mcu_awake: 0.004 } },
@@ -258,7 +258,8 @@ function applyScenario(name) {
     vars().slot_sync = 'slot-1'
     st['filament_switch_sensor filament_switch_sensor'].filament_detected = false
   } else if (name === 'no-box') {
-    vars().box_count = 0
+    // The external spool loaded to the toolhead, as the Home card's external spool shows it.
+    Object.assign(vars(), { box_count: 0, enable_box: 0, slot_sync: 'slot16', last_load_slot: 'slot16' })
   }
   if (name !== 'printing') {
     st.vo_printer_warnings.warnings = [{ id: 'input_shaper_uncalibrated', level: 'warning', title: 'No input shaper calibration is saved.', message: 'Run SHAPER_CALIBRATE with the bed empty, then SAVE_CONFIG.' }]
@@ -401,8 +402,8 @@ async function gcode(script) {
       set('print_stats', { filename: '', state: 'standby', print_duration: 0, total_duration: 0, message: '' })
       set('virtual_sdcard', { progress: 0, is_active: false })
       set('display_status', { progress: 0 })
-    } else if (C === 'LOAD_FILAMENT_CONTROL') startFlow(Number(p.SLOT), ['BOX_HEAT', 'BOX_CUT', 'BOX_UNLOAD', 'BOX_LOAD', 'BOX_WIPE'])
-    else if (C === 'UNLOAD_FILAMENT_CONTROL') startFlow(Number(p.SLOT), ['BOX_CUT', 'BOX_UNLOAD'], 'unload')
+    } else if (C === 'LOAD_FILAMENT_CONTROL') startFlow(Number(p.SLOT), Number(p.SLOT) === EXTERNAL ? ['EXT_HEAT', 'EXT_BITE', 'EXT_LOAD', 'EXT_WIPE'] : ['BOX_HEAT', 'BOX_CUT', 'BOX_UNLOAD', 'BOX_LOAD', 'BOX_WIPE'])
+    else if (C === 'UNLOAD_FILAMENT_CONTROL') startFlow(Number(p.SLOT), Number(p.SLOT) === EXTERNAL ? ['EXT_HEAT', 'EXT_CUT', 'EXT_UNLOAD'] : ['BOX_CUT', 'BOX_UNLOAD'], 'unload')
     else if (C === 'EJECT_FILAMENT_CONTROL') startFlow(Number(p.SLOT), ['BOX_CUT', 'BOX_UNLOAD', 'BOX_EJECT'], 'unload')
     else if (C === 'FLOW_RETRY') {
       const t = state.status.multi_color_controller.task
@@ -585,12 +586,15 @@ function refreshBoxInfo() {
   set('box_extras', { boxes })
 }
 
+// QIDI's external spool, slot 16, which its controller loads and unloads with or without a Box.
+const EXTERNAL = 16
+
 function startFlow(slot, steps, kind = 'load') {
   if (state.flow || state.status.print_stats.state === 'printing') throw rpcError('Box is busy')
-  state.flow = { steps, i: 0, t: 0, slot, kind }
-  set('save_variables', { variables: { ...vars(), slot_sync: 'slot-1' } })
+  state.flow = { steps, i: 0, t: 0, slot, kind, waited: 0 }
+  if (slot !== EXTERNAL) set('save_variables', { variables: { ...vars(), slot_sync: 'slot-1' } })
   set('multi_color_controller', { task: { flow_id: Date.now() % 1000, current_queue: steps, current_step: steps[0], is_paused: false }, operation: { active_slot: `slot${slot}` } })
-  if (steps[0] === 'BOX_HEAT') set('extruder', { target: 230 })
+  if (steps[0] === 'BOX_HEAT' || steps[0] === 'EXT_HEAT') set('extruder', { target: 230 })
 }
 
 function rpcError(message) {
@@ -733,7 +737,18 @@ setInterval(() => {
   }
   // Box flow
   const f = state.flow
-  if (f && !st.multi_color_controller.task.is_paused) {
+  const sensor = 'filament_switch_sensor filament_switch_sensor'
+  // The external load's grip step fails and retries by itself until filament reaches the toolhead, here pushed in
+  // after 8 seconds.
+  if (f && st.multi_color_controller.task.current_step === 'EXT_BITE' && !st[sensor].filament_detected) {
+    if (++f.waited >= 8) set(sensor, { filament_detected: true })
+    else if (f.waited % 4 === 1) {
+      pushConsole('// No filament detected. Please insert filament and try again.')
+      const pause = (is_paused) => set('multi_color_controller', { task: { ...state.status.multi_color_controller.task, is_paused } })
+      pause(true)
+      setTimeout(() => state.flow === f && pause(false), 1500)
+    }
+  } else if (f && !st.multi_color_controller.task.is_paused) {
     f.t++
     if (f.t >= 3) {
       f.t = 0
@@ -741,12 +756,20 @@ setInterval(() => {
       if (f.i >= f.steps.length) {
         state.flow = null
         const loadedNow = f.kind === 'load'
+        if (f.slot === EXTERNAL) {
+          set('save_variables', { variables: { ...vars(), last_load_slot: 'slot16' } })
+          set('multi_color_controller', { task: { current_queue: [], current_step: '', is_paused: false } })
+          set(sensor, { filament_detected: loadedNow })
+          set('extruder', { target: 0 })
+          pushConsole(loadedNow ? '// cleaning complete' : '// Unload finish')
+          return
+        }
         set('save_variables', { variables: { ...vars(), slot_sync: loadedNow ? `slot${f.slot}` : 'slot-1', last_load_slot: `slot${f.slot}`, vo_box_hub_slot: `slot${f.slot}` } })
         set('multi_color_controller', { task: { current_queue: [], current_step: '', is_paused: false }, box: { last_load_slot: `slot${f.slot}`, b_endstop_state: loadedNow ? 0 : 1 } })
         set('filament_switch_sensor filament_switch_sensor', { filament_detected: loadedNow })
         set('extruder', { target: 0 })
         pushConsole(`// ${loadedNow ? 'Loaded' : 'Unloaded'} slot${f.slot}`)
-      } else set('multi_color_controller', { task: { current_step: f.steps[f.i] } })
+      } else set('multi_color_controller', { task: { ...st.multi_color_controller.task, current_step: f.steps[f.i] } })
     }
   }
 }, 1000)

@@ -25,6 +25,7 @@ Valve Oil's configuration SHALL reduce homing, probing, mesh, and filament-trans
 - **THEN** normal homing performs the requested axes, lazy homing skips requested axes already known, and Z homes required unknown X/Y first
 - **AND** temporary motion settings are restored
 - **AND** Z tilt and the selected fresh adaptive or named saved-mesh preparation run without redundant homing or stale active mesh state
+- **AND** after Z tilt adjust, Z homes again before the mesh is measured or loaded
 
 #### Scenario: Unshaped axes use QIDI's default input shaper
 - **WHEN** Klipper starts, or X/Y homing finishes, with `[input_shaper]` loaded and no live frequency on X or Y
@@ -363,6 +364,13 @@ Valve Oil's cut, purge, cooldown, cleaning, calibration, and cancel helpers MUST
 - **AND** delayed fan shutdown cannot turn off a fan used by a new or paused print
 - **AND** OrcaSlicer applies the configured completion exhaust only when the last filament has both air filtration and its on-completion option on, while QIDI Studio passes zero and omits unsupported indexed completion-air placeholders
 
+#### Scenario: Operator cancellation cools the nozzle before parking
+- **WHEN** the operator stops a print with `CANCEL_PRINT`, from Fluidd, the touchscreen, or the console
+- **THEN** the nozzle heater turns off and, with the nozzle at or above 170°C, the part fan runs at full before any park move
+- **AND** the toolhead parks as the vendor cancel does for the printer
+- **AND** the part fan stays at full through the vendor print end until the nozzle is below 170°C, without holding the G-code queue
+- **AND** a print started since, or an operator fan command, keeps the fan where it set it
+
 #### Scenario: Error cancellation is motion-free
 - **WHEN** Valve Oil error cancellation executes
 - **THEN** heaters, fans, optional Box heat, pause state, and print state are cleaned up before base cancellation
@@ -645,10 +653,10 @@ Valve Oil's cut and the stock-named cutter macro SHALL let their post-cut retrac
 - **THEN** the toolhead still moves off the cutter to the cut's normal exit position before the error is reported
 
 ### Requirement: QIDI Box unload and eject with the nozzle cold
-Valve Oil's configuration SHALL let `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` with `COLD=1`, while no print is running or paused, run the vendor Box flow without heating the hotend, when that flow consists only of Box heat, cut, unload, and eject steps. Its extruder retracts SHALL pass the cold-extrusion check as during a cold cut, extrusion below `min_extrude_temp` SHALL still be refused, and without `COLD=1` the commands SHALL be unchanged.
+Valve Oil's configuration SHALL run a Box slot's `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` without heating the hotend while no print is running or paused, with `COLD=1` or no `COLD`, when the vendor flow has only Box heat, cut, unload, and eject steps; `COLD=0` SHALL leave them unchanged. Cold extruder retracts SHALL pass as during a cold cut, and extrusion below `min_extrude_temp` SHALL still be refused.
 
 #### Scenario: A cold unload or eject
-- **WHEN** a Box unload or eject runs with `COLD=1` and the nozzle below `min_extrude_temp`
+- **WHEN** a Box slot's unload or eject runs with `COLD=1` or no `COLD`, no print is running or paused, and the nozzle is below `min_extrude_temp`
 - **THEN** the vendor flow parks, cuts, retracts, and unloads or ejects without any `M109`, and finishes with the hotend off and without the vendor's post-heat dwell and wipe
 - **AND** afterwards extruder moves below `min_extrude_temp` are refused again
 
@@ -658,11 +666,36 @@ Valve Oil's configuration SHALL let `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMEN
 
 #### Scenario: A flow with other steps
 - **WHEN** the vendor chooses a flow with steps other than Box heat, cut, unload, and eject, such as an external-spool unload
-- **THEN** the flow runs and heats as the vendor's does, and the console says why it heats
+- **THEN** the flow runs and heats as the vendor's does, and with `COLD=1` the console says why it heats
+
+#### Scenario: A heated unload or eject
+- **WHEN** a Box unload or eject runs with `COLD=0`, during a print, for the external spool, or without `vo_cold_cut`, and gives no `COLD=1`
+- **THEN** the vendor flow runs and heats as the vendor's does
 
 #### Scenario: Cold during a print
 - **WHEN** `COLD=1` is given while a print is running or paused
 - **THEN** the command refuses without moving, and the console says why
+
+### Requirement: QIDI Box chute wipes cool the nozzle
+Valve Oil's configuration SHALL run the part fan at full speed from the first of QIDI's Box chute wipes, `DROP_TRASH` and `WIPE_NOZZLE_DROP`, in a Box flow or tool change until that flow or tool change ends, and SHALL then put the part fan back to its speed from before the first wipe.
+
+#### Scenario: Wipes after a load or unload
+- **WHEN** QIDI's Box code wipes the nozzle at the chute after a load's purge or at the end of an unload that heated
+- **THEN** the part fan runs at full speed from the first wipe through the dwells, chute moves, and later wipes until the flow ends
+- **AND** afterwards it returns to the speed it had before the first wipe, off outside a print
+
+#### Scenario: Cooling the nozzle after a flow between prints
+- **WHEN** such a flow ends while no print is running or paused, with the nozzle heater off and the nozzle at 170 °C or hotter
+- **THEN** the part fan stays at full speed until the nozzle is below 170 °C and then returns to its earlier speed, without holding up later commands, prints, or Box flows
+- **AND** heating the nozzle or starting a print returns it at once, and a part fan speed set by anything else is kept
+
+#### Scenario: Purge and wipe reported apart
+- **WHEN** QIDI's Box wipe step runs
+- **THEN** Valve Oil's status reports whether a chute wipe has started in the running flow, so Valve Oil UI and Fluidd show the purge before the wipe and the wipe after
+
+#### Scenario: A wipe on its own
+- **WHEN** a chute wipe runs outside a Box flow or tool change
+- **THEN** the part fan runs at full speed during the wipe and returns to its earlier speed when it ends
 
 ### Requirement: QIDI Box flow stop
 Valve Oil's configuration SHALL let a vendor Box flow stop, from `FLOW_STOP` or the vendor's flow-stop endpoint, end the flow and return without blocking later G-code, SHALL turn the hotend off after stopping a flow only when no print is running or paused, and SHALL leave `FLOW_RETRY` unchanged. A vendor Box flow step that raises an error instead of failing SHALL leave the flow paused on that step, as a failed step does, so `FLOW_RETRY` and `FLOW_STOP` apply.
@@ -808,7 +841,7 @@ Valve Oil's configuration SHALL let moves through Klipper's object exclusion dur
 
 #### Scenario: Paused inside a cancelled part
 - **WHEN** the print is paused while inside a cancelled part
-- **THEN** the pause's moves and any moves or extrusion made while paused move the toolhead and extruder
+- **THEN** the pause's moves, from the pause's start, and any moves or extrusion made while paused move the toolhead and extruder, so the pause parks at the chute as it does outside a cancelled part
 - **AND** once the print runs again, the cancelled part's lines are dropped
 
 #### Scenario: A filament change that never ends
@@ -824,7 +857,7 @@ When parts were cancelled before a power loss, optimized configuration SHALL, af
 
 #### Scenario: Power lost during a filament change inside a cancelled part
 - **WHEN** the vendor resume restarts the file between `TOOL_CHANGE_START` and `TOOL_CHANGE_END` inside a cancelled part
-- **THEN** the rest of the filament change moves the toolhead and extruder, and the cancelled part's lines after `TOOL_CHANGE_END` are dropped
+- **THEN** the toolhead lifts and goes to the chute before the rest of the filament change, which moves the toolhead and extruder, and the cancelled part's lines after `TOOL_CHANGE_END` are dropped
 
 ### Requirement: Spoolman spools follow the loaded QIDI Box slot
 Valve Oil's configuration SHALL keep an operator-assigned Spoolman spool for each QIDI Box slot and the external spool, and SHALL make the loaded slot's spool Moonraker's active spool whenever the slot recorded as loaded changes.
@@ -1154,6 +1187,15 @@ Valve Oil's configuration SHALL unregister the vendor Box load-cell timers (`_re
 - **THEN** `klippy.log` gets a warning naming the MCU, the command, how many ms late or ahead it is, for one too far ahead how far the MCU's clock reaches, and the Python calls that sent it, at most once every 10 s for each MCU and command, with a count of the ones in between
 - **AND** the command is sent unchanged, and commands without a clock parameter are not checked
 
+### Requirement: MCU command stalls are reported
+Valve Oil's configuration SHALL report an MCU that leaves Klipper's commands unacknowledged, which Klipper itself reports only when the MCU sends nothing at all.
+
+#### Scenario: MCU stops taking commands
+- **WHEN** an MCU leaves commands Klipper sent it unacknowledged for 3 seconds, by its serial counters read once a second
+- **THEN** the console and `klippy.log` name the MCU, how long it has taken no commands, and whether it still sends data
+- **AND** when it acknowledges commands again, or Klipper shuts down first, the console and `klippy.log` give how long it took none, from when, and how many bytes Klipper resent to it
+- **AND** Diagnostics reports each such stall with its length
+
 ### Requirement: Macros read cheap printer facts
 Valve Oil's macros SHALL NOT read `printer.configfile`, `printer.gcode`, `printer.multi_color_controller`, or `printer.box_extras`, whose whole status Klipper copies on its main loop. They SHALL read Box availability, whether `T_MANAGER` is registered, the loaded slot, and the configured `max_accel` from `vo_macro_status`, which SHALL report the values those objects gave.
 
@@ -1424,7 +1466,7 @@ Valve Oil's configuration SHALL keep `INIT_RFID_READ` from raising an internal e
 - **THEN** the vendor command runs at once, unchanged
 
 ### Requirement: Vendor filaments in QIDI's database
-At each Klipper start, Valve Oil configuration SHALL add to every QIDI `filament-*.json` the catalog's Anycubic, Elegoo, Bambu Lab, and Creality 1.75 mm filaments for that nozzle size that the file lacks. It MUST NOT change or remove existing entries, and MUST NOT add an entry whose name or filament ID is already present. Catalog IDs SHALL use `QFX`, `QFY`, `QFZ`, and `QFW` and SHALL never be reassigned.
+At each Klipper start, Valve Oil configuration SHALL add to every QIDI `filament-*.json` the catalog's Anycubic, Elegoo, Bambu Lab, and Creality 1.75 mm filaments for that nozzle size that the file lacks. Except as the nozzle limit requirement below says, it MUST NOT change or remove existing entries, and MUST NOT add an entry whose name or filament ID is already present. Catalog IDs SHALL use `QFX`, `QFY`, `QFZ`, and `QFW` and SHALL never be reassigned.
 
 #### Scenario: Database after a QIDI update
 - **WHEN** a QIDI firmware update has replaced the filament files and Valve Oil's configuration is installed again
@@ -1437,6 +1479,25 @@ At each Klipper start, Valve Oil configuration SHALL add to every QIDI `filament
 #### Scenario: Operator entry with the same name
 - **WHEN** the database already has an entry with a catalog filament's name or ID
 - **THEN** that entry is kept and the catalog filament is not added
+
+### Requirement: Filaments the nozzle cannot reach
+At each Klipper start, Valve Oil configuration SHALL move out of every QIDI `filament-*.json` each entry whose nozzle maximum (`int(nozzle_temperature[1])`) is above the printer's `[extruder]` `max_temp`, and SHALL NOT add a catalog filament above it. Each moved entry that is not the catalog's own SHALL be recorded, with the entry before it, in `~/printer_data/.vo_removed_filaments.json` before its file is written.
+
+#### Scenario: No readable record
+- **WHEN** the record can't be read or written
+- **THEN** no entry is moved out
+
+#### Scenario: Limit reaches a recorded entry
+- **WHEN** Klipper starts with a `max_temp` that reaches a recorded entry, or Valve Oil is uninstalled
+- **THEN** the entry goes back after the entry recorded before it, unless its name or filament ID has been taken, and leaves the record
+
+#### Scenario: Smart 5
+- **WHEN** Klipper starts on a Smart 5, whose `max_temp` is 315 °C, with QIDI's list holding PPS-CF at 300–350 °C
+- **THEN** PPS-CF is moved out of every nozzle size's file and recorded, and the catalog's filaments above 315 °C are not added
+
+#### Scenario: Firmware update puts QIDI's list back
+- **WHEN** a QIDI firmware update has replaced the filament files
+- **THEN** the next Klipper start moves the same entries out again and records QIDI's new copies
 
 ### Requirement: Spool tag reports
 Valve Oil's configuration SHALL save a report in Klipper's log folder for each distinct tag a Box with the Valve Oil Box firmware reads but cannot use, and `VO_BOX_RFID_REPORT SLOT=`, also answering to its earlier name `TLTG_BOX_RFID_REPORT`, SHALL read a slot's tag without slot motion into a report. Reports MUST NOT contain tag UID bytes.
@@ -1570,6 +1631,7 @@ On the Plus 5, Valve Oil's macros SHALL use the Plus 5's homing sequence, positi
 #### Scenario: Plus 5 rear moves stay inside the chute window
 - **WHEN** a Valve Oil macro or a project Plus 5 slicer pack moves the toolhead behind Y 320 on a Plus 5
 - **THEN** the toolhead stays between X 75 and X 231 for the whole move, including where it crosses Y 320
+- **AND** a move from behind Y 320 onto the bed comes straight forward to Y 320 first, including the travel after a filament change, pause, or cancelled part, and before probing
 
 #### Scenario: Plus 5 cut presses the cutter once
 - **WHEN** the filament is cut on a Plus 5, by QIDI's tool change and unload or by Valve Oil's macros
@@ -1578,6 +1640,10 @@ On the Plus 5, Valve Oil's macros SHALL use the Plus 5's homing sequence, positi
 #### Scenario: Plus 5 chute approach is fast up to the chute entrance
 - **WHEN** QIDI's or Valve Oil's move to the waste chute runs on a Plus 5
 - **THEN** from the bed the toolhead moves in one travel move straight to the chute entrance at Y 320 at the package's chute travel speed and acceleration, then pushes from Y 320 into the chute
+
+#### Scenario: Max 4 chute approach is one straight move to the chute entrance
+- **WHEN** QIDI's or Valve Oil's move to the waste chute runs on a Max 4 from the bed
+- **THEN** the toolhead moves in one travel move straight to the chute entrance at X 116 Y 383 at the package's chute travel speed and acceleration, then goes into the chute as QIDI's Max 4 macros do
 
 #### Scenario: Plus 5 mainboard fan runs with the X/Y motors
 - **WHEN** any X, Y, or Z motor is on on a Plus 5
@@ -1596,6 +1662,13 @@ On the Plus 5, Valve Oil's macros SHALL use the Plus 5's homing sequence, positi
 #### Scenario: Plus 5 slicer start uses its own prime line
 - **WHEN** a print sliced with the project's Plus 5 OrcaSlicer or QIDI Studio pack starts
 - **THEN** its start path follows the Plus 5 start-print contract, including the Plus 5 prime line and `M1006 Z` temperature compensation
+
+### Requirement: Plus 5 and Smart 5 extruder current
+On the Plus 5 and Smart 5, Valve Oil SHALL run the extruder motor at 0.6 A, below QIDI's 0.857 A, so its toolhead driver doesn't overheat in a hot chamber.
+
+#### Scenario: Extruder runs at 0.6 A
+- **WHEN** Klipper starts on a Plus 5 or Smart 5 with Valve Oil installed
+- **THEN** the TMC2209 extruder driver's `run_current` is 0.6 A, where QIDI set 0.857 A
 
 ### Requirement: Writing a slot's filament to a spool tag
 On a USB Box running the Valve Oil Box firmware, Valve Oil configuration SHALL, on operator request, write a filament from the printer's filament database, by default the slot's own, and up to four colors to the tag of the spool in that slot, then read the tag back and report whether the write took. It MUST NOT write a tag that is locked, a Bambu Lab tag, or a tag holding another brand's data.
@@ -1642,9 +1715,10 @@ On the Smart 5, Valve Oil's macros SHALL use the Smart 5's homing sequence, posi
 - **WHEN** Valve Oil's cut, wipe, chute, scrape, park, or print-start moves run on a Smart 5
 - **THEN** they use the Smart 5's coordinates, all inside its configured X −2–185 and Y −4–200 travel
 
-#### Scenario: Smart 5 rear moves stay inside QIDI's chute range
+#### Scenario: Smart 5 rear moves stay inside its chute window
 - **WHEN** a Valve Oil macro or a project Smart 5 slicer pack moves the toolhead behind Y 180 on a Smart 5
 - **THEN** the toolhead stays between X 66 and X 100 for the whole move, including where it crosses Y 180
+- **AND** a move from behind Y 180 onto the bed comes straight forward to Y 180 first, including the travel after a filament change, pause, or cancelled part, and before probing
 
 #### Scenario: Smart 5 rear-bed scrape follows the probed strip height
 - **WHEN** Valve Oil's print start scrapes the nozzle behind the bed on a Smart 5

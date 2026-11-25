@@ -190,18 +190,22 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
         </svg>
         {hover != null && (
           <div
-            className="pointer-events-none absolute top-1 z-10 grid gap-0.5 rounded-lg bg-surface px-2.5 py-2 text-[12px]"
-            style={{ boxShadow: 'var(--shadow-overlay)', left: xAt(hover) > W / 2 ? xAt(hover) - 150 : xAt(hover) + 12, width: 138 }}
+            className="pointer-events-none absolute top-1 left-0 z-10 grid w-max max-w-full grid-cols-[minmax(0,1fr)] gap-0.5 rounded-lg bg-surface px-2.5 py-2 text-[12px]"
+            style={{
+              boxShadow: 'var(--shadow-overlay)',
+              // Transform percentages use the tooltip's own width, including wrapped labels.
+              transform: `translateX(clamp(0px, calc(${xAt(hover)}px ${xAt(hover) > W / 2 ? '- 12px - 100%' : '+ 12px'}), calc(${W}px - 100%)))`,
+            }}
           >
             <div className="mb-0.5 text-[11px] text-ink-3">{Math.round((n - 1 - hover) / 60) > 0 ? t('common.time.minutes_ago', { m: Math.round((n - 1 - hover) / 60) }) : t('app.chart.seconds_ago', { s: n - 1 - hover })}</div>
             {shown.map((x) => {
               const v = data[x.obj].temps[hover]
               const tg = data[x.obj].targets[hover]
               return (
-                <div key={x.obj} className="flex items-center gap-1.5">
+                <div key={x.obj} className="grid grid-cols-[10px_max-content_minmax(0,1fr)] items-center gap-1.5">
                   {swatch(x.slot, 10)}
-                  <b className="num">{v ? `${v.toFixed(1)}°` : '—'}</b>
-                  <span className="truncate text-ink-3">
+                  <b className="num whitespace-nowrap">{v ? `${v.toFixed(1)}°` : '—'}</b>
+                  <span className="wrap-anywhere text-ink-3">
                     {x.label}
                     {tg ? ` → ${Math.round(tg)}` : ''}
                   </span>

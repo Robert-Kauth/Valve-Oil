@@ -11,6 +11,7 @@ import pwd
 import shutil
 import socket
 import subprocess
+import sys
 import tarfile
 import time
 import types
@@ -75,6 +76,7 @@ from installer.tests.helpers import (
     stock_printer_data,
     temp_path,
 )
+from installer.tests.klipper_fakes import EXTRAS_ROOT, load_extra
 
 
 DESIRED_HOMING_SHA256 = "47e091f4cd1ec52c474e5b7bada1a12959a4dc3507dbdaa6e77e7b2f74ba656c"
@@ -117,6 +119,15 @@ def _section_hashes(data: bytes) -> dict[str, str]:
         name: klipper_cfg.normalized_section_sha256(klipper_cfg.resolve_unique_section(text, name).text)
         for name in names
     }
+
+
+def _box_rfid():
+    """Valve Oil's vo_box_rfid Klipper module, which imports its filament catalog from beside itself."""
+    sys.path.insert(0, str(EXTRAS_ROOT))
+    try:
+        return load_extra("box_rfid")
+    finally:
+        sys.path.remove(str(EXTRAS_ROOT))
 
 
 class SourcePatchLifecycleMatrixTests(unittest.TestCase):
@@ -348,6 +359,22 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             hashlib.sha256((paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes()).hexdigest(),
             "0419d86046b771bdb482a29f862e59518e03dcfa7b8af150b9003190ef474bf3",
         )
+        # Issue #414: Klipper moves QIDI's filaments above the Smart 5's 315 C out of QIDI's list, and uninstall puts
+        # them back where they were.
+        database = printer_root.parent / "filament_config"
+        database.mkdir()
+        qidi_list = json.dumps({"QIDI PLA Basic": {"filament_id": "QFA00", "nozzle_temperature": [190, 240]},
+                                "QIDI PPS-CF": {"filament_id": "QFP01", "nozzle_temperature": [300, 350]},
+                                "QIDI PET-CF": {"filament_id": "QFT01", "nozzle_temperature": [280, 320]},
+                                "Generic PLA": {"filament_id": "QFA90", "nozzle_temperature": [190, 240]}}, indent=2) + "\n"
+        for nozzle in ("0.2", "0.4", "0.6", "0.8"):
+            (database / f"filament-{nozzle}.json").write_text(qidi_list, encoding="utf-8")
+        box_rfid = _box_rfid()
+        box_rfid.FilamentDatabase(str(database), box_rfid.CATALOG, 315.,
+                                  str(printer_root / box_rfid.REMOVED_RECORD)).merge()
+        moved = json.loads((database / "filament-0.4.json").read_text(encoding="utf-8"))
+        self.assertNotIn("QIDI PPS-CF", moved)
+        self.assertNotIn("QIDI PET-CF", moved)
 
         run_uninstall(
             paths,
@@ -363,6 +390,10 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.assertEqual(restored.count(b"\n"), restored.count(b"\r\n"))
                 self.assertEqual(_section_hashes(restored), _section_hashes(data))
         self.assertFalse(installed.exists())
+        restored = json.loads((database / "filament-0.4.json").read_text(encoding="utf-8"))
+        # QIDI's filaments are back in their places; the catalog's stay, as uninstall leaves them.
+        self.assertEqual(list(restored)[:4], list(json.loads(qidi_list)))
+        self.assertFalse((printer_root / box_rfid.REMOVED_RECORD).exists())
         self.assertEqual((paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes(), stock_source)
 
     def test_plus5_install_uses_the_plus5_baseline_and_uninstall_restores_it(self):
@@ -1412,6 +1443,24 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     json.loads(state_path(paths).read_text(encoding="utf-8"))["latest_checksum"], old_checksum
                 )
 
+    def test_a_latest_release_older_than_the_installed_one_is_never_installed(self):
+        # Found on the Max 4 (2026-11-25): with a build newer than GitHub's latest release installed, the hourly check
+        # saw a changed checksum, replaced the bundle folder with the older release and ran its installer, which
+        # refused the newer state, leaving a bundle folder whose uninstall can't run. A release withdrawn after
+        # printers updated to it would do the same to every enrolled printer, every hour.
+        from installer.runtime import update_check
+
+        bundle = self.manifest.package.version
+        for latest, waiting in (("26.11.20.1", False), (bundle, True), ("99.1.1.1", True), (None, True)):
+            with self.subTest(latest=latest):
+                printer_root, paths, urlopen, forbidden, state = self._waiting_printer(latest=latest)
+                for reconciliation_required in (False, True):
+                    found = update_check.discover(paths, enrolled=True, latest_version=latest,
+                                                  reconciliation_required=reconciliation_required,
+                                                  release_changed=True, urlopen=urlopen)
+                    self.assertEqual(found.release_waiting, waiting)
+                    self.assertEqual(found.release_item is not None, waiting)
+
     def _waiting_printer(self, latest="99.1.1.1"):
         """An installed Max 4 on QIDI firmware this release updates from, with a Box connected since the last install
         on QIDI's Box firmware, a newer release published, and a Klipper restart an earlier install left pending."""
@@ -1441,6 +1490,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.fail(f"Unexpected URL: {url}")
             names = [urllib.parse.unquote(part.split("=")[0]) for part in urllib.parse.urlsplit(url).query.split("&")]
             status = {"print_stats": {"state": state["print"]}, "webhooks": {"state": "ready"},
+                      "virtual_sdcard": {"is_active": False},
                       "heaters": {"available_heaters": []},
                       **{name: {"mcu_version": version} for name, version in versions.items()}}
             return _JsonResponse({"result": {"status": {name: status[name] for name in names if name in status}}})
@@ -1450,6 +1500,21 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
 
         return printer_root, paths, urlopen, forbidden, state
 
+    def test_a_release_fetched_before_the_lock_is_not_fetched_again(self):
+        printer_root, paths, urlopen, forbidden, state = self._waiting_printer()
+        env = {"VO_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"}
+        failed = auto_update.prefetch_latest_release(env, urlopen=lambda *args, **kwargs: (_ for _ in ()).throw(OSError()))
+        self.assertIsInstance(failed, auto_update.AutoUpdateError)
+        result = run_auto_update_check(paths=paths, reporter=PlainReporter(io.StringIO()), environ=env, enrolled=False,
+                                       latest=failed, urlopen=urlopen, run=forbidden)
+        self.assertEqual(result.action, "skipped-checksum-unavailable")
+        self.assertEqual(valve_oil_status.load_status(paths).check.message, messages.AUTO_UPDATE_CHECKSUM_FETCH_FAILED)
+        result = run_auto_update_check(paths=paths, reporter=PlainReporter(io.StringIO()), environ=env, enrolled=False,
+                                       latest=auto_update.prefetch_latest_release(env, urlopen=urlopen),
+                                       urlopen=urlopen, run=forbidden)
+        self.assertEqual((result.action, result.checksum), ("checked", "2" * 64))
+        self.assertEqual(sum(url.endswith(".sha256") for url in state["opened"]), 1)
+
     def test_unenrolled_check_only_publishes_what_is_waiting(self):
         # The safety boundary: without enrollment the check never installs, starts a firmware update, reconciles,
         # reads or flashes a board, stops or restarts a service, or reboots. It records the latest checksum.
@@ -1457,9 +1522,26 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid/printer/objects/query?print_stats")
         env["VO_AUTO_UPDATE_CHECKSUM_URL"] = "https://example.invalid/latest.sha256"
         before = snapshot_tree(printer_root)
-        check = functools.partial(run_auto_update_check, urlopen=urlopen, run=forbidden, start_firmware=forbidden,
-                                  deliver=forbidden, read_session=forbidden)
-        with mock.patch("installer.runtime.cli.run_auto_update_check", side_effect=check), \
+        lock_free_while_fetching = []
+
+        def prefetch(environ):
+            # The release is fetched before the check takes the lock, so a slow network never holds up a print start.
+            try:
+                with acquire(paths.lock_path):
+                    lock_free_while_fetching.append(True)
+            except errors.LockAcquisitionError:
+                lock_free_while_fetching.append(False)
+            return auto_update.prefetch_latest_release(environ, urlopen=urlopen)
+
+        def check(**kwargs):
+            from installer.runtime.locking import acquire_shared
+
+            with acquire_shared(paths.lock_path):
+                # Print admission can proceed throughout an unenrolled check.
+                return run_auto_update_check(**kwargs, urlopen=urlopen, run=forbidden, start_firmware=forbidden,
+                                             deliver=forbidden, read_session=forbidden)
+        with mock.patch("installer.runtime.cli.prefetch_latest_release", side_effect=prefetch), \
+                mock.patch("installer.runtime.cli.run_auto_update_check", side_effect=check), \
                 mock.patch("installer.runtime.cli.repair_installer_ownership", side_effect=forbidden), \
                 mock.patch("installer.runtime.cli.recover_pending_system_optimization", side_effect=forbidden), \
                 mock.patch("installer.runtime.cli.maybe_reconcile_system_optimizations", side_effect=forbidden), \
@@ -1467,12 +1549,14 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 mock.patch("installer.runtime.cli.maybe_schedule_recommended_reboot", side_effect=forbidden):
             self.assertEqual(main(["auto-update", "--run", "--plain"], bundle_root=REPO_ROOT, environ=env,
                                   stream=io.StringIO()), 0)
+            self.assertEqual(lock_free_while_fetching, [True])
             # A check that finds an install, uninstall, or update running skips without failing its service.
             skipped = io.StringIO()
             with acquire(paths.lock_path), mock.patch("installer.runtime.cli.run_auto_update_check", side_effect=forbidden):
                 self.assertEqual(main(["auto-update", "--run", "--plain"], bundle_root=REPO_ROOT, environ=env,
                                       stream=skipped), 0)
             self.assertIn(messages.AUTO_UPDATE_SKIPPED_ANOTHER_RUN, skipped.getvalue())
+            self.assertEqual(lock_free_while_fetching, [True, False])  # the second time, this test held it
 
         self.assertFalse(any(url.endswith(".tar.gz") for url in state["opened"]))
         self.assertEqual(json.loads(state_path(paths).read_text(encoding="utf-8"))["latest_checksum"], "2" * 64)

@@ -381,6 +381,8 @@ class ProgressPublisher:
         self._run: float | None = None  # the monotonic start of the run being published
         self._started_at = ""
         self._last = None
+        self._published = False  # whether this process has written the progress file
+        self._superseded = False  # whether another process's run has written it since
 
     def __call__(self, snapshot) -> None:
         if snapshot.started_at != self._run:
@@ -394,6 +396,11 @@ class ProgressPublisher:
             self._write(state)
 
     def _write(self, state: str) -> None:
+        # An install that hands off to a firmware update ends after the update's own install may have started, or
+        # even finished; that run's progress is the one to show, so this one never writes over it.
+        if self._superseded or (self._published and not self._still_ours()):
+            self._superseded = True
+            return
         snapshot = self._last
         data = {
             "schema": SCHEMA,
@@ -412,8 +419,18 @@ class ProgressPublisher:
         }
         try:
             atomic_write_text(progress_path(self.paths), json.dumps(data, indent=2) + "\n", mode=0o644)
+            self._published = True
         except OSError:
             pass
+
+    def _still_ours(self) -> bool:
+        try:
+            data = json.loads(progress_path(self.paths).read_text(encoding="utf-8"))
+        except (FileNotFoundError, ValueError):
+            return True  # no other run's progress to keep
+        except OSError:
+            return False
+        return not isinstance(data, dict) or data.get("pid") == os.getpid()
 
 
 def progress_path(paths: RuntimePaths) -> Path:

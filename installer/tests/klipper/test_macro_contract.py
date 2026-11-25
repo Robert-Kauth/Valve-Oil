@@ -8,6 +8,7 @@ import types
 import unittest
 
 from installer.tests.helpers import REPO_ROOT
+from installer.tests.printer_geometry import REAR_LIMITS, TRAVEL
 from scripts.klipper_macro_source import (
     PRINTER_MACRO_ROOT,
     extract_gcode_lines,
@@ -20,17 +21,9 @@ from scripts.klipper_macro_source import (
 MAX4_MACRO_ROOT = PRINTER_MACRO_ROOT / "max4"
 NEWEST_STOCK = {
     "max4": REPO_ROOT / "installer/stock/qidi-max4-defaults/firmwares/01.01.07.01",
-    "plus5": REPO_ROOT / "installer/stock/qidi-plus5-defaults/firmwares/01.01.02.01",
+    "plus5": REPO_ROOT / "installer/stock/qidi-plus5-defaults/firmwares/01.01.02.02",
     "smart5": REPO_ROOT / "installer/stock/qidi-smart5-defaults/firmwares/01.01.02.01",
 }
-# Behind the bed some printers' toolheads fit only around the chute: (rear Y, lowest X, highest X).
-REAR_CHUTE_WINDOW = {
-    # Behind Y320 the Plus 5's toolhead can only be between X75 and X231 (the Max 4's rear is open in X).
-    "plus5": (320, 75, 231),
-    # Behind the Smart 5's bed QIDI moves only between X66 and X100.
-    "smart5": (180, 66, 100),
-}
-TRAVEL = {"plus5": {"X": (-7, 326), "Y": (-5, 340)}, "smart5": {"X": (-2, 185), "Y": (-4, 200)}}
 
 
 class MacroContractTests(unittest.TestCase):
@@ -53,8 +46,21 @@ class MacroContractTests(unittest.TestCase):
         def commands(text):
             return [line.split("#")[0].strip() for line in text.splitlines() if line.split("#")[0].strip()]
 
+        def straight_to_entrance(lines):
+            # QIDI reaches the chute entrance at X116 Y383 in legs along one axis at a time (from the bed, Y373
+            # first); here it is one straight move, as on the other printers.
+            out = []
+            for line in lines:
+                if line.startswith("G1 Y383 F") and out and out[-1].startswith("G1 X116 F"):
+                    out.pop()
+                    if out[-1].startswith("G1 Y{km.park_y - 30}") and out[-2] == "{% else %}":
+                        out.pop()
+                    line = "G1 X116 Y383 F" + line.split(" F", 1)[1]
+                out.append(line)
+            return out
+
         def chute_path(lines):
-            # The run to the chute entrance is faster than QIDI's; the path and the push into the chute are QIDI's.
+            # The run to the chute entrance is faster than QIDI's; the entrance and the push into the chute are QIDI's.
             return [
                 line.replace("F{opt.trash_travel_speed_xy}", "F{km.travel_speed_xy}")
                 for line in lines
@@ -70,7 +76,7 @@ class MacroContractTests(unittest.TestCase):
 
         stock_chute = commands(self._section_gcode(stock_root / "qd_macro.cfg", "gcode_macro MOVE_TO_TRASH"))
         chute = commands(self._section_gcode(MAX4_MACRO_ROOT / "nozzle_motion.cfg", "gcode_macro MOVE_TO_TRASH"))
-        self.assertEqual(chute_path(chute), chute_path(stock_chute))
+        self.assertEqual(chute_path(chute), chute_path(straight_to_entrance(stock_chute)))
         accel = None
         for line in chute:
             if line.startswith("M204"):
@@ -147,12 +153,12 @@ class MacroContractTests(unittest.TestCase):
             low, high = limits[axis.upper()]
             self.assertTrue(low <= float(value) <= high, f"{axis} {value}")
 
-    def test_rear_moves_stay_inside_the_chute_x_window(self):
-        for printer, window in REAR_CHUTE_WINDOW.items():
+    def test_rear_moves_stay_inside_the_rear_x_limits(self):
+        for printer, limits in REAR_LIMITS.items():
             with self.subTest(printer=printer):
-                self._assert_rear_moves_inside(printer, *window)
+                self._assert_rear_moves_inside(printer, limits)
 
-    def _assert_rear_moves_inside(self, printer, rear_y, x_low, x_high):
+    def _assert_rear_moves_inside(self, printer, limits):
         globals_cfg = (NEWEST_STOCK[printer] / "config/klipper-macros-qd/globals.cfg").read_text(encoding="utf-8")
         km = types.SimpleNamespace(**{
             name: float(re.search(rf"^variable_{name}: *([\d.]+)", globals_cfg, re.M).group(1))
@@ -179,17 +185,20 @@ class MacroContractTests(unittest.TestCase):
 
         def check(name, start, end):
             (x0, y0), (x1, y1) = start, end
-            points = [(x, y) for x, y in (start, end) if y > rear_y]
-            if (y0 > rear_y) != (y1 > rear_y):
-                points.append((x0 + (x1 - x0) * (rear_y - y0) / (y1 - y0), rear_y))
-            for x, y in points:
-                self.assertTrue(x_low <= x <= x_high, f"{name}: X{x:g} Y{y:g} on {start} -> {end}")
+            for rear_y, x_low, x_high in limits:
+                # X changes linearly along the part of the move behind rear_y, so its ends are its extremes.
+                points = [(x, y) for x, y in (start, end) if y > rear_y]
+                if (y0 > rear_y) != (y1 > rear_y):
+                    points.append((x0 + (x1 - x0) * (rear_y - y0) / (y1 - y0), rear_y))
+                for x, y in points:
+                    self.assertTrue(x_low <= x <= x_high, f"{name}: X{x:g} Y{y:g} on {start} -> {end}")
 
         def branch(condition, position):
             # Conditions on the toolhead position are evaluated; any other condition runs its block.
             if position is None or "gcode_move.position" not in condition:
                 return True
-            where = types.SimpleNamespace(x=position[0], y=position[1])
+            # Z never moves X or Y; at Z0 every lift (such as the cancel park's) is taken.
+            where = types.SimpleNamespace(x=position[0], y=position[1], z=0.)
             printer = types.SimpleNamespace(gcode_move=types.SimpleNamespace(position=where))
             return bool(eval(condition, {"printer": printer, "km": km}))
 
@@ -241,7 +250,7 @@ class MacroContractTests(unittest.TestCase):
 
         # Unknown, mid-bed, parked in the chute, and at the wipe's far end.
         center = km.print_max[0] / 2
-        wipe_end = {"plus5": (140.0, km.park_y), "smart5": (66.0, km.park_y)}[printer]
+        wipe_end = {"max4": (180.0, km.park_y), "plus5": (140.0, km.park_y), "smart5": (66.0, km.park_y)}[printer]
         starts = (None, (center, center), (km.park_x, km.park_y), wipe_end)
         for name in bodies:
             for start in starts:

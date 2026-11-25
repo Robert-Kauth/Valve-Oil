@@ -112,7 +112,7 @@ export function NumberInput({
   }
   return (
     <input
-      className="field num text-right font-semibold"
+      className={`field num text-right font-semibold ${readOnly ? 'field-readonly' : ''}`}
       inputMode="decimal"
       aria-label={label}
       disabled={disabled}

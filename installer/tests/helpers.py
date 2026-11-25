@@ -26,9 +26,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 MOONRAKER_QUERY_URL = "http://moonraker.invalid/printer/objects/query?print_stats"
 _TEMP_ROOTS: list[Path] = []
 def homing_fixture_bytes(firmware: str) -> bytes:
-    if firmware not in {"01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"}:
+    if firmware not in {"01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"}:
         raise ValueError(f"Unsupported homing fixture firmware: {firmware}")
-    if firmware in {"01.01.06.05", "01.01.07.01"}:
+    if firmware in {"01.01.06.05", "01.01.07.01", "01.01.07.02"}:
         return homing_sync_reset_fixture_bytes()
     value = (FIXTURES_ROOT / "source-patches/01.01.06.04/homing.py").read_bytes()
     if firmware == "01.01.06.03":
@@ -410,6 +410,8 @@ def fake_klipper_tree(system_root: Path, manifest, firmware: str, *, unit: bool 
         "printers/plus5/klippy/extras/heaters.py": "# Plus 5 heaters\n",
         "printers/smart5/klippy/mcu.py": "# Smart 5 mcu\n",
         "COPYING": "GPLv3\n",
+        "config/README.md": "# Klipper's example configs\n",
+        "docs/README.md": "# Klipper's documentation\n",
     }.items():
         (source / relative).parent.mkdir(parents=True, exist_ok=True)
         (source / relative).write_text(text, encoding="utf-8")
@@ -569,7 +571,7 @@ def moonraker_urlopen(
 ):
     payload = raw_payload
     if payload is None:
-        payload = {"result": {"status": {"print_stats": {"state": state}}}}
+        payload = {"result": {"status": {"print_stats": {"state": state}, "virtual_sdcard": {"is_active": False}}}}
     process = {"pid": 100}
 
     def saved_variables():

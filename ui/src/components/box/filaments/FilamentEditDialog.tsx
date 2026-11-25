@@ -1,13 +1,14 @@
 // Adds, duplicates, or edits a filament in QIDI's list. A new filament copies the settings the dialog doesn't show,
-// such as QIDI's drying presets, from the filament it duplicates, or else from a filament of the same type.
+// such as QIDI's drying presets, from the filament it duplicates, or else from a filament of the same type. The nozzle
+// maximum can't be above the printer's extruder max_temp, maxTemp, as QIDI heats to it with no limit of its own.
 import { useId, useMemo, useState, type ReactNode } from 'react'
 import { CancelButton, Dialog, Toggle } from '../../ui'
-import { QIDI_FILAMENT_ID_PATTERN, qidiFilamentBaseKey, qidiFilamentIdOwner, qidiFilamentKey, type QidiFilamentConfig, type QidiFilamentDraft } from '../../../qidi/qidi-filament-config'
+import { QIDI_FILAMENT_ID_PATTERN, qidiFilamentBaseKey, qidiFilamentIdOwner, qidiFilamentKey, qidiNozzleProblems, type QidiFilamentConfig, type QidiFilamentDraft, type QidiNozzleProblem } from '../../../qidi/qidi-filament-config'
 import { t } from '../../../i18n'
 
 export type FilamentSave = { draft: QidiFilamentDraft; previousKey?: string; baseKey?: string }
 
-export function FilamentEditDialog({ config, initial, previousKey, sourceKey, busy, onSave, onClose }: { config: QidiFilamentConfig; initial: QidiFilamentDraft; previousKey?: string; sourceKey?: string; busy: boolean; onSave: (s: FilamentSave) => void; onClose: () => void }) {
+export function FilamentEditDialog({ config, initial, previousKey, sourceKey, maxTemp, busy, onSave, onClose }: { config: QidiFilamentConfig; initial: QidiFilamentDraft; previousKey?: string; sourceKey?: string; maxTemp: number | null; busy: boolean; onSave: (s: FilamentSave) => void; onClose: () => void }) {
   const [d, setD] = useState<QidiFilamentDraft>({ ...initial })
   const set = <K extends keyof QidiFilamentDraft>(k: K, v: QidiFilamentDraft[K]) => setD((x) => ({ ...x, [k]: v }))
   const sorted = (key: string) => [...new Set(Object.values(config).map((e) => String(e[key] ?? '')))].filter(Boolean).sort((a, b) => a.localeCompare(b))
@@ -18,13 +19,21 @@ export function FilamentEditDialog({ config, initial, previousKey, sourceKey, bu
 
   const owner = qidiFilamentIdOwner(config, d.id, previousKey)
   const required = t('box.filaments.edit.required')
+  const nozzle = qidiNozzleProblems(d, maxTemp)
+  const nozzleError = (problem: QidiNozzleProblem | null) =>
+    problem === 'required' ? required
+    : problem === 'whole' ? t('box.filaments.edit.whole_degrees')
+    : problem === 'negative' ? t('box.filaments.edit.at_least', { n: 0 })
+    : problem === 'below_min' ? t('box.filaments.edit.at_least', { n: String(d.nozzleMin) })
+    : problem === 'above_limit' ? t('box.filaments.edit.nozzle_limit', { max: maxTemp })
+    : null
   const errors = {
     vendor: !d.vendor.trim() ? required : null,
     name: !d.name.trim() ? required : key !== previousKey && key in config ? t('box.filaments.edit.already_listed', { name: key }) : null,
     type: !d.type.trim() ? required : null,
     id: !d.id ? required : !QIDI_FILAMENT_ID_PATTERN.test(d.id) ? t('box.filaments.edit.id_format') : owner != null ? t('box.filaments.edit.id_used', { name: owner }) : null,
-    nozzleMin: d.nozzleMin == null ? required : d.nozzleMin <= 0 ? t('box.filaments.edit.must_be_positive') : null,
-    nozzleMax: d.nozzleMax == null ? required : d.nozzleMax < (d.nozzleMin ?? 0) ? t('box.filaments.edit.at_least', { n: String(d.nozzleMin) }) : null,
+    nozzleMin: nozzleError(nozzle.nozzleMin),
+    nozzleMax: nozzleError(nozzle.nozzleMax),
     boxMax: d.boxMax == null ? required : d.boxMax < 0 ? t('box.filaments.edit.at_least', { n: 0 }) : null,
     chamber: d.chamber == null ? required : d.chamber < 0 ? t('box.filaments.edit.at_least', { n: 0 }) : null,
   }
@@ -60,10 +69,10 @@ export function FilamentEditDialog({ config, initial, previousKey, sourceKey, bu
           {(id) => <input id={id} className="field code" spellCheck={false} disabled={previousKey != null} value={d.id} onChange={(e) => set('id', e.target.value.toUpperCase())} />}
         </Field>
         <Field label={t('box.filaments.edit.nozzle_min')} error={errors.nozzleMin}>
-          {(id) => <Degrees id={id} value={d.nozzleMin} onChange={(v) => set('nozzleMin', num(v))} />}
+          {(id) => <Degrees id={id} value={d.nozzleMin} max={maxTemp} onChange={(v) => set('nozzleMin', num(v))} />}
         </Field>
-        <Field label={t('box.filaments.edit.nozzle_max')} error={errors.nozzleMax}>
-          {(id) => <Degrees id={id} value={d.nozzleMax} onChange={(v) => set('nozzleMax', num(v))} />}
+        <Field label={t('box.filaments.edit.nozzle_max')} error={errors.nozzleMax} hint={maxTemp != null ? t('box.filaments.edit.nozzle_limit_hint', { max: maxTemp }) : undefined}>
+          {(id) => <Degrees id={id} value={d.nozzleMax} max={maxTemp} onChange={(v) => set('nozzleMax', num(v))} />}
         </Field>
         <Field label={t('box.filaments.edit.box_max')} error={errors.boxMax} hint={t('box.filaments.edit.box_max_hint')}>
           {(id) => <Degrees id={id} value={d.boxMax} onChange={(v) => set('boxMax', num(v))} />}
@@ -110,10 +119,10 @@ function ListInput({ id, value, options, onChange }: { id: string; value: string
   )
 }
 
-function Degrees({ id, value, onChange }: { id: string; value: number | null; onChange: (v: string) => void }) {
+function Degrees({ id, value, max, onChange }: { id: string; value: number | null; max?: number | null; onChange: (v: string) => void }) {
   return (
     <div className="relative">
-      <input id={id} className="field num pr-9" type="number" inputMode="numeric" value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+      <input id={id} className="field num pr-9" type="number" inputMode="numeric" min={0} max={max ?? undefined} step={1} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
       <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[12px] font-semibold text-ink-3">°C</span>
     </div>
   )

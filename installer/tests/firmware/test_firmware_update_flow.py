@@ -18,6 +18,7 @@ import time
 import unittest
 import urllib.error
 import urllib.parse
+import urllib.request
 import zipfile
 from contextlib import ExitStack, contextmanager
 from dataclasses import replace
@@ -25,7 +26,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from installer.runtime import board_firmware, box_config, firmware_update, install_screen, qidi_package, safety, update_screen, valve_oil_status
+from installer.runtime import (board_firmware, box_config, firmware_update, install_screen, klipper_tree, qidi_package,
+                               safety, update_screen, valve_oil_status)
 from installer.runtime.host_reboot import recommend_reboot
 from installer.runtime.system_optimizations import CARRIED_LEDGER_FILE
 from installer.runtime.board_firmware import NEEDS_IMAGE, BoardAdmission, BoardStatus, admission_path
@@ -42,7 +44,7 @@ MANIFEST = load_manifest(REPO_ROOT / "installer/package.yaml")
 # The package's closed-loop driver image, and its pin.
 DRIVER_IMAGE = b"QIDI's closed-loop driver firmware 03.01.10.15" * 64
 DRIVER_PIN = ImagePin(size=len(DRIVER_IMAGE), sha256=hashlib.sha256(DRIVER_IMAGE).hexdigest())
-TARGET = "01.01.07.01"
+TARGET = "01.01.07.02"
 SOC = f"QD_MAX4_SOC_{TARGET}_20261016_Release_NA"
 CONFIG_KEPT = ("MCU_ID.cfg", "saved_variables.cfg", "saved_variables.cfg.bak")
 # The box.cfg QIDI's package installs, with no Box.
@@ -235,8 +237,9 @@ class Klipper:
 
     def _object(self, name):
         p = self.printer
-        if name in ("print_stats", "pause_resume", "idle_timeout", "heaters", "extruder"):
-            return {"print_stats": {"state": p.print_state}, "pause_resume": {"is_paused": False},
+        if name in ("print_stats", "virtual_sdcard", "pause_resume", "idle_timeout", "heaters", "extruder"):
+            return {"print_stats": {"state": p.print_state}, "virtual_sdcard": {"is_active": False},
+                    "pause_resume": {"is_paused": False},
                     "idle_timeout": {"state": "Idle"}, "heaters": {"available_heaters": ["extruder"]},
                     "extruder": {"target": p.heater}}[name]
         if name == "configfile":
@@ -273,6 +276,7 @@ class Printer:
     mainboard tools, and this project's mirror. Board delivery itself is Valve Oil's own."""
 
     def __init__(self, *, firmware="01.01.06.05", mainboard="02.01.01.12", archive=None, mirror="ok"):
+        self.klippy_pid = 100
         root = temp_path("firmware-update-")
         self.home = root / "home"
         data = self.home / "printer_data"
@@ -473,10 +477,16 @@ class Printer:
         self.events.append(("moonraker",))
         if self.services["moonraker.service"] != "active":
             raise urllib.error.URLError("connection refused")
+        if isinstance(url, urllib.request.Request):  # Moonraker's service restart, the one request with a body
+            assert url.full_url.endswith("/machine/services/restart") and json.loads(url.data) == {"service": "klipper"}
+            self.events.append(("klipper-service-restart",))
+            self.klippy_pid += 1
+            return Response(b'{"result": "ok"}')
         if url.endswith("/printer/info"):
-            return Response(json.dumps({"result": {"state": "ready", "process_id": 100}}).encode())
+            return Response(json.dumps({"result": {"state": "ready", "process_id": self.klippy_pid}}).encode())
         names = [urllib.parse.unquote(part.split("=")[0]) for part in urllib.parse.urlsplit(url).query.split("&")]
         status = {"print_stats": {"state": self.print_state}, "webhooks": {"state": "ready"},
+                  "virtual_sdcard": {"is_active": False},
                   "heaters": {"available_heaters": ["extruder"]}, "extruder": {"target": self.heater},
                   "closed_loop x": {"stepper_version": "03.01.10.13", "stepper_hd_version": "9.1"},
                   "closed_loop y": {"stepper_version": "03.01.10.13", "stepper_hd_version": "9.1"}}
@@ -645,7 +655,7 @@ class FirmwareUpdateTests(unittest.TestCase):
         message = valve_oil_status.load_status(printer.paths).run.message
         self.assertIn("Restored the saved calibration from before the update: [extruder], [bed_mesh default], "
                       "[input_shaper]", message)
-        self.assertIn("[chamber_light] (QIDI firmware 01.01.07.01's config has no such section)", message)
+        self.assertIn("[chamber_light] (QIDI firmware 01.01.07.02's config has no such section)", message)
         self.assertIn("[bed_mesh] speed (Valve Oil's install sets it)", message)
         self.assertIn(MANIFEST.backup.label_prefix, message)  # where the config from before the update is
         self.assertEqual(printer.update_firmware(), TARGET)
@@ -719,6 +729,36 @@ class FirmwareUpdateTests(unittest.TestCase):
                          (valve_oil_status.CURRENT, "03.01.10.15"))
         # The result was reported to the session that started it.
         self.assertIsNone(firmware_update.report_or_attach(paths=printer.paths, reporter=printer.reporter, environ={}))
+
+    def test_valve_oils_klipper_is_started_again_once_the_update_no_longer_holds_it(self):
+        # Valve Oil's launcher starts QIDI's Klipper while the update's record exists, and the install's own restart
+        # comes before the record goes, so a printer whose operator chose Valve Oil's Klipper was left on QIDI's
+        # after an automatic update (Max 4 01.01.07.01 to 01.01.07.02, 2026-11-25).
+        for selected, code, restarts in (("valve_oil", "firmware_update_pending", 1), ("qidi", "not_selected", 0),
+                                         ("valve_oil", "selected", 0)):
+            with self.subTest(selected=selected, code=code):
+                printer = Printer()
+                (printer.paths.printer_data_root / klipper_tree.STATUS_FILE).write_text(json.dumps(
+                    {"selected": selected, "code": code, "running": "qidi" if code != "selected" else "valve_oil"}))
+                self.assertEqual(printer.start().state, firmware_update.SUCCEEDED, printer.output.getvalue())
+                self.assertEqual(printer.events.count(("klipper-service-restart",)), restarts)
+                if restarts:
+                    self.assertFalse(firmware_update.record_path(printer.paths).exists())
+
+    def test_the_closed_loop_step_is_announced_only_when_the_package_changes_the_drivers(self):
+        # 01.01.06.05 to 01.01.07.01 changes the drivers, so the step says what it does.
+        printer = Printer()
+        self.assertEqual(printer.start().state, firmware_update.SUCCEEDED, printer.output.getvalue())
+        self.assertIn("Updating the closed-loop motor drivers...", printer.output.getvalue())
+        # A package that leaves them as they are, as every Plus 5 and Smart 5 package does, says nothing about them.
+        printer = Printer()
+        printer.printer = replace(printer.printer, target_firmware=replace(printer.printer.target_firmware,
+                                                                           closed_loop_image=None))
+        printer.manifest = replace(printer.manifest, printers=tuple(
+            printer.printer if p.id == printer.printer.id else p for p in printer.manifest.printers))
+        self.assertEqual(printer.start().state, firmware_update.SUCCEEDED, printer.output.getvalue())
+        self.assertNotIn("Updating the closed-loop motor drivers", printer.output.getvalue())
+        self.assertEqual(self.driver_commands(printer), [])
 
     def test_closed_loop_drivers_get_an_image_only_when_admitted_and_count_as_updated_only_once_verified(self):
         def board(printer):

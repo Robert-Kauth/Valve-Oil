@@ -23,6 +23,8 @@ Before 26.11.18.2 these were named `tltg_` instead of `vo_`, for example `tltg_k
 | [`vo_step_loss_recovery`](tools.md#correcting-the-position-after-a-slip) | `0` | With the step-loss monitor on, `1` corrects the toolhead position after a print's first slip and keeps printing instead of pausing. Max 4 only. |
 | [`vo_resonance_sweep`](tools.md#input-shaper-calibration) | `1` | `0` runs QIDI's resonance test for input shaper calibration instead of the newer sweeping one. |
 | [`vo_box_spool_roll`](qidi-box.md#turning-spools-while-the-box-heats) | `0` | `1` turns the spools of empty QIDI Box slots every 5 minutes while the Box heater is on. |
+| [`vo_box_fan_threshold`](qidi-box.md#box-fans-on-a-warm-printer) | `35` | Box air temperature in °C, from `35` to `45`, above which USB QIDI Box circulation fans run. |
+| [`vo_box_fan_hysteresis`](qidi-box.md#box-fans-on-a-warm-printer) | `0.5` | How far in °C, from `0` to `2`, the Box air falls below `vo_box_fan_threshold` before the fans start their minute's run-on. |
 | [`vo_box_heater_pwm_cycle_time`](qidi-box.md#box-heater-switching-speed) | `0.1` | Seconds per on-off cycle of each USB QIDI Box heater, from `0.01` to `0.1`. Shorter can stop lights flickering. Takes effect when Klipper next restarts. |
 
 ## Commands
@@ -38,7 +40,7 @@ Before 26.11.18.2 these were named `TLTG_` instead of `VO_`, and several print m
 | [`VO_BOX_RFID_WRITE SLOT= [FILAMENT=] [COLORS=] [NAME=0] [SECONDS=]`](qidi-box.md#writing-spool-tags) | Writes a filament to the spool tag in a QIDI Box slot, turning an empty slot's spool until the tag comes past. Needs the Valve Oil Box firmware. |
 | [`VO_BOX_RFID_TEST SLOT= ACTION=SCAN\|WRITE`](qidi-box.md#writing-spool-tags) | Diagnostic: lists the tags a QIDI Box reader sees, or writes one with every option. |
 | [`VO_CUT_FILAMENT`](qidi-box.md#cutting-the-filament) | Cuts the filament at the toolhead, at any nozzle temperature, homing X and Y first if needed. Not during a print. |
-| [`UNLOAD_FILAMENT_CONTROL SLOT= COLD=1`, `EJECT_FILAMENT_CONTROL SLOT= COLD=1`](qidi-box.md#unloading-and-ejecting-cold) | QIDI's Box unload and eject without heating the nozzle. Not during a print. |
+| [`UNLOAD_FILAMENT_CONTROL SLOT= COLD=`, `EJECT_FILAMENT_CONTROL SLOT= COLD=`](qidi-box.md#unloading-and-ejecting-cold) | QIDI's Box unload and eject run without heating the nozzle between prints, the default; `COLD=0` heats as QIDI does. `COLD=1` is refused during a print. |
 | [`VO_FILAMENT_SENSOR ENABLE=0\|1`](tools.md#external-spool-runout-sensor) | Stops or restores external spool runout pauses until Klipper restarts. |
 | [`VO_SPOOLMAN_SLOT SLOT= SPOOL=`](spoolman.md#giving-each-slot-its-spool) | Sets the Spoolman spool for a QIDI Box slot or the external spool, which becomes the active spool whenever that slot is loaded. No parameters lists them. |
 | [`VO_RS_BOX_REPORT`](qidi-box.md#rs-485-boxes) | Writes the QIDI RS-485 Box report to `logs/vo_box485_report.json` and says whether RS-485 hardware was found. |

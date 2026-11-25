@@ -217,6 +217,22 @@ SIGNATURES = {
             docs="toolhead-load-cell-readings-lost",
         ),
         Signature(
+            id="board_command_stall",
+            title="A board stopped taking Klipper's commands",
+            meaning=(
+                "A board stopped acknowledging Klipper's commands for seconds at a time while it went on sending its "
+                "own reports, so Klipper didn't report a lost connection. Commands to it waited, its heater updates "
+                "included. On the toolhead board (THR) the nozzle then cooled, and Klipper shut down with an error "
+                "that names something else, such as \"Heater extruder not heating at expected rate\", or the THR "
+                "with \"Missed scheduling of next digital out event\" when the waiting commands reached it late."
+            ),
+            action=(
+                "Turn the printer off and reseat the board's cable at both ends. If it keeps happening, report it with "
+                "the support bundle and say where the toolhead was when it happened."
+            ),
+            docs="a-board-stopped-taking-klippers-commands",
+        ),
+        Signature(
             id="qidi_error",
             title="QIDI error codes",
             meaning="QIDI's code reported these errors. The lines before each show what led up to it.",
@@ -234,6 +250,7 @@ TIMESTAMP = re.compile(rb"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) - ")
 MARKERS = re.compile(
     rb"Start printer at|MCU '[\w ]+' config:|got \{|\[MCB\] STATE|Code:QDE_|vo_box_watch: |box_flow_recovery: "
     rb"|ENABLE delay: stepper=slot|Status changed: |^variable_package_version = |Data error, discard the data value=999"
+    rb"|no commands from Klipper"
 )
 VERSION = re.compile(r'^variable_package_version = "([\d.]+)"')
 START = "Start printer at"
@@ -255,6 +272,12 @@ UNLOAD_FAILURE = "QDE_004_008"
 # A toolhead load-cell reading Klipper received with nothing waiting for it, and the value QIDI's code reads then.
 LOST_READING = re.compile(r"mcu 'THR': got \{.*'#name': 'query_cs1237_data'")
 LOST_VALUE = "Data error, discard the data value=999.9"
+# Valve Oil's Klipper health module (installer/klipper/extras/klipper_health.py) writes these when a board stops
+# taking Klipper's commands, and when it takes them again or Klipper shuts down first.
+STALL = re.compile(r"vo_klipper_health: (\S+) has taken no commands from Klipper")
+STALL_LENGTH = re.compile(
+    r"vo_klipper_health: (\S+) (took|had taken) no commands from Klipper for (?:about )?(\d+) s"
+)
 # Valve Oil's Box watcher (installer/klipper/extras/box_watch.py) writes these.
 WATCHING = re.compile(WATCH + r"watching ")
 WATCH_CLOCK = re.compile(
@@ -442,6 +465,9 @@ class Checker:
             # Klipper is moving a slot itself (a load or unload), which sets its clock legitimately.
             self._rearmed.clear()
             return
+        if "no commands from Klipper" in line:
+            self._command_stall(line, when)
+            return
         self._valve_oil(line, when)
         error = QIDI_ERROR.search(line)
         if error:
@@ -450,6 +476,25 @@ class Checker:
             self._note("qidi_error", when, lines=[*context, line], detail=f"{code}: {message}")
             if code == UNLOAD_FAILURE:
                 self._note("unload_toolhead_sensor_stuck", when, lines=[line], detail=f"QIDI {code}: {message}")
+
+    def _command_stall(self, line: str, when: str | None) -> None:
+        if STALL.search(line):
+            self._note("board_command_stall", when, lines=[line])
+            return
+        match = STALL_LENGTH.search(line)
+        if not match:
+            return
+        board, kind, seconds = match.groups()
+        # The stall's start line counted it; its length adds detail. A log cut after the start shows none.
+        finding = self._finding("board_command_stall")
+        if not finding.count:
+            finding = self._note("board_command_stall", when)
+        finding.last = when or finding.last
+        detail = f"{board}: {seconds} s" + (" when Klipper shut down" if kind == "had taken" else "")
+        if detail not in finding.details and len(finding.details) < MAX_DETAILS:
+            finding.details.append(detail)
+        if len(finding.evidence) < MAX_EVIDENCE:
+            finding.evidence.append(line[:600])
 
     def _valve_oil(self, line: str, when: str | None) -> None:
         match = WATCH_CLOCK.search(line)

@@ -188,7 +188,7 @@ def synthetic_manifest(name):
     return manifest, stock, boot
 
 
-def qidi_firmware(version="01.01.07.01", soc_prefix="QD_MAX4_SOC_"):
+def qidi_firmware(version="01.01.07.02", soc_prefix="QD_MAX4_SOC_"):
     """QIDI's firmware_manifest.json for firmware `version`; the SOC file's prefix says which printer it is."""
     return {"SOC": {"file": f"{soc_prefix}{version}_20261016_Release_NA", "version": version}}
 

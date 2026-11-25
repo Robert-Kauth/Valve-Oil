@@ -18,7 +18,7 @@ import urllib.request
 from dataclasses import dataclass, field, replace
 
 from . import board_firmware, firmware_update, qidi_package, valve_oil_status
-from .auto_update import installed_release, newer_release
+from .auto_update import installed_release, newer_release, older_release
 from .board_firmware import (
     CURRENT,
     HELD,
@@ -105,6 +105,11 @@ def discover(paths, *, enrolled: bool, latest_version: str | None, reconciliatio
     installed_version = installed_release(paths, manifest)
     bundle = manifest.package.version
     newer = newer_release(latest_version, installed_version or bundle)
+    # A latest release older than the installed one is never installed, as a new release or to reconcile: its installer
+    # refuses the newer state, after the bundle folder had already been replaced with it.
+    older = older_release(latest_version, installed_version or bundle)
+    release_changed = release_changed and not older
+    reconciliation_required = reconciliation_required and not older
     if newer:
         item = PendingItem(kind=valve_oil_status.RELEASE, version=latest_version, current=installed_version)
     elif reconciliation_required:

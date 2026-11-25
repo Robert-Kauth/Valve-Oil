@@ -13,6 +13,7 @@ import { PauseAtLayerButton } from '../components/printing/PauseAtLayer'
 import { CameraDeck } from '../components/home-deck/CameraDeck'
 import { MacrosDeck, OutputsDeck } from '../components/home-deck/Deck'
 import { BoxDeck } from '../components/home-deck/BoxDeck'
+import { ExternalSpoolDeck } from '../components/home-deck/ExternalSpoolDeck'
 import { ToolheadCard } from '../components/home-deck/ToolheadCard'
 import { TempsCard } from '../components/home-deck/TempsCard'
 import { attempt } from '../components/toast'
@@ -28,9 +29,9 @@ import { t } from '../i18n'
 import { tr } from '../i18n/rich'
 
 /**
- * Home, in four columns on a desktop. The camera spans the left two, in its own shape, with the Box and the fans and
- * lights under it; then the toolhead over the temperatures; then the print, recent files, and the macros and console,
- * folded until opened. The last card in each column stretches, so the columns end together. A tablet has two columns
+ * Home, in four columns on a desktop. The camera spans the left two, in its own shape, with the Box (or, with no Box,
+ * the external spool) and the fans and lights under it; then the toolhead over the temperatures; then the print,
+ * recent files, and the macros and console, folded until opened. The last card in each column stretches, so the columns end together. A tablet has two columns
  * under the camera, each stacking its cards straight under one another, and a phone one.
  */
 export function HomeScreen() {
@@ -50,7 +51,7 @@ export function HomeScreen() {
         <CameraDeck />
         <div className="half-cols">
           <div className="col">
-            {boxPresent && <BoxDeck />}
+            {boxPresent ? <BoxDeck /> : <ExternalSpoolDeck />}
             <SpoolmanCard />
             {twoColumns && (
               <>
@@ -367,9 +368,32 @@ export function cameraRatio(cam: Webcam, measured?: number | null) {
  */
 export function CameraView({ cam, toggle, fit, name }: { cam: Webcam; toggle?: ReactNode; fit?: boolean; name?: ReactNode }) {
   const [failed, setFailed] = useState(false)
+  const [exhausted, setExhausted] = useState(false)
+  const [retryKey, setRetryKey] = useState(0)
+  const failures = useRef(0)
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // The stream's own size, once its first frame arrives, so the card takes the camera's shape without letterboxing.
   const [measured, setMeasured] = useState<number | null>(null)
   const img = useRef<HTMLImageElement>(null)
+  const clearRetry = () => {
+    if (retryTimer.current) clearTimeout(retryTimer.current)
+    retryTimer.current = null
+  }
+  const retry = () => {
+    clearRetry()
+    failures.current = 0
+    setFailed(false)
+    setExhausted(false)
+    setRetryKey((key) => key + 1)
+  }
+  useEffect(() => {
+    clearRetry()
+    failures.current = 0
+    setFailed(false)
+    setExhausted(false)
+    setRetryKey(0)
+    return clearRetry
+  }, [cam.stream_url])
   useEffect(() => {
     if (!fit) return
     const t = setInterval(() => {
@@ -382,19 +406,52 @@ export function CameraView({ cam, toggle, fit, name }: { cam: Webcam; toggle?: R
     return () => clearInterval(t)
   }, [fit, cam.stream_url])
   const fs = useFullScreen()
-  const src = new URL(cam.stream_url, client.httpBase + '/').toString()
+  const srcUrl = new URL(cam.stream_url, client.httpBase + '/')
+  if (retryKey) srcUrl.searchParams.set('vo_retry', String(retryKey))
+  const src = srcUrl.toString()
   const transform = [cam.flip_horizontal ? 'scaleX(-1)' : '', cam.flip_vertical ? 'scaleY(-1)' : '', cam.rotation ? `rotate(${cam.rotation}deg)` : ''].join(' ')
   const size = fs.page ? 'fixed inset-0 z-80' : fs.full ? 'relative' : fit ? 'relative min-w-0 rounded-[10px]' : 'relative aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1'
   const ratio = cameraRatio(cam, measured)
   return (
     <div ref={fs.box} className={`overflow-hidden bg-[#14161b] ${size}`} style={fit && !fs.full ? { aspectRatio: ratio, flex: `${ratio} 1 0`, maxWidth: camMaxWidth(ratio) } : undefined} onDoubleClick={fs.toggle}>
       {!failed ? (
-        <img ref={img} src={src} alt={cam.name} className="absolute inset-0 h-full w-full object-contain" style={{ transform }} onError={() => setFailed(true)} />
+        <img
+          ref={img}
+          src={src}
+          alt={cam.name}
+          className="absolute inset-0 h-full w-full object-contain"
+          style={{ transform }}
+          onLoad={() => {
+            clearRetry()
+            failures.current = 0
+            setExhausted(false)
+          }}
+          onError={() => {
+            clearRetry()
+            const attempt = ++failures.current
+            setFailed(true)
+            const delays = [1000, 3000, 8000]
+            if (attempt <= delays.length) {
+              retryTimer.current = setTimeout(() => {
+                retryTimer.current = null
+                setFailed(false)
+                setRetryKey((key) => key + 1)
+              }, delays[attempt - 1])
+            } else {
+              setExhausted(true)
+            }
+          }}
+        />
       ) : (
-        <div className="grid h-full place-items-center text-[#9aa1ad]">
+        <div className="grid h-full place-content-center justify-items-center gap-2 text-[#9aa1ad]">
           <span className="flex items-center gap-2">
             <Camera size={16} /> {t('home.camera.unavailable')}
           </span>
+          {exhausted && (
+            <button className="btn btn-sm" onClick={retry}>
+              <RotateCcw size={13} /> {t('common.retry')}
+            </button>
+          )}
         </div>
       )}
       <div className="absolute top-2.5 left-2.5 z-10">{name ?? <span className="cam-tag">{cam.name}</span>}</div>

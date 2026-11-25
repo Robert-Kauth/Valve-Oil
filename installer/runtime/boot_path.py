@@ -37,7 +37,8 @@ INIT = "/sbin/init"
 DOSFSTOOLS_DEB = "/home/qidi/QIDI_Client/resource/mkfs_tools/dosfstools_4.2-1_arm64.deb"
 DOSFSTOOLS_PACKAGE = "dosfstools"
 DOSFSTOOLS_ARCHITECTURE = "arm64"
-# The app's tool check (qidiclient 0x7010f0 on Max 4 01.01.07.01): either name, in any of these directories.
+# The app's tool check (qidiclient 0x7010f0 on Max 4 01.01.07.01, 0x704510 on 01.01.07.02): either name, in any of
+# these directories.
 FORMAT_TOOLS = ("mkfs.vfat", "mkfs.fat")
 TOOL_DIRS = ("/usr/sbin", "/sbin", "/usr/bin", "/bin")
 MAX_LINK_HOPS = 40

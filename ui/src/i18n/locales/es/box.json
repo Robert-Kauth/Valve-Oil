@@ -13,7 +13,10 @@
   "operation": {
     "retry_hint": "Reintentar repite el paso; Detener termina la operación del Box.",
     "stop": "Detener",
-    "working": "El Box está trabajando"
+    "working": "El Box está trabajando",
+    "retry_hint_no_box": "Reintentar repite el paso; Detener termina la operación.",
+    "waiting_filament": "Esperando el filamento en el cabezal",
+    "waiting_filament_hint": "Empuja el filamento de la bobina externa dentro del cabezal hasta que el extrusor lo agarre. La carga continúa sola en cuanto el sensor del cabezal lo detecta."
   },
   "step": {
     "heat": "Calentando la boquilla",
@@ -30,6 +33,8 @@
     "heat_temp_external_failed": "No se pudo calentar la boquilla a {{temp}} °C para la bobina externa",
     "cut": "Cortando el filamento",
     "cut_failed": "No se pudo cortar el filamento",
+    "purge": "Purgando",
+    "purge_failed": "No se pudo purgar",
     "wipe": "Limpiando la boquilla",
     "wipe_failed": "No se pudo limpiar la boquilla",
     "bite": "Sujetando el filamento de la bobina externa",
@@ -207,7 +212,10 @@
     "stranded_elsewhere": "El filamento de {{slot}} está detenido entre el hub y el cabezal. Primero descarga o expulsa {{slot}}.",
     "nozzle_temps": "Boquilla {{min}}–{{max}} °C",
     "heat_up_to": "Calentar hasta {{temp}} °C",
-    "change_filament": "Cambiar el material, la marca o el color"
+    "change_filament": "Cambiar el material, la marca o el color",
+    "no_toolhead_sensor": "Cargar y descargar necesitan el sensor de filamento del cabezal, que Klipper no está informando.",
+    "at_toolhead": "Cargada en el cabezal",
+    "not_at_toolhead": "Sin cargar"
   },
   "tool_map": {
     "default": "Predeterminada",
@@ -265,7 +273,9 @@
     "errors": {
       "already_listed": "El filamento ya está en la lista: {{name}}",
       "id_used": "El ID de filamento {{id}} ya lo usa {{name}}",
-      "not_found": "Filamento no encontrado: {{name}}"
+      "not_found": "Filamento no encontrado: {{name}}",
+      "nozzle": "{{name}}: las temperaturas de la boquilla deben ser números enteros desde 0, con el mínimo no mayor que el máximo",
+      "nozzle_limit": "{{name}}: el máximo de la boquilla supera el límite de esta impresora, {{max}} °C"
     },
     "edit": {
       "add_title": "Añadir filamento",
@@ -273,7 +283,6 @@
       "already_listed": "{{name}} ya está en la lista",
       "id_format": "QF, una letra mayúscula y dos dígitos, como QFA94",
       "id_used": "Ya lo usa {{name}}",
-      "must_be_positive": "Debe ser mayor que 0",
       "at_least": "Mínimo {{n}}",
       "vendor": "Fabricante",
       "filament": "Filamento",
@@ -286,7 +295,10 @@
       "chamber": "Recinto",
       "support": "Material de soporte",
       "listed_as": "Aparece como {{name}}.",
-      "listed_as_copied": "Aparece como {{name}}. El secado y otros ajustes se copian de {{base}}."
+      "listed_as_copied": "Aparece como {{name}}. El secado y otros ajustes se copian de {{base}}.",
+      "whole_degrees": "Solo grados enteros",
+      "nozzle_limit": "Máximo {{max}}, el límite de la boquilla de esta impresora",
+      "nozzle_limit_hint": "El límite de esta impresora es {{max}} °C"
     },
     "import": {
       "title": "Importar filamentos",
@@ -294,7 +306,9 @@
       "new": "No está en la lista actual",
       "changed": "Difiere de la lista actual",
       "conflict": "Su ID {{id}} ya lo usa {{name}}",
-      "none": "Todos los filamentos de este archivo ya están en la lista."
+      "none": "Todos los filamentos de este archivo ya están en la lista.",
+      "nozzle_limit": "Su máximo de boquilla supera el límite de esta impresora, {{max}} °C",
+      "nozzle_invalid": "Sus temperaturas de boquilla no son dos números enteros, el mínimo y luego el máximo"
     },
     "library_title": "Biblioteca de filamentos",
     "back_home": "Volver a Inicio"

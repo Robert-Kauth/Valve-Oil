@@ -52,6 +52,17 @@ With this turned on, while a Box's heater has a target, during a print or not, e
 
 `klippy.log` notes each turn, for example `vo_box_spool_roll: turning 1A's spool 25 mm`.
 
+### Box fans on a warm printer
+
+QIDI runs a USB Box's two circulation fans while the Box heats or a slot motor is on, while the Box air is above 35 °C, and for a minute after. A Box sitting near 35 °C, as on top of a printer with a hot chamber, kept switching its fans on and off. Once the air goes above 35 °C, the fans now keep running until it's 0.5 °C lower, then run their minute and stop.
+
+On a printer whose chamber keeps the Box warm, a higher temperature stops the fans running all print. Both settings apply to every USB Box within a second of saving, without a restart:
+
+- `SAVE_VARIABLE VARIABLE=vo_box_fan_threshold VALUE=40` starts the fans above 40 °C. From `35` to `45`. Some filaments soften in a warmer Box with no air moving.
+- `SAVE_VARIABLE VARIABLE=vo_box_fan_hysteresis VALUE=1` keeps them running until the air is 1 °C below that. From `0`, QIDI's behaviour, to `2`.
+
+Heating and slot motors still run the fans whatever these are set to. RS-485 Boxes are unchanged.
+
 ### Printing while a Box dries
 
 A print doesn't start while QIDI's timed drying runs on a USB Box, whether it was started from the touchscreen, Fluidd, or Valve Oil UI. The print start stops with `Box 2 is drying. Stop drying before starting a print.` Stop drying, then start the print again. Drying can't start during a print either, paused or not: it stops with `Box drying can't start during a print. Set the Box heater target instead.` To keep the Box warm through the print, set its heater target (Valve Oil UI's **Heat**). That holds the temperature without QIDI's spool turns, and [Turning spools while the Box heats](#turning-spools-while-the-box-heats) can turn the empty slots' spools without pausing the print.
@@ -137,19 +148,23 @@ Every other cut works the same way at the cutter: `OPTIMIZED_CUT_FILAMENT` and `
 
 ### Unloading and ejecting cold
 
-QIDI's Box unload and eject first heat the nozzle to the top of the filament's printing range, 280 °C for some ASA, then cut and pull the filament back. With `COLD=1` they run the same steps without heating:
+QIDI's Box unload and eject first heat the nozzle to the top of the filament's printing range, 280 °C for some ASA, then cut and pull the filament back. Between prints, Valve Oil runs the same steps without heating, from the touchscreen, Valve Oil UI, Fluidd, or the console:
 
 ```gcode
-UNLOAD_FILAMENT_CONTROL SLOT=1 COLD=1
-EJECT_FILAMENT_CONTROL SLOT=1 COLD=1
+UNLOAD_FILAMENT_CONTROL SLOT=1
+EJECT_FILAMENT_CONTROL SLOT=1
 ```
 
-**Unload** and **Eject** on the QIDI Box card send `COLD=1` unless a print is paused. The toolhead parks over the waste chute, homing X and Y first if needed, then the filament is cut and pulled back as usual. The nozzle heater stays off, and with no heat there's no ooze, so QIDI's 5 second wait and nozzle wipe at the end are skipped. Only pull-backs are allowed with the nozzle cold, as for the cut.
+`COLD=1` asks for a cold unload and says why when it can't be one; `COLD=0` heats the nozzle as QIDI does. **Unload** and **Eject** on the QIDI Box card send `COLD=1` unless a print is paused. The toolhead parks over the waste chute, homing X and Y first if needed, then the filament is cut and pulled back as usual. The nozzle heater stays off, and with no heat there's no ooze, so QIDI's 5 second wait and nozzle wipe at the end are skipped. Only pull-backs are allowed with the nozzle cold, as for the cut.
 
-- `COLD=1` is refused while a print is running or paused.
+- While a print is running or paused, unloads heat as QIDI's do, and `COLD=1` is refused.
 - If a step fails, **Retry** (`FLOW_RETRY`) runs it cold again.
-- An unload that would also unload the external spool still heats, and the console says so.
-- If a cold unload keeps failing, for example because the cut didn't go all the way through, **Stop** it, then unload from the console without `COLD=1` to heat the nozzle as QIDI does.
+- The external spool's unload, and an unload that would also unload it, still heat; with `COLD=1` the console says so.
+- If a cold unload keeps failing, for example because the cut didn't go all the way through, **Stop** it, then unload from the console with `COLD=0` to heat the nozzle as QIDI does.
+
+## Nozzle wipes after loads and unloads
+
+After a load's purge, and at the end of an unload that heated the nozzle, QIDI's Box code turns the nozzle heater off and wipes the nozzle at the waste chute. The part fan goes to full speed at the first wipe, so the ooze cools and breaks off on the wiper, and stays there through the waits, chute moves, and later wipes until the load, unload, or tool change has finished. Between prints it keeps running until the nozzle is below 170 °C, as after a cancelled print, then goes back to the speed it had before, off outside a print. Nothing waits for it: you can unload, load, or start a print straight away. Heating the nozzle or starting a print puts the fan back at once, and a fan speed you set yourself stays. During a print's tool change it goes back as soon as the change has finished. QIDI wiped with the fan as it was.
 
 ## Moving a slot by hand
 
@@ -172,12 +187,13 @@ The QIDI Box card in Fluidd has **In** and **Out** buttons that jog the selected
 
 ## Editing QIDI's filament list
 
-On Max 4 firmware `01.01.07.01`, the Vendor and Filament lists on the touchscreen and in Fluidd come from QIDI's filament files. Fluidd's **Filaments** page in the sidebar edits the list for the 0.4 mm nozzle, `filament-0.4.json`, the one Klipper and the touchscreen read:
+On Max 4 firmware `01.01.07.01` and later, the Vendor and Filament lists on the touchscreen and in Fluidd come from QIDI's filament files. Fluidd's **Filaments** page in the sidebar edits the list for the 0.4 mm nozzle, `filament-0.4.json`, the one Klipper and the touchscreen read:
 
 - **Add** or **Duplicate** a filament, then set its vendor, name, type, nozzle temperatures, Box heating limit, chamber temperature, and whether it's a support material. A new vendor name adds that vendor to the pickers. The new filament gets the next free ID and takes its drying and other settings from the filament you duplicated, or else from Generic's filament of the same type.
 - **Edit** changes the same fields of any filament. Its ID stays as it is, because Box slots refer to filaments by ID. **Remove** names any Box slot set to the filament before deleting it.
+- Nozzle temperatures are whole degrees from 0, with the minimum no higher than the maximum, and the maximum no higher than the printer's nozzle limit, the `max_temp` of its `[extruder]` (375 °C on the Max 4 and Plus 5), which the field shows. QIDI's Box loads and unloads heat the nozzle to the filament's maximum, and from Max 4 `01.01.07.02` and Plus 5 `01.01.02.02` so does the flush in QIDI's print start, with no limit of their own, so a higher maximum would stop them with an error. While Klipper isn't running the limit isn't known and isn't checked.
 - Each change is saved to the printer straight away. Klipper, the Box, and the touchscreen use it once Klipper and `qidi-client` restart: choose **Restart Klipper and touchscreen** on the page, or reboot the printer.
-- **Export** downloads the list, and **Import** puts filaments from an exported file back. Import selects the filaments missing from the list, and leaves unselected the ones that differ from it, as the difference may be QIDI's.
+- **Export** downloads the list, and **Import** puts filaments from an exported file back. Import selects the filaments missing from the list, and leaves unselected the ones that differ from it, as the difference may be QIDI's. It can't import a filament whose ID another filament uses or whose nozzle temperatures break the rules above.
 
 The installer makes this possible by adding a `qidi_filament_config` folder to Fluidd's configuration files, linked to QIDI's filament files. The other nozzle sizes' files are there too, and any of them can be edited by hand: right-click a file and choose **Edit**. Keep it valid JSON, as a missing comma or bracket can break the touchscreen's filament list.
 
@@ -185,6 +201,12 @@ The installer makes this possible by adding a `qidi_filament_config` folder to F
 > These are QIDI's own files, not copies. Firmware updates replace them and remove your changes, so **Export** the list before updating and **Import** it afterwards. They aren't part of the installer's backups. The [spool brands' filaments](#anycubic-elegoo-bambu-lab-and-creality-filaments) come back by themselves.
 
 If `qidi_filament_config` already exists, the installer leaves it alone. Uninstall removes the link but never your edits.
+
+### Filaments the nozzle can't reach
+
+The list keeps only filaments the printer's nozzle can heat to. When Klipper starts, it takes out of every nozzle size's file each filament whose maximum is above the printer's nozzle limit, so the touchscreen, Fluidd, and Valve Oil UI don't offer it: QIDI's Box loads and unloads heat the nozzle to that maximum, so loading it would stop with an error. On the Smart 5, at 315 °C, that's QIDI's PAHT-CF, PAHT-GF, UltraPA-CF25, PET-CF, PET-GF, PPS-CF, and PPS-GF, and 7 of the [spool brands' filaments](#anycubic-elegoo-bambu-lab-and-creality-filaments); the Max 4 and Plus 5, at 375 °C, lose none. The touchscreen lists the change after the printer's next restart.
+
+The filaments taken out are kept in `~/printer_data/.vo_removed_filaments.json`. They go back to their places in the list when you uninstall, or at a Klipper start once the nozzle limit reaches them. A firmware update that puts QIDI's list back has them taken out again when Klipper next starts. A Box slot or spool tag set to one of them shows the printer warning for a filament the printer doesn't know.
 
 ## Spool tags
 
@@ -196,11 +218,15 @@ With the [Valve Oil Box firmware](firmware.md#qidi-box-firmware), which the inst
 
 ### Anycubic, Elegoo, Bambu Lab, and Creality filaments
 
-Klipper adds 30 Anycubic, 32 Elegoo, 49 Bambu Lab, and 34 Creality filaments to [QIDI's filament list](#editing-qidis-filament-list) when it starts, if they're missing, so you can pick them on the touchscreen and in Fluidd with or without tags. Their names and nozzle temperatures come from the vendors' slicer profiles (Bambu Studio's for Bambu Lab, OrcaSlicer's for Creality), and their Box heating, chamber, and drying settings from QIDI's filament of the same type. QIDI's own filaments and yours are never changed, and a filament isn't added if its name or ID is already taken. The touchscreen offers them for a print by their type, so an Anycubic PLA+ slot can print a PLA file; see [Touchscreen greying out filament of the right type](fixes.md#touchscreen-greying-out-filament-of-the-right-type). After a firmware update replaces QIDI's list, they're added again once the optimized configuration is reinstalled. The touchscreen lists them after the printer's next restart.
+Klipper adds 30 Anycubic, 32 Elegoo, 49 Bambu Lab, and 34 Creality filaments to [QIDI's filament list](#editing-qidis-filament-list) when it starts, if they're missing, so you can pick them on the touchscreen and in Fluidd with or without tags. Their names and nozzle temperatures come from the vendors' slicer profiles (Bambu Studio's for Bambu Lab, OrcaSlicer's for Creality), and their Box heating, chamber, and drying settings from QIDI's filament of the same type. QIDI's own filaments and yours are never changed, and a filament isn't added if its name or ID is already taken, or if its maximum is above [what the nozzle reaches](#filaments-the-nozzle-cant-reach). The touchscreen offers them for a print by their type, so an Anycubic PLA+ slot can print a PLA file; see [Touchscreen greying out filament of the right type](fixes.md#touchscreen-greying-out-filament-of-the-right-type). After a firmware update replaces QIDI's list, they're added again once the optimized configuration is reinstalled. The touchscreen lists them after the printer's next restart.
 
 Bambu Lab's are listed under QIDI's **Bambu** vendor, next to QIDI's own Bambu PLA, PETG, and ABS. A Bambu Lab ABS tag sets QIDI's **Bambu ABS**, and Bambu's 2.85 mm TPU 75A is left out.
 
 Their IDs start with `QFX` (Anycubic), `QFY` (Elegoo), `QFZ` (Bambu Lab), and `QFW` (Creality), letters QIDI doesn't use. Uninstall leaves them in the list, since Box slots may use them.
+
+It also adds Polymaker ASA under QIDI's own ID for it, `QFL23`, which QIDI's spools and slicer use but QIDI's list on the printer leaves out, with QIDI ASA's settings (240–280 °C). Without it, a slot holding it shows as Unknown, and QIDI's print start flushes it at 240 °C. If QIDI's list ever has it, QIDI's entry is kept.
+
+When a Box slot or the external spool holds a filament whose ID isn't in the printer's list, a printer warning in Fluidd and Valve Oil UI names the slot and the ID, and the console repeats it at startup and after every home. Choose the slot's filament again to clear it.
 
 ### Writing spool tags
 
@@ -336,7 +362,7 @@ With Valve Oil, its Box monitor does this instead:
 - **Klipper restarts only while the printer is idle,** with no print running or paused and no heater on, and the heaters are never turned off for it. Otherwise a printer warning says `A USB Box was connected or disconnected.`, and Klipper restarts once the printer is idle.
 - **Installs and board firmware go first.** While the installer runs or a board's firmware is written or waits for its rescue, the monitor changes nothing, and catches up when that ends.
 
-The touchscreen still shows the Boxes, their firmware, and its Box notices. This applies to the touchscreen apps of Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01`; with any other app, the app keeps managing `box.cfg` as before. A `box.cfg` you've edited, so it's no longer in QIDI's layout, is left as it is. Uninstall puts QIDI's app back, which writes `box.cfg` again when it next starts. RS-485 Boxes aren't in `box.cfg`, and aren't affected.
+The touchscreen still shows the Boxes, their firmware, and its Box notices. This applies to the touchscreen apps of Max 4 firmware `01.01.07.01` and `01.01.07.02`, Plus 5 firmware `01.01.02.01` and `01.01.02.02`, and Smart 5 firmware `01.01.02.01`; with any other app, the app keeps managing `box.cfg` as before. A `box.cfg` you've edited, so it's no longer in QIDI's layout, is left as it is. Uninstall puts QIDI's app back, which writes `box.cfg` again when it next starts. RS-485 Boxes aren't in `box.cfg`, and aren't affected.
 
 ## Box disconnects
 
@@ -344,7 +370,7 @@ See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [T
 
 ## RS-485 Boxes
 
-QIDI's Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01` include support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
+QIDI's Max 4 firmware `01.01.07.01` and later, Plus 5 firmware `01.01.02.01` and later, and Smart 5 firmware `01.01.02.01` include support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
 
 - **If you have RS-485 hardware,** the console asks you to open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues) once per Klipper start. Attach `vo_box485_report.json` and `vo_box485.log` from the `logs` folder in Fluidd. The log records what QIDI's code sends to and receives from each device, and the report summarizes the setup. Chip ids and USB serial numbers are replaced with codes that can't be traced back to your hardware. Nothing about how the hardware works is changed.
 - **To write the report yourself,** run `VO_RS_BOX_REPORT`. It says whether RS-485 hardware was found, and if it was, starts the log right away.

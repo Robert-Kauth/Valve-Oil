@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Run the G-code path checker and the installer's tests, one test module per worker process."""
+"""Run the G-code path checker and the installer's tests, one test module per worker process.
+
+Every Klipper module under installer/klipper/extras/ needs a test of what it must and must not do on the printer;
+one that no test module names fails the run.
+"""
 from __future__ import annotations
 
 import argparse
@@ -8,6 +12,7 @@ import io
 import logging
 import multiprocessing
 import os
+import re
 import subprocess
 import sys
 import traceback
@@ -20,6 +25,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 TESTS_ROOT = REPO_ROOT / "installer/tests"
+REQUIREMENTS = TESTS_ROOT / "requirements.txt"
+TEST_VENV = REPO_ROOT / "build/test-venv"
+EXTRAS = REPO_ROOT / "installer/klipper/extras"
 
 
 def test_modules() -> list[str]:
@@ -27,6 +35,14 @@ def test_modules() -> list[str]:
         ".".join(path.relative_to(REPO_ROOT).with_suffix("").parts)
         for path in TESTS_ROOT.glob("*/test_*.py")
     )
+
+
+def untested_extras() -> list[str]:
+    """Klipper modules (those Klipper loads with load_config) that no test module names."""
+    tests = "\n".join(path.read_text(encoding="utf-8") for path in TESTS_ROOT.rglob("test_*.py"))
+    return [path.name for path in sorted(EXTRAS.glob("*.py"))
+            if re.search(r"^def load_config(?:_prefix)?\(", path.read_text(encoding="utf-8"), re.MULTILINE)
+            and not re.search(rf"\b{re.escape(path.stem)}\b", tests)]
 
 
 class _CurrentStderr(logging.StreamHandler):
@@ -59,7 +75,28 @@ def run_module(module: str) -> tuple[str, int, bool, str]:
     return module, result.testsRun, result.wasSuccessful(), stream.getvalue()
 
 
+def ensure_requirements(argv: list[str]) -> None:
+    """Run under a Python with installer/tests/requirements.txt: this one, or build/test-venv, made on first use."""
+    try:
+        import greenlet  # noqa: F401
+        import jinja2  # noqa: F401
+        return
+    except ImportError:
+        pass
+    python = TEST_VENV / "bin/python"
+    if Path(sys.prefix).resolve() == TEST_VENV.resolve():
+        raise SystemExit(f"{TEST_VENV} lacks {REQUIREMENTS.relative_to(REPO_ROOT)}; remove it and run again")
+    if not python.exists():
+        print(f"Setting up {TEST_VENV.relative_to(REPO_ROOT)} for the G-code flow tests", file=sys.stderr)
+        subprocess.run([sys.executable, "-m", "venv", str(TEST_VENV)], check=True)
+    if subprocess.run([str(python), "-c", "import greenlet, jinja2"], capture_output=True).returncode:
+        subprocess.run([str(python), "-m", "pip", "install", "--quiet", "--disable-pip-version-check",
+                        "-r", str(REQUIREMENTS)], check=True)
+    os.execv(str(python), [str(python), str(Path(__file__).resolve()), *argv])
+
+
 def main(argv: list[str] | None = None) -> int:
+    ensure_requirements(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jobs", type=int, default=min(8, os.cpu_count() or 1),
                         help="worker processes (default: one per CPU, at most 8)")
@@ -72,6 +109,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     if path_check.returncode != 0:
         return path_check.returncode
+    untested = untested_extras()
+    if untested:
+        print(f"No test names these Klipper modules in {EXTRAS.relative_to(REPO_ROOT)}: {', '.join(untested)}; "
+              "add one under installer/tests/ for what each must and must not do on the printer", file=sys.stderr)
+        return 1
 
     os.chdir(REPO_ROOT)
     modules = test_modules()

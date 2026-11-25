@@ -109,6 +109,9 @@
     "title": "Services",
     "none": "Moonraker didn’t list any services.",
     "locked": "Klipper and Moonraker can’t be restarted while Valve Oil updates the printer.",
+    "unchecked_title": "Valve Oil’s update state is unknown",
+    "unchecked_body": "Valve Oil’s status service didn’t answer, so it isn’t known whether an update is running. Interrupting an update can leave the printer half updated. Go ahead only if no update is running.",
+    "unchecked_confirm": "Go ahead",
     "about": {
       "klipper": "Runs the printer",
       "moonraker": "Klipper’s API server, which Fluidd and Valve Oil UI talk to",
@@ -159,7 +162,8 @@
       "shutdown": "Shut down",
       "shutdown_title": "Shut down the printer?",
       "shutdown_body": "The printer’s computer shuts down. Turn the printer off and on again to start it.",
-      "shutting_down": "Shutting down the printer"
+      "shutting_down": "Shutting down the printer",
+      "update_locked": "Reboot and shutdown are locked until the Valve Oil update finishes."
     }
   },
   "logs": {
@@ -253,6 +257,9 @@
       "run": "Check the logs",
       "run_again": "Check again",
       "download_report": "Download report",
+      "download_bundle": "Download support bundle",
+      "bundle_hint": "The support bundle is a zip of the printer's logs, Valve Oil's update output, and the last report here. Attach it to an issue.",
+      "bundle_error": "The support bundle couldn't be downloaded: {{error}}",
       "running": "Checking the printer's logs. This can take a minute.",
       "failed": "The check couldn't finish.",
       "unreadable": "The printer's answer isn't one this page can read.",
@@ -266,7 +273,7 @@
       "partial": "It read only the newest part of the log, within the check's size limit.",
       "stopped_time": "It stopped at its time limit, so it read only the newest part of the log.",
       "finished": "Checked {{when}}.",
-      "report_hint": "To report one, download the report and attach it to an issue. <b>Report a problem</b> on the Updates screen also puts the last report in its support bundle.",
+      "report_hint": "To report one, download the support bundle and attach it to an issue. <b>Report a problem</b> on the Updates screen opens an issue with the printer's details filled in and downloads the same bundle.",
       "times_one": "Seen {{count}} time",
       "times_other": "Seen {{count}} times",
       "what_to_do": "What to do:",

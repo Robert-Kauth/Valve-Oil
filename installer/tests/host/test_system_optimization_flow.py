@@ -179,7 +179,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         def install_urlopen(request, timeout=0):
             nonlocal install_idle_checks
             url = getattr(request, "full_url", str(request))
-            if url == paths.moonraker_url:
+            if urllib.parse.urlsplit(url).query == "print_stats&virtual_sdcard":
                 install_idle_checks += 1
             if url.endswith("/server/info"):
                 service_events.append("moonraker answered")
@@ -1597,6 +1597,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 self.assertEqual((tree / "klippy/extras/box_stepper.so").read_bytes(), (qidi / "klippy/extras/box_stepper.so").read_bytes())
                 self.assertEqual((tree / klipper_tree.CHELPER).read_bytes(), klipper_tree.CHELPER_PAYLOAD.read_bytes())
                 self.assertTrue(klipper_tree.chelper_newest(tree))
+                # Moonraker serves config/ and docs/ as config_examples and docs, and warns when they're missing.
+                for name in klipper_tree.MOONRAKER_DIRS:
+                    self.assertEqual((tree / name / "README.md").read_bytes(), (source / name / "README.md").read_bytes())
+                    self.assertIn(f"{name}/README.md", marker()["files"])
                 self.assertEqual((tree / "klippy/.version").read_text(encoding="utf-8"),
                                  f"v0.14.0-valve-oil-{manifest.package.version}\n")
                 self.assertEqual({key: marker()[key] for key in ("printer", "firmware", "soc")}, {

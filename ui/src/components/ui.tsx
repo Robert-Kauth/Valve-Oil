@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from 'lucide-react'
 import { t } from '../i18n'
 
@@ -63,24 +63,27 @@ export function HoldButton({ onHold, children, holdMs = 1200, className = '', di
   )
 }
 
-export function Dialog({ open, onClose, title, children, footer, size }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; size?: 'wide' | 'full' }) {
-  const dialogRef = useRef<HTMLDivElement>(null)
+/**
+ * Makes an open surface modal for the keyboard: focus moves into it, Tab stays inside, Escape closes it, and focus
+ * goes back to what opened it. Only the topmost of stacked surfaces takes keys. `opener` names what opened it when
+ * that isn't the focused element, as after a mouse press in Safari, which doesn't focus buttons.
+ */
+export function useModalFocus(open: boolean, surfaceRef: RefObject<HTMLElement | null>, onClose: () => void, opener?: RefObject<HTMLElement | null>) {
   const triggerRef = useRef<HTMLElement | null>(null)
   const onCloseRef = useRef(onClose)
-  const titleId = useId()
   onCloseRef.current = onClose
-  // Capture the opener before React commits an autoFocus field inside this dialog.
-  if (open && !triggerRef.current && document.activeElement instanceof HTMLElement) triggerRef.current = document.activeElement
+  // Capture the opener before React commits an autoFocus field inside the surface.
+  if (open && !triggerRef.current) triggerRef.current = opener?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null)
 
   useEffect(() => {
     if (!open) return
-    const dialog = dialogRef.current
-    if (!dialog) return
-    dialogStack.push(dialog)
-    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => !el.matches(':disabled') && el.getAttribute('tabindex') !== '-1' && !el.hasAttribute('hidden') && el.getClientRects().length > 0)
-    if (!dialog.contains(document.activeElement)) (focusable()[0] ?? dialog).focus()
+    const surface = surfaceRef.current
+    if (!surface) return
+    dialogStack.push(surface)
+    const focusable = () => Array.from(surface.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => !el.matches(':disabled') && el.getAttribute('tabindex') !== '-1' && !el.hasAttribute('hidden') && el.getClientRects().length > 0)
+    if (!surface.contains(document.activeElement)) (focusable()[0] ?? surface).focus()
     const onKey = (e: KeyboardEvent) => {
-      if (dialogStack[dialogStack.length - 1] !== dialog) return
+      if (dialogStack[dialogStack.length - 1] !== surface) return
       if (e.key === 'Escape') {
         e.preventDefault()
         onCloseRef.current()
@@ -91,12 +94,12 @@ export function Dialog({ open, onClose, title, children, footer, size }: { open:
       const controls = focusable()
       if (!controls.length) {
         e.preventDefault()
-        dialog.focus()
+        surface.focus()
         return
       }
       const first = controls[0]
       const last = controls[controls.length - 1]
-      if (!dialog.contains(document.activeElement) || (e.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+      if (!surface.contains(document.activeElement) || (e.shiftKey ? document.activeElement === first : document.activeElement === last)) {
         e.preventDefault()
         const target = e.shiftKey ? last : first
         target.focus()
@@ -105,16 +108,22 @@ export function Dialog({ open, onClose, title, children, footer, size }: { open:
     window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('keydown', onKey)
-      dialogStack.splice(dialogStack.lastIndexOf(dialog), 1)
-      // StrictMode re-runs this effect with the dialog still on the page; only a real close returns focus to the opener.
+      dialogStack.splice(dialogStack.lastIndexOf(surface), 1)
+      // StrictMode re-runs this effect with the surface still on the page; only a real close returns focus to the opener.
       queueMicrotask(() => {
-        if (dialog.isConnected) return
+        if (surface.isConnected) return
         const trigger = triggerRef.current
         triggerRef.current = null
         if (trigger?.isConnected) trigger.focus()
       })
     }
   }, [open])
+}
+
+export function Dialog({ open, onClose, title, children, footer, size }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; size?: 'wide' | 'full' }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  useModalFocus(open, dialogRef, onClose)
 
   if (!open) return null
   return (
@@ -335,25 +344,96 @@ export function MenuButton({ button, items, align = 'right', className = 'iconbt
   const ref = useRef<HTMLDivElement>(null)
   // An item's dialog takes its opener from the focused element, and the item itself goes when the menu closes.
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const focusEdge = useRef<'first' | 'last'>('first')
+  const buttons = () => Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])
+  const openMenu = (edge: 'first' | 'last' = 'first') => {
+    focusEdge.current = edge
+    setOpen(true)
+  }
+  const closeMenu = (restoreFocus = true) => {
+    setOpen(false)
+    if (restoreFocus) queueMicrotask(() => buttonRef.current?.focus())
+  }
   useEffect(() => {
     if (!open) return
     const close = (e: Event) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false)
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    const esc = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && closeMenu()
     window.addEventListener('pointerdown', close)
     window.addEventListener('keydown', esc)
     return () => (window.removeEventListener('pointerdown', close), window.removeEventListener('keydown', esc))
   }, [open])
+  useEffect(() => {
+    if (!open) return
+    const items = buttons()
+    items[focusEdge.current === 'last' ? items.length - 1 : 0]?.focus()
+  }, [open])
+  const onMenuKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const items = buttons()
+    if (!items.length) return
+    const current = items.indexOf(document.activeElement as HTMLButtonElement)
+    let next: number | null = null
+    if (e.key === 'ArrowDown') next = (current + 1) % items.length
+    else if (e.key === 'ArrowUp') next = (current - 1 + items.length) % items.length
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = items.length - 1
+    if (next !== null) {
+      e.preventDefault()
+      items[next]?.focus()
+    }
+  }
   return (
-    <div className="relative inline-flex" ref={ref}>
-      <button ref={buttonRef} type="button" className={className} aria-haspopup="menu" aria-expanded={open} aria-label={label} onClick={() => setOpen((o) => !o)}>
+    <div
+      className="relative inline-flex"
+      ref={ref}
+      // Close when focus moves on to something else (Tab). Safari and Firefox on macOS drop focus to the page when an
+      // item is pressed, before its click lands, so a blur to nothing leaves closing to the outside pointerdown.
+      onBlur={(e) => {
+        const next = e.relatedTarget
+        if (next instanceof Node && !ref.current?.contains(next)) setOpen(false)
+      }}
+    >
+      <button
+        ref={buttonRef}
+        type="button"
+        className={className}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={() => (open ? closeMenu(false) : openMenu())}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault()
+            openMenu(e.key === 'ArrowUp' ? 'last' : 'first')
+          }
+        }}
+      >
         {button}
       </button>
       {open && (
-        <div className="menu top-[calc(100%+4px)]" style={align === 'right' ? { right: 0 } : { left: 0 }} role="menu">
+        <div
+          ref={menuRef}
+          className="menu top-[calc(100%+4px)]"
+          style={align === 'right' ? { right: 0 } : { left: 0 }}
+          role="menu"
+          aria-label={label}
+          onKeyDown={onMenuKeyDown}
+        >
           {items.filter(Boolean).map((it, i) => {
             const item = it as Exclude<typeof it, null | false>
             return (
-              <button key={i} type="button" role="menuitem" disabled={item.disabled} className={item.danger ? 'danger' : ''} onClick={() => (buttonRef.current?.focus(), setOpen(false), item.onSelect())}>
+              <button
+                key={i}
+                type="button"
+                role="menuitem"
+                disabled={item.disabled}
+                className={item.danger ? 'danger' : ''}
+                onClick={() => {
+                  buttonRef.current?.focus()
+                  setOpen(false)
+                  item.onSelect()
+                }}
+              >
                 {item.icon}
                 {item.label}
               </button>
@@ -366,7 +446,15 @@ export function MenuButton({ button, items, align = 'right', className = 'iconbt
 }
 
 // ---- confirm and prompt, as promises: `if (await confirm({...})) ...` ----
-type Ask = { title: ReactNode; body?: ReactNode; confirm?: string; danger?: boolean; input?: { label: string; value: string; placeholder?: string } }
+type Ask = {
+  title: ReactNode
+  body?: ReactNode
+  confirm?: string
+  danger?: boolean
+  input?: { label: string; value: string; placeholder?: string }
+  /** Recheck live state immediately before resolving a consequential action. */
+  validate?: () => string | null
+}
 type Pending = Ask & { resolve: (v: string | boolean | null) => void }
 let openAsk: ((p: Pending | null) => void) | null = null
 
@@ -385,8 +473,9 @@ export const prompt = (a: Omit<Ask, 'input'> & { input: Ask['input'] }) => ask(a
 export function AskHost() {
   const [p, setP] = useState<Pending | null>(null)
   const [text, setText] = useState('')
+  const [validationError, setValidationError] = useState<string | null>(null)
   useEffect(() => {
-    openAsk = (next) => (setP(next), setText(next?.input?.value ?? ''))
+    openAsk = (next) => (setP(next), setText(next?.input?.value ?? ''), setValidationError(null))
     return () => {
       openAsk = null
     }
@@ -394,6 +483,11 @@ export function AskHost() {
   if (!p) return null
   const done = (v: string | boolean | null) => (p.resolve(v), setP(null))
   const cancel = () => done(p.input ? null : false)
+  const submit = () => {
+    const error = p.validate?.() ?? null
+    if (error) return setValidationError(error)
+    done(p.input ? text.trim() : true)
+  }
   return (
     <Dialog
       open
@@ -404,7 +498,7 @@ export function AskHost() {
           <button className="btn btn-ghost" onClick={cancel}>
             {t('common.cancel')}
           </button>
-          <button className={`btn ${p.danger ? 'btn-danger' : 'btn-primary'}`} disabled={!!p.input && !text.trim()} onClick={() => done(p.input ? text.trim() : true)}>
+          <button className={`btn ${p.danger ? 'btn-danger' : 'btn-primary'}`} disabled={!!p.input && !text.trim()} onClick={submit}>
             {p.confirm ?? t('common.ok')}
           </button>
         </>
@@ -419,10 +513,18 @@ export function AskHost() {
             autoFocus
             value={text}
             placeholder={p.input.placeholder}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && text.trim() && done(text.trim())}
+            onChange={(e) => {
+              setText(e.target.value)
+              setValidationError(null)
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && text.trim() && submit()}
           />
         </label>
+      )}
+      {validationError && (
+        <div role="alert" className="mt-3 rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-sm text-bad">
+          {validationError}
+        </div>
       )}
     </Dialog>
   )

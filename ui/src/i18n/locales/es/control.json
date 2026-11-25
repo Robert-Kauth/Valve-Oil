@@ -125,6 +125,7 @@
     "target_temperature": "Temperatura objetivo (°C)",
     "fan_breakpoints": "Puntos de corte del ventilador",
     "calibrate_note": "Ejecuta {{command}}, que calienta este elemento ({{name}}) y tarda unos minutos. Usa un objetivo cercano a la temperatura a la que imprimes. SAVE_CONFIG conserva el resultado y reinicia Klipper.",
+    "calibrate_locked": "La calibración no puede empezar mientras la impresora está imprimiendo.",
     "temperature_fans": "Ventiladores con temperatura",
     "fan_speed": "{{temp}} · ventilador {{speed}}%",
     "sensors": "Sensores",

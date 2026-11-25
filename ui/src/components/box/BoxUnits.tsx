@@ -61,8 +61,8 @@ function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; sl
   const group = box.reloadGroups[slot.index]?.letter
   const loaded = box.loadedSlot === slot.index
   const title = slot.present ? [slot.label, slot.vendor, slot.name, loaded ? t('box.slot.loaded') : null].filter(Boolean).join(' · ') : t('box.units.empty_title', { slot: slot.label })
-  // The slot's one control for keyboards and screen readers: everything the tile shows, the type and hub or tag state included.
-  const label = [title, slot.present ? (slot.type ?? t('box.units.unknown_type')) : null, box.fromTag[slot.index] ? t('box.units.from_tag') : null, status ? t(status.textKey) : null].filter(Boolean).join(' · ')
+  // The slot's one control for keyboards and screen readers: supplement its visible text with the slot identity and tag state.
+  const details = [title, box.fromTag[slot.index] ? t('box.units.from_tag') : null].filter(Boolean).join(' · ')
   return (
     <div className={`tile box-selectable flex! flex-col items-center gap-0.5! px-1! pt-1.5! pb-2! text-center ${selected ? 'bg-accent-tint!' : ''}`} style={selected ? SELECTED : undefined}>
       {/* The slot, its tag mark, then its tools and auto-reload group, all on the top line. */}
@@ -84,7 +84,7 @@ function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; sl
           </span>
         )}
       </div>
-      <button type="button" aria-label={label} aria-pressed={selected} title={title} onClick={() => onSelect(slot.index)} className="flex w-full min-w-0 flex-1 flex-col items-center gap-0.5 border-0 bg-transparent p-0 text-center text-inherit">
+      <button type="button" aria-pressed={selected} title={title} onClick={() => onSelect(slot.index)} className="flex w-full min-w-0 flex-1 flex-col items-center gap-0.5 border-0 bg-transparent p-0 text-center text-inherit">
         <Spool slot={slot} size={50} label={false} loaded={loaded} />
         {slot.present && (
           <>
@@ -93,6 +93,7 @@ function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; sl
           </>
         )}
         {status && <span className={`mt-0.5 text-[10px] font-bold tracking-[0.07em] uppercase ${status.cls}`}>{t(status.textKey)}</span>}
+        <span className="sr-only">{details}</span>
       </button>
     </div>
   )

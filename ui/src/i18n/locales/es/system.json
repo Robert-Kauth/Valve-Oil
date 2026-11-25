@@ -109,6 +109,9 @@
     "title": "Servicios",
     "none": "Moonraker no mostró ningún servicio.",
     "locked": "Klipper y Moonraker no se pueden reiniciar mientras Valve Oil actualiza la impresora.",
+    "unchecked_title": "No se sabe si Valve Oil está actualizando",
+    "unchecked_body": "El servicio de estado de Valve Oil no respondió, así que no se sabe si hay una actualización en curso. Interrumpir una actualización puede dejar la impresora a medio actualizar. Continúa solo si no hay ninguna actualización en curso.",
+    "unchecked_confirm": "Continuar",
     "about": {
       "klipper": "Controla la impresora",
       "moonraker": "El servidor API de Klipper, con el que hablan Fluidd y Valve Oil UI",
@@ -159,7 +162,8 @@
       "shutdown": "Apagar",
       "shutdown_title": "¿Apagar la impresora?",
       "shutdown_body": "El ordenador de la impresora se apaga. Apaga y vuelve a encender la impresora para iniciarlo.",
-      "shutting_down": "Apagando la impresora"
+      "shutting_down": "Apagando la impresora",
+      "update_locked": "El reinicio y el apagado están bloqueados hasta que termine la actualización de Valve Oil."
     }
   },
   "logs": {
@@ -253,6 +257,9 @@
       "run": "Comprobar los registros",
       "run_again": "Comprobar de nuevo",
       "download_report": "Descargar informe",
+      "download_bundle": "Descargar paquete de soporte",
+      "bundle_hint": "El paquete de soporte es un zip con los registros de la impresora, la salida de las actualizaciones de Valve Oil y el último informe de aquí. Adjúntalo a una incidencia.",
+      "bundle_error": "No se pudo descargar el paquete de soporte: {{error}}",
       "running": "Comprobando los registros de la impresora. Puede tardar un minuto.",
       "failed": "La comprobación no pudo terminar.",
       "unreadable": "La respuesta de la impresora no es una que esta página pueda leer.",
@@ -266,7 +273,7 @@
       "partial": "Solo leyó la parte más reciente del registro, dentro del límite de tamaño de la comprobación.",
       "stopped_time": "Se detuvo en su límite de tiempo, así que solo leyó la parte más reciente del registro.",
       "finished": "Comprobado {{when}}.",
-      "report_hint": "Para informar de uno, descarga el informe y adjúntalo a un issue. <b>Informar de un problema</b> en la pantalla Actualizaciones también incluye el último informe en su paquete de soporte.",
+      "report_hint": "Para informar de uno, descarga el paquete de soporte y adjúntalo a una incidencia. <b>Informar de un problema</b> en la pantalla Actualizaciones abre una incidencia con los datos de la impresora ya rellenados y descarga el mismo paquete.",
       "times_one": "Visto {{count}} vez",
       "times_other": "Visto {{count}} veces",
       "what_to_do": "Qué hacer:",

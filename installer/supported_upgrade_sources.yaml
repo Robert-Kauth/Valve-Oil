@@ -96,6 +96,9 @@ allowed_patch_targets:
 - file: config/printer.cfg
   section: controller_fan board_fan
   option: stepper
+- file: config/printer.cfg
+  section: tmc2209 extruder
+  option: run_current
 - file: config/klipper-macros-qd/qd_macro.cfg
   section: gcode_macro MOVE_TO_TRASH
   option: __section__
@@ -104,6 +107,12 @@ allowed_patch_targets:
   option: __section__
 - file: config/klipper-macros-qd/fans.cfg
   section: gcode_macro M106
+  option: __section__
+- file: config/klipper-macros-qd/pause_resume_cancel.cfg
+  section: gcode_macro CANCEL_PRINT
+  option: __section__
+- file: config/klipper-macros-qd/fans.cfg
+  section: gcode_macro M107
   option: __section__
 source_patches:
 - id: qidi_homing
@@ -198,6 +207,16 @@ source_patches:
   desired_sha256: 24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565
 - id: qidi_homing
   destination: klippy/extras/homing.py
+  firmware: 01.01.07.02
+  original_sha256: 0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761
+  desired_sha256: 24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565
+- id: qidi_homing
+  destination: klippy/extras/homing.py
   firmware: 01.01.02.01
+  original_sha256: 0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761
+  desired_sha256: 24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565
+- id: qidi_homing
+  destination: klippy/extras/homing.py
+  firmware: 01.01.02.02
   original_sha256: 0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761
   desired_sha256: 24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565

@@ -87,7 +87,7 @@ With this project's [toolhead board](firmware.md#toolhead-accelerometer-fix) or 
 
 The pop-up now accepts a board version that starts with QIDI's. It still appears when QIDI ships a newer version than the board has.
 
-The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01`. The same change [hides QIDI's online firmware updates](install.md#qidis-own-firmware-updates) on the touchscreen. It keeps QIDI's original, and uninstall puts it back. A touchscreen app the installer doesn't recognize, such as one from another QIDI firmware, is left as it is.
+The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.07.01` and `01.01.07.02`, Plus 5 firmware `01.01.02.01` and `01.01.02.02`, and Smart 5 firmware `01.01.02.01`. The same change [hides QIDI's online firmware updates](install.md#qidis-own-firmware-updates) on the touchscreen. It keeps QIDI's original, and uninstall puts it back. A touchscreen app the installer doesn't recognize, such as one from another QIDI firmware, is left as it is.
 
 ## QIDI app connections disabled for security
 
@@ -95,13 +95,21 @@ On a printer linked to a QIDI account, QIDI's touchscreen app runs the peer-to-p
 
 QIDI's phone app still reaches the printer on the same network. Away from it, for example over a phone's cellular connection, the session goes through QIDI's own relay server, and on the Smart 5 test printer the camera showed a black picture there.
 
-The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back.
+The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back. QIDI's touchscreen app in Plus 5 firmware `01.01.02.02` uses the filament's type itself, so it isn't changed for this.
 
 ## Touchscreen greying out filament of the right type
 
 When you start a print on the touchscreen, the **Match filament** screen lets you pick only a Box slot or the external spool whose filament type is the file's. QIDI's touchscreen app took a slot's type from the first word of its filament's name instead of the filament's type. That works for QIDI's names, such as PLA Basic, but for a PLA file it greyed out Generic PLA+, Anycubic PLA+ read from a spool tag, Polymaker PLA-HT, and Elegoo Rapid PLA+, which Fluidd and QIDI Studio offered (issue #380).
 
 The touchscreen now uses the filament's type as Klipper reports it, for Match filament and for the type it shows over each slot. Those slots show **PLA** and can be picked for a PLA file, and a slot of another type, such as PLA-CF or ABS, is still greyed out. A slot's edit screen still shows the filament's full name.
+
+The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back. Max 4 firmware `01.01.07.02` and Plus 5 firmware `01.01.02.02` need no change: QIDI's app there takes the type from Klipper itself.
+
+## Touchscreen MQTT connection error
+
+QIDI's touchscreen app showed **MQTT connection error** (`QDC_400_004_010_001`) at every start. As the app starts, QIDI's Moonraker reports its connection to QIDI's cloud as down, and the app raises the error. It removes the error only once its first request to QIDI's cloud comes back, about 10 ms later in LAN only mode and 0.9 s later on the Max 4 test printer. On a printer that can't reach QIDI's servers, the request never comes back, and the error stayed on the touchscreen.
+
+The touchscreen app no longer raises this error, at start or when the connection drops later. Its other errors, its connection to QIDI's cloud, and LAN only mode work as before. Moonraker's own MQTT warnings in Fluidd are unchanged.
 
 The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back.
 
@@ -141,6 +149,8 @@ QIDI also re-zeroed the nozzle load cell for the retry while the nozzle was stil
 On the Max 4, QIDI's Klipper turns a motor on 0.3 seconds before it moves, so the motor holds its position first. After homing turns X and Y off, the first homing move starts only about 0.16 seconds ahead, so the turn-on was scheduled in the past. The mainboard ran it as soon as it arrived and logged `Timer too close` in `klippy.log`, nearly always between the `ENABLE delay: stepper=stepper_x` and `stepper_y` lines. The turn-on now goes as early as the mainboard can still take it on time, about 0.14 seconds before the move during homing, and never after the move. When 0.3 seconds early is still possible, nothing changes. QIDI's `ENABLE delay` line in `klippy.log` shows the time used. It comes from the same module as the [fixes from newer Klipper](#fixes-from-newer-klipper), with the same check. The Plus 5's Klipper turns motors on at the move, so it needs no change.
 
 A few `Timer too close` lines during prints have no known cause yet. When Klipper sends a board a command, such as a pin or fan change, whose time has already passed or is under 5 ms away, `klippy.log` gets a `late MCU command` warning naming the board, the command, how late it was, and the Klipper code that sent it, at most once every 10 seconds for each command. A command sent so far ahead that the board's clock can't reach it, as in [Fans and lights switching at the wrong time](#fans-and-lights-switching-at-the-wrong-time), gets an `MCU command too far ahead` warning the same way. Please include those lines when reporting a problem.
+
+A board that stops taking Klipper's commands while it still sends its own reports isn't reported by Klipper, which waits, so the failure shows up as whatever times out first, such as the nozzle heater. Once a board has left Klipper's commands unacknowledged for 3 seconds, the console and `klippy.log` say so, and say again how long it lasted when the board takes commands again or Klipper shuts down first. See [A board stopped taking Klipper's commands](troubleshooting.md#a-board-stopped-taking-klippers-commands).
 
 ## Fans and lights switching at the wrong time
 

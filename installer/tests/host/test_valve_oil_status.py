@@ -156,6 +156,28 @@ class StatusServiceTests(unittest.TestCase):
             with exc:
                 return exc.code, json.load(exc)
 
+    def test_only_exclusive_locks_block_actions_with_the_correct_reason(self) -> None:
+        # Linux's /proc/locks, as a print start in Klipper (READ) and an installer run (WRITE) leave it.
+        lock = self.server.INSTALLER_LOCK
+        lock.touch()
+        info = lock.stat()
+        device = f"{os.major(info.st_dev):02x}:{os.minor(info.st_dev):02x}:{info.st_ino}"
+        table = self.paths.printer_data_root / "proc-locks"
+        with mock.patch.object(self.server, "PROC_LOCKS", table), \
+                mock.patch.object(self.server, "_run_active", return_value=False), \
+                mock.patch.object(self.server.Handler.jobs, "busy", return_value=False):
+            table.write_text(f"1: FLOCK  ADVISORY  READ  4242 {device} 0 EOF\n", encoding="utf-8")
+            body = self.request("/api/status", method="GET")[1]
+            self.assertFalse(body["busy"])
+            self.assertTrue(body["update_now"]["allowed"])
+            self.assertTrue(body["uninstall"]["allowed"])
+            table.write_text(f"1: FLOCK  ADVISORY  WRITE 4242 {device} 0 EOF\n", encoding="utf-8")
+            body = self.request("/api/status", method="GET")[1]
+            self.assertTrue(body["busy"])
+            for action in ("update_now", "uninstall"):
+                self.assertFalse(body[action]["allowed"])
+                self.assertIn("installer_busy", [item["code"] for item in body[action]["blocked_by"]])
+
     def test_only_marked_same_origin_json_posts_switch_enrollment(self) -> None:
         marker = self.server.ENROLLMENT_FILE
         before = sorted(path.name for path in self.paths.printer_data_root.iterdir())
@@ -268,6 +290,35 @@ class StatusServiceTests(unittest.TestCase):
         # Uninstall removes it with the status file.
         status_file.remove_status(self.paths)
         self.assertIsNone(reported())
+
+    def test_an_install_that_hands_off_never_writes_over_the_firmware_updates_own_install(self) -> None:
+        # Over SSH, the install hands off to vo-firmware-update.service, whose install can start and finish before
+        # the SSH install's own publisher ends; the browser then shows that install's result, not "handed off".
+        steps = (progress.CHECK, progress.QIDI_FIRMWARE.format(target="01.01.07.02"), progress.FINISH)
+        path = status_file.progress_path(self.paths)
+        try:
+            with status_file.progress_published(self.paths) as publisher:
+                progress.begin(steps, origin=progress.ORIGIN_SSH, from_version="26.11.23.2", to_version="26.11.23.3")
+                progress.step(steps[1])
+                self.assertEqual(json.loads(path.read_text())["state"], "running")
+                child = {**json.loads(path.read_text()), "state": "succeeded", "pid": os.getpid() + 1,
+                         "finished_at": status_file.now()}
+                path.write_text(json.dumps(child))
+                progress.detail("waiting for the firmware update")
+                publisher.outcome = status_file.HANDED_OFF
+        finally:
+            progress.end()
+        self.assertEqual(json.loads(path.read_text()), child)
+
+        # Ended first, it says it handed off, until the firmware update's install writes its own progress.
+        path.unlink()
+        try:
+            with status_file.progress_published(self.paths) as publisher:
+                progress.begin(steps, origin=progress.ORIGIN_SSH, from_version="26.11.23.2", to_version="26.11.23.3")
+                publisher.outcome = status_file.HANDED_OFF
+        finally:
+            progress.end()
+        self.assertEqual(json.loads(path.read_text())["state"], "handed_off")
 
     def test_an_update_now_job_from_before_a_reboot_is_not_running(self) -> None:
         # The job file outlives a power cut; after it, the job's process ID can belong to something else that is running.
@@ -686,6 +737,58 @@ class StatusServiceTests(unittest.TestCase):
 
 
 class UpdateNowRunTests(unittest.TestCase):
+    def test_pending_firmware_cannot_replace_a_run_started_after_attach(self):
+        from installer.runtime import update_now
+        from installer.runtime.cli import resolve_runtime_paths
+        from installer.runtime.locking import acquire
+        from installer.runtime.reporter import create_reporter
+
+        root = temp_path("vo-update-resume-")
+        paths = resolve_runtime_paths(bundle_root=root / "bundle", environ={"VO_PRINTER_DATA_ROOT": str(root)})
+        output = io.StringIO()
+        acquired = []
+
+        def lost_attach(*args):
+            self.enterContext(acquire(paths.lock_path))
+            acquired.append(status_file.begin_run(paths, kind="automatic", step="install"))
+            return False
+
+        with mock.patch.object(update_now.firmware_update, "load_record", return_value={"id": "pending"}), \
+                mock.patch.object(status_file, "attach_job", side_effect=lost_attach), \
+                mock.patch.object(update_now.firmware_update, "resume_firmware_update",
+                                  return_value=update_now.firmware_update.FirmwareUpdateResult("failed")) as resume:
+            finished = update_now.run_update_now(paths=paths, reporter=create_reporter(output, prefer_plain=True),
+                                                 environ={update_now.JOB_ENV: "new-job"})
+        self.assertFalse(finished)
+        resume.assert_not_called()
+        self.assertEqual(status_file.load_status(paths).run, acquired[0])
+
+
+    def test_pending_firmware_follow_releases_lock_and_preserves_the_job(self):
+        from installer.runtime import update_now
+        from installer.runtime.cli import resolve_runtime_paths
+        from installer.runtime.locking import acquire
+        from installer.runtime.reporter import create_reporter
+
+        root = temp_path("vo-update-follow-")
+        paths = resolve_runtime_paths(bundle_root=root / "bundle", environ={"VO_PRINTER_DATA_ROOT": str(root)})
+        def resume(**kwargs):
+            with acquire(paths.lock_path):
+                run = status_file.begin_run(paths, kind="update_now", step="firmware", firmware_update="pending")
+                self.assertEqual(run.job, "follow-job")
+                status_file.finish_run(paths, run.id, state=status_file.SUCCEEDED)
+            return update_now.firmware_update.FirmwareUpdateResult(update_now.firmware_update.SUCCEEDED)
+
+        with mock.patch.object(update_now.firmware_update, "load_record", return_value={"id": "pending"}), \
+                mock.patch.object(update_now.firmware_update, "resume_firmware_update", side_effect=resume):
+            finished = update_now.run_update_now(paths=paths, reporter=create_reporter(io.StringIO(), prefer_plain=True),
+                                                 environ={update_now.JOB_ENV: "follow-job"})
+        self.assertTrue(finished)
+        completed = status_file.load_status(paths).run
+        assert completed is not None
+        self.assertEqual(completed.step, "firmware")
+        self.assertEqual(completed.state, status_file.SUCCEEDED)
+
     def test_update_now_waits_for_other_installer_runs_and_reports_why(self) -> None:
         import io
 
@@ -696,12 +799,19 @@ class UpdateNowRunTests(unittest.TestCase):
 
         root = temp_path("vo-update-now-")
         paths = resolve_runtime_paths(bundle_root=root / "bundle", environ={"VO_PRINTER_DATA_ROOT": str(root)})
+        output = io.StringIO()
         with acquire(paths.lock_path):
-            finished = update_now.run_update_now(paths=paths, reporter=create_reporter(io.StringIO(), prefer_plain=True), environ={})
-        run = status_file.load_status(paths).run
+            active = status_file.begin_run(paths, kind="automatic", step="install")
+            before = status_file.status_path(paths).read_bytes()
+            finished = update_now.run_update_now(paths=paths, reporter=create_reporter(output, prefer_plain=True), environ={})
+            self.assertEqual(status_file.status_path(paths).read_bytes(), before)
+            self.assertTrue(status_file.run_active(status_file.load_status(paths).run))
         self.assertFalse(finished)
-        self.assertEqual((run.kind, run.state), ("update_now", status_file.FAILED))
-        self.assertIn("already in progress", run.message)
+        self.assertIn("already in progress", output.getvalue())
+        status_file.finish_run(paths, active.id, state=status_file.SUCCEEDED)
+        completed = status_file.load_status(paths).run
+        assert completed is not None
+        self.assertEqual(completed.state, status_file.SUCCEEDED)
 
 
 if __name__ == "__main__":

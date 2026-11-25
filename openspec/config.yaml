@@ -9,6 +9,13 @@ schema: spec-driven
 #     We use conventional commits
 #     Domain: e-commerce platform
 
+context: |
+  openspec/specs/ hold desired repository behavior: behavioral requirements and testable scenarios. Manifests, tests,
+  and code own exhaustive data operators don't see. openspec/contracts/ hold machine-checked invariants (see its
+  README). openspec/observations/ describe vendor behavior with the qualifiers in its README; harness or static
+  inference is not a requirement or confirmed vendor behavior. Keep all three current rather than append-only, state
+  each rule once, describe behavior rather than diffs, and give paths only where they help traceability.
+
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.
 rules:

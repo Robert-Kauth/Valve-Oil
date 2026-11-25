@@ -287,9 +287,11 @@
         "VO_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}",
         "VO_WAIT_HOTEND S={reuse_nozzle_target} STATUS=clear_nozzle",
         "VO_WIPE_NOZZLE_DROP",
+        "_VO_LEAVE_CHUTE",
         "_VO_REPORT_BED_TEMP",
         "Z_TILT_ADJUST",
         "M400",
+        "_VO_HOME_Z_FROM_SAFE_POINT",
         "_VO_PREPARE_PRINT_MESH",
         "M1002 A1",
         "ENABLE_ALL_SENSOR"
@@ -328,10 +330,12 @@
         "_VO_FINISH_START_SCRAPE",
         "VO_WAIT_BED S={bed_target} STATUS=wait_bed_temp",
         "VO_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}",
+        "_VO_LEAVE_CHUTE",
         "G1 X{profile.z_tilt_staging_x} Y{profile.z_tilt_staging_y} F33900",
         "_VO_REPORT_BED_TEMP",
         "Z_TILT_ADJUST",
         "M400",
+        "_VO_HOME_Z_FROM_SAFE_POINT",
         "_VO_PREPARE_PRINT_MESH",
         "M1002 A1",
         "ENABLE_ALL_SENSOR"
@@ -353,9 +357,11 @@
         "VO_WIPE_AND_SCRAPE_NOZZLE TARGET={scrape_target}",
         "VO_WAIT_BED S={bed_target} STATUS=wait_bed_temp",
         "VO_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}",
+        "_VO_LEAVE_CHUTE",
         "_VO_REPORT_BED_TEMP",
         "Z_TILT_ADJUST",
         "M400",
+        "_VO_HOME_Z_FROM_SAFE_POINT",
         "_VO_PREPARE_PRINT_MESH",
         "M1002 A1",
         "ENABLE_ALL_SENSOR"
@@ -384,7 +390,6 @@
         "BED_MESH_PROFILE LOAD=\"{command_profile}\""
       ],
       "must_not_include": [
-        "_VO_G29_HOME_Z_OR_FULL",
         "BED_MESH_CALIBRATE",
         "SAVE_CONFIG_QD"
       ]
@@ -401,7 +406,6 @@
         "G31",
         "SET_STEPPER_ENABLE STEPPER=extruder enable=0",
         "BED_MESH_CLEAR",
-        "_VO_G29_HOME_Z_OR_FULL",
         "BED_MESH_CALIBRATE PROFILE=kamp",
         "SAVE_VARIABLE VARIABLE=profile_name VALUE='\"kamp\"'",
         "G4 P500",
