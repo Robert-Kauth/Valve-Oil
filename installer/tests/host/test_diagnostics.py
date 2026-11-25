@@ -27,6 +27,24 @@ CLEARED_UNLOAD = [
             "toolhead, 0 during it, switch released; returned True",
 ]
 
+# Lines vo_klipper_health writes when the THR stops taking Klipper's commands while probing, as in issue #412: when the
+# stall passes 3 s, when Klipper shuts down during it, and when the THR takes commands again.
+THR_STALL = [
+    "2026-11-22 12:30:00 - vo_klipper_health: THR has taken no commands from Klipper for 3 s, though it still sends "
+    "its own reports. Commands to it, heater changes included, wait until it takes them again.",
+    "2026-11-22 12:30:26 - vo_klipper_health: THR had taken no commands from Klipper for 29 s, from 12:29:57, when "
+    "Klipper shut down; Klipper resent 820 bytes to it meanwhile. Its commands, heater changes included, were "
+    "waiting, which can cause the shutdown's error.",
+    "2026-11-22 12:30:39 - vo_klipper_health: THR took no commands from Klipper for about 42 s, from 12:29:57; "
+    "Klipper resent 1331 bytes to it meanwhile. Commands sent to it in that time, heater changes included, reached it "
+    "late.",
+]
+HEALTH_ONLY = [
+    "2026-11-22 12:30:00 - vo_klipper_health: timers=53 removed=0 main_thread_load=0.17 peak=0.26 max_delay=0.017",
+    "2026-11-22 12:30:06 - vo_klipper_health: 33 endstop syncs from 12:29:01 passed; THR spare 26.7 ms from mcu, "
+    "delay 6.4 ms, no link errors; mcu spare 28.6 ms from THR, delay 6.2 ms, no link errors",
+]
+
 
 def _log(lines: list[str], version: str = "26.11.22.2") -> Path:
     path = temp_path("vo-diagnostics-") / "klippy.log"
@@ -54,6 +72,7 @@ class SignatureTest(unittest.TestCase):
              {"cancelled_part_dropped_moves"}),
             ("toolhead load-cell readings nothing waited for, and the load they failed", LOGS / "load-cell-reply-lost.log",
              {"load_cell_reply_lost", "qidi_error"}),
+            ("the THR stopped taking commands while probing", _log(THR_STALL), {"board_command_stall"}),
         ):
             with self.subTest(name):
                 self.assertEqual(set(_found(path)), expected)
@@ -62,6 +81,7 @@ class SignatureTest(unittest.TestCase):
         for name, path in (
             ("feeds that keep their clock, and an idle re-arm", LOGS / "box-feeds-normal.log"),
             ("an unload whose pull-backs moved", _log(CLEARED_UNLOAD)),
+            ("Klipper's health lines without a stall", _log(HEALTH_ONLY)),
         ):
             with self.subTest(name):
                 self.assertEqual(_found(path), {})
@@ -70,6 +90,14 @@ class SignatureTest(unittest.TestCase):
         finding = _found(LOGS / "step-clock-offset.log")["box_step_clock_offset"]
         self.assertEqual(finding["details"], ["Box 1 slot stepper oid 1: 21.8 s ahead of Klipper's"])
         self.assertTrue(finding["docs"].startswith(diagnostics.DOCS_URL + "#"))
+
+    def test_command_stall_counts_each_stall_once_with_its_length(self) -> None:
+        finding = _found(_log(THR_STALL + THR_STALL[:1]))["board_command_stall"]
+        self.assertEqual(finding["count"], 2)
+        self.assertEqual(finding["severity"], "fault")
+        self.assertEqual(finding["details"], ["THR: 29 s when Klipper shut down", "THR: 42 s"])
+        self.assertEqual(finding["first"], "2026-11-22 12:30:00")
+        self.assertEqual(len(finding["evidence"]), 4)
 
     def test_severity_follows_the_release_that_ran_and_the_one_installed(self) -> None:
         offset = LOGS / "step-clock-offset.log"

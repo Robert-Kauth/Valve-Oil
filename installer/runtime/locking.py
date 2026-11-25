@@ -8,15 +8,16 @@ from .errors import LockAcquisitionError
 
 
 class AdvisoryLock:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, shared: bool = False):
         self._path = path
+        self._shared = shared
         self._handle = None
 
     def __enter__(self) -> "AdvisoryLock":
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._handle = self._path.open("a+", encoding="utf-8")
         try:
-            fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(self._handle.fileno(), (fcntl.LOCK_SH if self._shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
         except OSError as exc:
             self._handle.close()
             self._handle = None
@@ -37,3 +38,8 @@ class AdvisoryLock:
 
 def acquire(path: Path) -> AdvisoryLock:
     return AdvisoryLock(path)
+
+
+def acquire_shared(path: Path) -> AdvisoryLock:
+    """For a run that only reads: it keeps installer runs out but lets Klipper's vo_print_guard admit prints."""
+    return AdvisoryLock(path, shared=True)

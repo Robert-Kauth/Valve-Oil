@@ -188,7 +188,7 @@ It writes `printer_data/logs/vo_box_link.log`, separate from `klippy.log` so it 
 
 ## Diagnostics
 
-**Diagnostics**, on the Diagnostics tab of Valve Oil UI's [System](valve-oil-ui.md#diagnostics) screen, checks the printer's `klippy.log` for faults Valve Oil knows, and says what each one means and what to do. It reads the newest part of the log, up to 48 MB, at the lowest priority, so it doesn't slow a print; it says how far back it reached. Pick how far back to look: since Klipper last started, the last 24 hours, or the whole log. **Download report** saves what it found, with the log lines that show it, to attach to an issue, and [Report a problem](#reporting-a-problem)'s support bundle carries the last report.
+**Diagnostics**, on the Diagnostics tab of Valve Oil UI's [System](valve-oil-ui.md#diagnostics) screen, checks the printer's `klippy.log` for faults Valve Oil knows, and says what each one means and what to do. It reads the newest part of the log, up to 48 MB, at the lowest priority, so it doesn't slow a print; it says how far back it reached. Pick how far back to look: since Klipper last started, the last 24 hours, or the whole log. **Download report** saves what it found, with the log lines that show it, to attach to an issue. **Download support bundle** downloads the [support bundle](#reporting-a-problem), which carries the last report with the printer's logs.
 
 Each finding says whether it needs you:
 
@@ -233,6 +233,12 @@ Check the slot's filament before its next load. If an unload or load stopped aro
 
 QIDI's Box load checks for filament reaching the nozzle with the toolhead's load cell, and other QIDI code reads the same load cell. When two of them ask for a reading at the same moment, the answers reach neither, and QIDI's code reads `999.9` and discards it (`Data error, discard the data value=999.9` in `klippy.log`). A load around that time can stop with `QDE_004_024`, the filament failed to enter the extruder, whether or not it did. Check the filament at the nozzle and run the load again. [Report it](#reporting-a-problem) if it recurs.
 
+### A board stopped taking Klipper's commands
+
+A board, usually the toolhead board (THR), stopped acknowledging Klipper's commands for several seconds while it went on sending its temperatures and other reports. Klipper reports `Lost communication` only when a board sends nothing, so it waits instead, and every command to that board waits with it, heater updates included. On the THR the nozzle cools, and Klipper shuts down with an error that names something else: `Heater extruder not heating at expected rate`, `Probing failed due to printer shutdown`, or, when the waiting commands reach the THR late all at once, `MCU 'THR' shutdown: Missed scheduling of next digital out event` (issue #412).
+
+Valve Oil's Klipper health check says so in the console once a board has taken no commands for 3 seconds, and again with how long it lasted when the board takes commands again or Klipper shuts down first, for example `THR took no commands from Klipper for about 42 s`. Turn the printer off and reseat the board's cable at both ends. If it keeps happening, [report it](#reporting-a-problem) with the support bundle and say where the toolhead was each time.
+
 ### Box unload stopped with filament at the toolhead
 
 An unload pulled the filament back and the toolhead filament sensor still detected it. Something held it: at the toolhead, in the Box, or a slot motor running late. If Diagnostics also shows a [slot step clock](#box-slot-step-clock) or a [cancelled part](#box-unload-stopped-inside-a-cancelled-part), that's the cause. Otherwise see [Filament caught at the toolhead](qidi-box.md#filament-caught-at-the-toolhead).
@@ -257,7 +263,7 @@ Diagnostics lists every error code QIDI's Box code reported, `Code:QDE_004_008; 
 
 Open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues/new/choose) and pick the form that fits. Each form asks for the printer details below, and for the logs that show what happened.
 
-The quickest way is **Open an issue** under **Report a problem**, in the **Valve Oil** section of Fluidd's Settings or on Valve Oil UI's [Updates](valve-oil-ui.md#updates) screen. It opens the bug report form with the printer, its details, and how Valve Oil was installed already filled in, and downloads a support bundle, `valve-oil-support-<printer>-<time>.zip`, to drag into the form. The bundle holds `klippy.log` and `moonraker.log` with the last rotated copy of each, `vo_box_link.log`, the output of the last **Update now**, add-on change, and QIDI firmware update, the last [Diagnostics](#diagnostics) report, Valve Oil's update status, and the printer details. Each log is cut to its newest 16 MB. Logs can show the printer's network addresses, so look through the bundle before you attach it. It doesn't include what the installer printed when you ran it over SSH, so paste that in yourself.
+The quickest way is **Open an issue** under **Report a problem**, in the **Valve Oil** section of Fluidd's Settings or on Valve Oil UI's [Updates](valve-oil-ui.md#updates) screen. It opens the bug report form with the printer, its details, and how Valve Oil was installed already filled in, and downloads a support bundle, `valve-oil-support-<printer>-<time>.zip`, to your browser's downloads folder. Drag that file into the form's **Logs and files**. **Download support bundle** on Valve Oil UI's [Diagnostics](valve-oil-ui.md#diagnostics) tab downloads the same bundle on its own. The bundle holds `klippy.log` and `moonraker.log` with the last rotated copy of each, `vo_box_link.log`, the output of the last **Update now**, add-on change, and QIDI firmware update, the last [Diagnostics](#diagnostics) report, Valve Oil's update status, and the printer details. Each log is cut to its newest 16 MB. Logs can show the printer's network addresses, so look through the bundle before you attach it. It doesn't include what the installer printed when you ran it over SSH, so paste that in yourself.
 
 For a board Valve Oil doesn't support yet, use the link in the installer's output or in the board's printer warning instead: it opens the support form with the printer details and the board's report already filled in.
 
@@ -307,6 +313,7 @@ It prints the installed Valve Oil version, QIDI's firmware versions for every bo
 
 ### Logs
 
+- **Support bundle:** **Report a problem → Open an issue**, in Valve Oil UI's **Updates** screen or Fluidd's **Settings → Valve Oil**, downloads `valve-oil-support-<printer>-<time>.zip` to your browser's downloads folder. It holds most of the logs below; see [Reporting a problem](#reporting-a-problem).
 - **`klippy.log`:** in Fluidd, open **Configuration**, switch the file list to **logs**, and download `klippy.log`; or copy `~/printer_data/logs/klippy.log` over SSH. Attach it right after the problem, before restarting Klipper again, since each restart starts a new log. If it's too big to attach, zip it.
 - **Installer log:** each install, update, and uninstall saves `valve-oil-<run>-<date>.log` in `~/printer_data/logs`, in the same **logs** list as `klippy.log`. The USB installer also saves it on the drive as `valve-oil-install.log`.
 - **Installer output:** copy everything the installer printed, from the command to the end. To see the log's detail as it runs, run it again with `--debug` added, for example `~/valve-oil/install.sh --debug`.

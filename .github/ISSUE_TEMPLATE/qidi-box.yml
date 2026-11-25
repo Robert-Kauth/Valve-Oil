@@ -133,7 +133,8 @@ body:
       label: Logs and files
       description: |
         Drag files in here. See [Logs](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md#logs) for where to find them.
-        - `klippy.log`, taken right after the problem, before restarting Klipper. For a lost Box connection, it includes the `serial-history mcu_boxN:` lines and each Box's reset reason.
+        - **Best: the support bundle.** In Valve Oil UI (**Updates**) or Fluidd (**Settings → Valve Oil**), click **Report a problem → Open an issue**. It downloads `valve-oil-support-….zip` to your browser's downloads folder, with `klippy.log`, `moonraker.log`, and Valve Oil's reports, and opens a filled-in bug report; you can attach the zip to this form instead.
+        - Without the bundle, `klippy.log`, taken right after the problem, before restarting Klipper. For a lost Box connection, it includes the `serial-history mcu_boxN:` lines and each Box's reset reason.
         - With RS-485 hardware: `~/printer_data/logs/vo_box485_report.json`, written by `VO_RS_BOX_REPORT`.
         - Photos of where the filament stopped, and a screenshot of the QIDI Box card.
     validations:

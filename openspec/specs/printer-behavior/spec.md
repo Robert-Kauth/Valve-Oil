@@ -1162,6 +1162,15 @@ Valve Oil's configuration SHALL unregister the vendor Box load-cell timers (`_re
 - **THEN** `klippy.log` gets a warning naming the MCU, the command, how many ms late or ahead it is, for one too far ahead how far the MCU's clock reaches, and the Python calls that sent it, at most once every 10 s for each MCU and command, with a count of the ones in between
 - **AND** the command is sent unchanged, and commands without a clock parameter are not checked
 
+### Requirement: MCU command stalls are reported
+Valve Oil's configuration SHALL report an MCU that leaves Klipper's commands unacknowledged, which Klipper itself reports only when the MCU sends nothing at all.
+
+#### Scenario: MCU stops taking commands
+- **WHEN** an MCU leaves commands Klipper sent it unacknowledged for 3 seconds, by its serial counters read once a second
+- **THEN** the console and `klippy.log` name the MCU, how long it has taken no commands, and whether it still sends data
+- **AND** when it acknowledges commands again, or Klipper shuts down first, the console and `klippy.log` give how long it took none, from when, and how many bytes Klipper resent to it
+- **AND** Diagnostics reports each such stall with its length
+
 ### Requirement: Macros read cheap printer facts
 Valve Oil's macros SHALL NOT read `printer.configfile`, `printer.gcode`, `printer.multi_color_controller`, or `printer.box_extras`, whose whole status Klipper copies on its main loop. They SHALL read Box availability, whether `T_MANAGER` is registered, the loaded slot, and the configured `max_accel` from `vo_macro_status`, which SHALL report the values those objects gave.
 
@@ -1432,7 +1441,7 @@ Valve Oil's configuration SHALL keep `INIT_RFID_READ` from raising an internal e
 - **THEN** the vendor command runs at once, unchanged
 
 ### Requirement: Vendor filaments in QIDI's database
-At each Klipper start, Valve Oil configuration SHALL add to every QIDI `filament-*.json` the catalog's Anycubic, Elegoo, Bambu Lab, and Creality 1.75 mm filaments for that nozzle size that the file lacks. It MUST NOT change or remove existing entries, and MUST NOT add an entry whose name or filament ID is already present. Catalog IDs SHALL use `QFX`, `QFY`, `QFZ`, and `QFW` and SHALL never be reassigned.
+At each Klipper start, Valve Oil configuration SHALL add to every QIDI `filament-*.json` the catalog's Anycubic, Elegoo, Bambu Lab, and Creality 1.75 mm filaments for that nozzle size that the file lacks. Except as the nozzle limit requirement below says, it MUST NOT change or remove existing entries, and MUST NOT add an entry whose name or filament ID is already present. Catalog IDs SHALL use `QFX`, `QFY`, `QFZ`, and `QFW` and SHALL never be reassigned.
 
 #### Scenario: Database after a QIDI update
 - **WHEN** a QIDI firmware update has replaced the filament files and Valve Oil's configuration is installed again
@@ -1445,6 +1454,25 @@ At each Klipper start, Valve Oil configuration SHALL add to every QIDI `filament
 #### Scenario: Operator entry with the same name
 - **WHEN** the database already has an entry with a catalog filament's name or ID
 - **THEN** that entry is kept and the catalog filament is not added
+
+### Requirement: Filaments the nozzle cannot reach
+At each Klipper start, Valve Oil configuration SHALL move out of every QIDI `filament-*.json` each entry whose nozzle maximum (`int(nozzle_temperature[1])`) is above the printer's `[extruder]` `max_temp`, and SHALL NOT add a catalog filament above it. Each moved entry that is not the catalog's own SHALL be recorded, with the entry before it, in `~/printer_data/.vo_removed_filaments.json` before its file is written.
+
+#### Scenario: No readable record
+- **WHEN** the record can't be read or written
+- **THEN** no entry is moved out
+
+#### Scenario: Limit reaches a recorded entry
+- **WHEN** Klipper starts with a `max_temp` that reaches a recorded entry, or Valve Oil is uninstalled
+- **THEN** the entry goes back after the entry recorded before it, unless its name or filament ID has been taken, and leaves the record
+
+#### Scenario: Smart 5
+- **WHEN** Klipper starts on a Smart 5, whose `max_temp` is 315 °C, with QIDI's list holding PPS-CF at 300–350 °C
+- **THEN** PPS-CF is moved out of every nozzle size's file and recorded, and the catalog's filaments above 315 °C are not added
+
+#### Scenario: Firmware update puts QIDI's list back
+- **WHEN** a QIDI firmware update has replaced the filament files
+- **THEN** the next Klipper start moves the same entries out again and records QIDI's new copies
 
 ### Requirement: Spool tag reports
 Valve Oil's configuration SHALL save a report in Klipper's log folder for each distinct tag a Box with the Valve Oil Box firmware reads but cannot use, and `VO_BOX_RFID_REPORT SLOT=`, also answering to its earlier name `TLTG_BOX_RFID_REPORT`, SHALL read a slot's tag without slot motion into a report. Reports MUST NOT contain tag UID bytes.

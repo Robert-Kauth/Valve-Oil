@@ -297,7 +297,7 @@ class PrinterWarnings:
             "title": "The printer doesn't know the filament in %s." % joined,
             "message": "Its filament ID (%s) isn't in the printer's filament"
                        " list, so the touchscreen and Fluidd show it as"
-                       " Unknown, and QIDI's print start flushes it at"
+                       " Unknown, and QIDI heats an unknown filament to"
                        " 240 \u00b0C whatever it is, too cold for ASA, ABS, PC,"
                        " or nylon. Choose the filament again in Fluidd or on"
                        " the touchscreen." % ", ".join(ids),

@@ -198,6 +198,12 @@ The installer makes this possible by adding a `qidi_filament_config` folder to F
 
 If `qidi_filament_config` already exists, the installer leaves it alone. Uninstall removes the link but never your edits.
 
+### Filaments the nozzle can't reach
+
+The list keeps only filaments the printer's nozzle can heat to. When Klipper starts, it takes out of every nozzle size's file each filament whose maximum is above the printer's nozzle limit, so the touchscreen, Fluidd, and Valve Oil UI don't offer it: QIDI's Box loads and unloads heat the nozzle to that maximum, so loading it would stop with an error. On the Smart 5, at 315 °C, that's QIDI's PAHT-CF, PAHT-GF, UltraPA-CF25, PET-CF, PET-GF, PPS-CF, and PPS-GF, and 7 of the [spool brands' filaments](#anycubic-elegoo-bambu-lab-and-creality-filaments); the Max 4 and Plus 5, at 375 °C, lose none. The touchscreen lists the change after the printer's next restart.
+
+The filaments taken out are kept in `~/printer_data/.vo_removed_filaments.json`. They go back to their places in the list when you uninstall, or at a Klipper start once the nozzle limit reaches them. A firmware update that puts QIDI's list back has them taken out again when Klipper next starts. A Box slot or spool tag set to one of them shows the printer warning for a filament the printer doesn't know.
+
 ## Spool tags
 
 With the [Valve Oil Box firmware](firmware.md#qidi-box-firmware), which the installer puts on every USB Box, the Box reads **Anycubic**, **Elegoo**, **Bambu Lab**, **Creality**, **TigerTag**, and **OpenTag3D** spool tags as well as QIDI's. Reading works as it does for QIDI spools: when you insert filament, or with **Read RFID** on the touchscreen, the Box turns the spool past its reader and sets the slot's filament and color from the tag. The touchscreen and Fluidd show it like any other slot. Boxes on QIDI's own firmware read only QIDI tags, as before.
@@ -208,7 +214,7 @@ With the [Valve Oil Box firmware](firmware.md#qidi-box-firmware), which the inst
 
 ### Anycubic, Elegoo, Bambu Lab, and Creality filaments
 
-Klipper adds 30 Anycubic, 32 Elegoo, 49 Bambu Lab, and 34 Creality filaments to [QIDI's filament list](#editing-qidis-filament-list) when it starts, if they're missing, so you can pick them on the touchscreen and in Fluidd with or without tags. Their names and nozzle temperatures come from the vendors' slicer profiles (Bambu Studio's for Bambu Lab, OrcaSlicer's for Creality), and their Box heating, chamber, and drying settings from QIDI's filament of the same type. QIDI's own filaments and yours are never changed, and a filament isn't added if its name or ID is already taken. The touchscreen offers them for a print by their type, so an Anycubic PLA+ slot can print a PLA file; see [Touchscreen greying out filament of the right type](fixes.md#touchscreen-greying-out-filament-of-the-right-type). After a firmware update replaces QIDI's list, they're added again once the optimized configuration is reinstalled. The touchscreen lists them after the printer's next restart.
+Klipper adds 30 Anycubic, 32 Elegoo, 49 Bambu Lab, and 34 Creality filaments to [QIDI's filament list](#editing-qidis-filament-list) when it starts, if they're missing, so you can pick them on the touchscreen and in Fluidd with or without tags. Their names and nozzle temperatures come from the vendors' slicer profiles (Bambu Studio's for Bambu Lab, OrcaSlicer's for Creality), and their Box heating, chamber, and drying settings from QIDI's filament of the same type. QIDI's own filaments and yours are never changed, and a filament isn't added if its name or ID is already taken, or if its maximum is above [what the nozzle reaches](#filaments-the-nozzle-cant-reach). The touchscreen offers them for a print by their type, so an Anycubic PLA+ slot can print a PLA file; see [Touchscreen greying out filament of the right type](fixes.md#touchscreen-greying-out-filament-of-the-right-type). After a firmware update replaces QIDI's list, they're added again once the optimized configuration is reinstalled. The touchscreen lists them after the printer's next restart.
 
 Bambu Lab's are listed under QIDI's **Bambu** vendor, next to QIDI's own Bambu PLA, PETG, and ABS. A Bambu Lab ABS tag sets QIDI's **Bambu ABS**, and Bambu's 2.85 mm TPU 75A is left out.
 

@@ -74,7 +74,7 @@ Each finding is marked:
 - **Valve Oil repaired it:** each time it happened, Valve Oil put it right before it failed anything.
 - **For reference:** worth knowing when reporting a problem, such as QIDI's error codes.
 
-**Download report** saves what the check found as a text file, with the printer's details first, to attach to an issue. **Report a problem** on the Updates screen also puts the last check's report in its support bundle. The check needs a Valve Oil release that has it; on an older one, the card says to update Valve Oil.
+**Download report** saves what the check found as a text file, with the printer's details first, to attach to an issue. **Download support bundle** downloads `valve-oil-support-<printer>-<time>.zip`, the same bundle **Report a problem** on the Updates screen downloads: the printer's logs, Valve Oil's update output, and the last check's report. See [Reporting a problem](troubleshooting.md#reporting-a-problem). The check needs a Valve Oil release that has it; on an older one, the card says to update Valve Oil.
 
 ## What the installer does
 

@@ -330,13 +330,15 @@ def run_auto_update_check(
     run: RunFn = subprocess.run,
     enrolled: bool | None = None,
     recovery_required: bool = False,
+    latest: tuple[str, str | None] | AutoUpdateError | None = None,
     **seams,
 ) -> AutoUpdateRunResult:
     """One update check: publish what is waiting, then, on an enrolled idle printer, do it.
 
     A printer that is not enrolled is only checked: nothing is installed, reconciled, flashed, stopped, or rebooted,
     and its checksum state records the latest release. `recovery_required` publishes and stops. `seams` reach
-    update_check (firmware update start and board tools).
+    update_check (firmware update start and board tools). `latest` is prefetch_latest_release's answer when the caller
+    fetched it before taking the installer lock.
     """
     from . import update_check, valve_oil_status
 
@@ -350,7 +352,11 @@ def run_auto_update_check(
     if enrolled and not recovery_required and in_window:
         _complete_pending_activation(paths, reporter=reporter, urlopen=urlopen)
     try:
-        checksum, latest_version = fetch_latest_release(release_checksum_url(env), urlopen=_release_opener(urlopen))
+        if latest is None:
+            latest = fetch_latest_release(release_checksum_url(env), urlopen=_release_opener(urlopen))
+        if isinstance(latest, AutoUpdateError):
+            raise latest
+        checksum, latest_version = latest
     except AutoUpdateError:
         reporter.line(messages.AUTO_UPDATE_SKIPPED_CHECKSUM_UNAVAILABLE)
         update_check.publish_failed(paths, enrolled=enrolled, message=messages.AUTO_UPDATE_CHECKSUM_FETCH_FAILED)
@@ -515,6 +521,17 @@ def fetch_latest_release(checksum_url: str, *, urlopen: UrlOpenFn = release_urlo
         raise AutoUpdateError(messages.AUTO_UPDATE_CHECKSUM_INVALID)
     version = next((match.group(1) for match in map(_RELEASE_TAG.search, (url or "" for url in urls)) if match), None)
     return first.lower(), version
+
+
+def prefetch_latest_release(environ: dict[str, str], *,
+                            urlopen: UrlOpenFn = urllib.request.urlopen) -> tuple[str, str | None] | AutoUpdateError:
+    """The latest release, or why it couldn't be read, for an update check to fetch before it takes the installer lock.
+    An installer run holding the lock stops print starts (vo_print_guard), and the fetch can wait 20 s on the network;
+    finding an update while a print starts is harmless, as installing it waits for the lock and an idle printer."""
+    try:
+        return fetch_latest_release(release_checksum_url(environ), urlopen=_release_opener(urlopen))
+    except AutoUpdateError as exc:
+        return exc
 
 
 def fetch_latest_checksum(checksum_url: str, *, urlopen: UrlOpenFn = urllib.request.urlopen) -> str:

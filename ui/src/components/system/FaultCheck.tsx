@@ -2,9 +2,9 @@
 // (GET and POST api/diagnostics) and this card shows what it found. The service's text is English and is shown as it
 // arrives; only this card's own words are translated.
 import { useCallback, useEffect, useState } from 'react'
-import { Download, ExternalLink, Stethoscope } from 'lucide-react'
+import { Download, ExternalLink, LoaderCircle, Package, Stethoscope } from 'lucide-react'
 import { Card, Loading, Segmented, Spinner } from '../ui'
-import { statusRequest } from '../../state/valve-oil'
+import { clearSupportError, downloadSupportBundle, statusRequest, useValveOil } from '../../state/valve-oil'
 import { errorText, saveBlob } from '../../lib/browser'
 import { VoStatusRequestError } from '../../qidi/vo-status'
 import { FAULT_CHECK_POLL_MS, FAULT_CHECK_SINCE, faultReportName, parseFaultCheck, type FaultCheck, type FaultCheckSince, type FaultFinding, type FaultResult, type FaultSeverity } from './fault-check'
@@ -19,6 +19,7 @@ const SEVERITY_TONE: Record<FaultSeverity, string> = {
 }
 
 export function FaultCheckCard() {
+  const { supportPending, supportError } = useValveOil()
   const [since, setSince] = useState<FaultCheckSince>('all')
   const [check, setCheck] = useState<FaultCheck | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -121,8 +122,20 @@ export function FaultCheckCard() {
             <Download size={14} /> {t('system.diagnostics.check.download_report')}
           </button>
         )}
+        <button className="btn" disabled={supportPending || !loaded} onClick={downloadSupportBundle}>
+          {supportPending ? <LoaderCircle size={14} className="spin" /> : <Package size={14} />} {t('system.diagnostics.check.download_bundle')}
+        </button>
       </div>
+      <p className="mb-0 mt-2 text-[13px] text-ink-3">{t('system.diagnostics.check.bundle_hint')}</p>
       {error && <p className="mb-0 text-warn">{error}</p>}
+      {supportError && (
+        <p className="mb-0 text-warn">
+          {t('system.diagnostics.check.bundle_error', { error: supportError })}{' '}
+          <button className="btn btn-sm" onClick={clearSupportError}>
+            {t('common.close')}
+          </button>
+        </p>
+      )}
       <div className="mt-3.5">
         {!loaded ? (
           <Loading className="p-4" />
