@@ -83,6 +83,16 @@ DISPATCH_FIRST_TYPE = 0x82
 DISPATCH_NAT_TEST = bytes.fromhex("2702")
 DISPATCH_FORWARDING = bytes.fromhex("fc0768081a00eb081b0920092509")  # 0xa1-0xa7
 DISPATCH_EXIT = bytes.fromhex("1a00")
+# The app raises "MQTT connection error" (QDC_400_004_010_001) from QIDI's MQTT state as Moonraker reports it (online,
+# offline, or retrying), the app's QIDI account, and LAN only mode, each time Moonraker's mqtt_status or the app's
+# bind_success, clear_user_info, or lan_mode_config_updated event arrives. Moonraker reports MQTT not connected when the
+# app starts, so the app raises the error at every start, and deletes it only once its first request to QIDI's cloud
+# comes back: about 10 ms later in LAN only mode, 0.9 s on a Max 4, and never with QIDI's servers blocked, so it stays
+# on the touchscreen. The error's event callback, which no other error uses, tests the raise condition and branches to
+# the add call, then tests the clear condition. Not branching leaves the error unraised, at start and when MQTT drops
+# later, and the clear finds nothing to delete. The app's MQTT handling, its other errors, and LAN only mode are as
+# QIDI wrote them.
+RAISE_MQTT_ERROR = bytes.fromhex("41040054")  # b.ne +0x88, to the add call
 # A print's Match filament screen greys out every Box slot and the external spool whose label isn't the file's filament
 # type, and the app labels a slot with the first word of its filament's name: "PLA" for QIDI's PLA Basic, but "PLA+"
 # for Generic PLA+ and "Rapid" for Elegoo Rapid PLA+, so those never match a PLA file. Klipper publishes each slot's
@@ -154,7 +164,7 @@ class Build:
 
 
 def _sites(show_branch: int | tuple[int, ...], clear_branch: int, need_update_store: int, extract: int, detector: int,
-           p2p: tuple[Site, ...], *,
+           mqtt_error: int, p2p: tuple[Site, ...], *,
            store: tuple[bytes, bytes] = (STORE_NEED_UPDATE, STORE_ZERO)) -> tuple[Site, ...]:
     show_branches = show_branch if isinstance(show_branch, tuple) else (show_branch,)
     return (
@@ -163,6 +173,7 @@ def _sites(show_branch: int | tuple[int, ...], clear_branch: int, need_update_st
         Site(need_update_store, *store, blocking=True),
         Site(extract, EXTRACT_PROLOGUE, RETURN_FALSE, retired=True),
         Site(detector, DETECTOR_CHANGED, DETECTOR_UNCHANGED),
+        Site(mqtt_error, RAISE_MQTT_ERROR, NOP),
         *p2p,
     )
 
@@ -316,19 +327,21 @@ BUILDS = {
     # QIDI Max 4 firmware 01.01.07.01
     "b5285d1a52f1180757360d0893f0f8ed619aaaa31d2d621917c0a963bc3fde4e": Build(
         size=91630352,
-        sites=_sites(0x227368, 0x227510, 0x2C7FF0, 0x31BC90, 0x264288,
+        sites=_sites(0x227368, 0x227510, 0x2C7FF0, 0x31BC90, 0x264288, 0x232228,
                      _p2p_sites(0x47568C, 0x475524, 0x43042C, 0x5592CFC))
         + _type_match_sites(TypeMatch(
             padding=0x49E90, padding_end=0x4A000, type_key=0x5C3DC8, get_string=0x2E5AE0, assign=0x48630,
             dispose=0x49060, box_skip=0x2CB6C8, box_lookup=0x2B2EB0, external_skip=0x2C9860, external_lookup=0x2E1DB0,
             external_info=26, dereference=0x2E1AF0)),
-        patched_sha256="4990726977597ce26d2e589e288dee24a0ac3c3048e5dc62b8df939f0a6d9c1b",
-        blocked_sha256="c04e3d0e55a3be6107c687990e86f3b26f51b6d5b2c8e6d3b87f36cceb5cc04f",
-        other_patched_sha256=("e111dc312b0f1b6e0b33a80058efae0abd8721fa73130b01f9838391a4e55898",
+        patched_sha256="4fb901e9ff3cb3e7f8a0052566214a0aabb31a9e6a6a079593aba766a934d42f",
+        blocked_sha256="8ffb4528a66a22b3de26ace03028dd771c234813634220fb5e17570e1540fd94",
+        other_patched_sha256=("4990726977597ce26d2e589e288dee24a0ac3c3048e5dc62b8df939f0a6d9c1b",
+                              "e111dc312b0f1b6e0b33a80058efae0abd8721fa73130b01f9838391a4e55898",
                               "1985cd3e695a043eb3b6eabc45d7f800dba03339c4fb52e8dddedc4fb12eeb39",
                               "12d9fb74dc73db348cd53460aa3a343f7562890408cc8c32bbe37db2e34b119a",
                               "a3870f07e664f7382a22a9ee6167b5c356ed0bc836ed6e99b0f40f00c1a386c2"),
-        other_blocked_sha256=("2ead362a7fa4b09fd63f82db60b8d168bacc09cdbab9a73c1335a7211b88ad43",
+        other_blocked_sha256=("c04e3d0e55a3be6107c687990e86f3b26f51b6d5b2c8e6d3b87f36cceb5cc04f",
+                              "2ead362a7fa4b09fd63f82db60b8d168bacc09cdbab9a73c1335a7211b88ad43",
                               "f76fd32b77cdaaacf97daa8c8947862ae7d15aaf9b7df485d600a0f41ddebc08",
                               "5630d1f9405de7a6599c48a6758287dd25ce8bc23c80643bc3e66654daa0058a",
                               "b0e9a4a6ce399ea4feaa096851ae022d410caaa47eb2f60227c3483f46b5e138"),
@@ -337,29 +350,31 @@ BUILDS = {
     "9287c89267f997c8a20d3f7d2f372a4d2cb96203c2ee461e6cf90bc69741e1d7": Build(
         size=91659672,
         # The show checks of the buffer, online update, and MCU and THR popups, then the closed-loop board's.
-        sites=_sites((0x2292D0, 0x2297A0, 0x229904), 0x229130, 0x2CAF10, 0x320510, 0x2665C8,
+        sites=_sites((0x2292D0, 0x2297A0, 0x229904), 0x229130, 0x2CAF10, 0x320510, 0x2665C8, 0x233A98,
                      _p2p_sites(0x47A8BC, 0x47A754, 0x43565C, 0x55992FC),
                      store=(STORE_NEED_UPDATE_PLUS5_0202, STORE_ZERO_PLUS5_0202))
         + (Site(0x22900C, SHOW_IF_LENGTHS_DIFFER, SHOW_IF_LONGER),),
-        patched_sha256="0fd1da489c2808c226248436a5eb4f65b8dc63a7f57f741e2f84a933cb5c9372",
-        blocked_sha256="eab1e0cbed6d6b54ae805a043ab12236f9731d91364fb41c543ba7bd2a7bc602",
+        patched_sha256="089d888cea1fcb6baa9a54712aac55cdd3b5beff9cfcff4fd902aba1137e8ed6",
+        blocked_sha256="849a86b7e1708d31af8d19346d247e197e2b68a9c9ab1eda8f7233e298a43a9e",
     ),
     # QIDI Plus 5 firmware 01.01.02.01
     "6c09a58a636427d468b77b78149e5305f0b1182e785a0abff67aec53b3aeb855": Build(
         size=91626272,
-        sites=_sites(0x226518, 0x2266C0, 0x2C71A0, 0x31AE40, 0x263438,
+        sites=_sites(0x226518, 0x2266C0, 0x2C71A0, 0x31AE40, 0x263438, 0x2313D8,
                      _p2p_sites(0x47551C, 0x4753B4, 0x4302BC, 0x5591D4C))
         + _type_match_sites(TypeMatch(
             padding=0x49E90, padding_end=0x4A000, type_key=0x5C2CA8, get_string=0x2E4C90, assign=0x48630,
             dispose=0x49060, box_skip=0x2CA878, box_lookup=0x2B2060, external_skip=0x2C8A10, external_lookup=0x2E0F60,
             external_info=26, dereference=0x2E0CA0)),
-        patched_sha256="11450f6cd76586075d1c68820e86279f2f1c53abe1599d4bcb31e03b5f798434",
-        blocked_sha256="950321f35419bfa9e7597c0e2a5b28e234b612a45d989b26e5bab52699aa9691",
-        other_patched_sha256=("595302f560325d63da9a79e39db52bf0d73d663c425cae18c589a9f2b81d3ed8",
+        patched_sha256="b347c19f5c150a5ce7ae95be9eefc0fe028bd6ea874f0775db214f6c5ee33b96",
+        blocked_sha256="cf070af1552acc183b5ea7d3db919357e6ce689bc8f2f0eb1c5849d745ec1698",
+        other_patched_sha256=("11450f6cd76586075d1c68820e86279f2f1c53abe1599d4bcb31e03b5f798434",
+                              "595302f560325d63da9a79e39db52bf0d73d663c425cae18c589a9f2b81d3ed8",
                               "3747eacf01bd9ac65971d01f27a265d2c4bccb14a49fec2f8297f17f120c5a87",
                               "7a95c573ff94455e128fe5f6d9e8b95b55ed693cb6f27d24ca7da72a5ac97802",
                               "6d39c942beca99a53ab1f3107d0e355f573f9450e3d5b66b33c83544e5b22661"),
-        other_blocked_sha256=("e3899d3a82060e8d25aee962f119d67552a742b93b10d5bb2504febd941b1115",
+        other_blocked_sha256=("950321f35419bfa9e7597c0e2a5b28e234b612a45d989b26e5bab52699aa9691",
+                              "e3899d3a82060e8d25aee962f119d67552a742b93b10d5bb2504febd941b1115",
                               "7d836a445197a2d5cd1c4b056380f6c12868d42fd66c5ca4a4bafa3fcd618791",
                               "8db64463e4a8eb24b233c6d8878e5948532a8fce8545575ed7d45423acc146ea",
                               "58fe6ed91c5f609777d8b4226dae59219563b1c900d0b4ad7edfe1a2fb4a8cdc"),
@@ -368,28 +383,30 @@ BUILDS = {
     "51e8f485089febd97a0ba27874710c1e95c96d367700ed15d0c6b44a960c0e2a": Build(
         size=91659688,
         # The show checks of the buffer, online update, and MCU and THR popups, then the closed-loop board's.
-        sites=_sites((0x2294A0, 0x229970, 0x229AD4), 0x229300, 0x2CB0E0, 0x31F6E0, 0x266798,
+        sites=_sites((0x2294A0, 0x229970, 0x229AD4), 0x229300, 0x2CB0E0, 0x31F6E0, 0x266798, 0x233C68,
                      _p2p_sites(0x47976C, 0x479604, 0x43450C, 0x559934C),
                      store=(STORE_NEED_UPDATE_PLUS5_0202, STORE_ZERO_PLUS5_0202))
         + (Site(0x2291DC, SHOW_IF_LENGTHS_DIFFER, SHOW_IF_LONGER),),
-        patched_sha256="4d1c859d9d387e4b44aa1dd6109d2824b6518718d25cd6daa4e4ec107d952d00",
-        blocked_sha256="7c38e799a51ce811382c5bcc5debd248a3194ffcf672644509837000710306ec",
+        patched_sha256="8df1f51426fd2190809f7a3168edc52cefceda590e20abf7fc761d620aeb0db8",
+        blocked_sha256="e7ed0165dd7d4a831a40c905d11a80b8caa7c4133ad5da56e7be7f355d802498",
     ),
     # QIDI Smart 5 firmware 01.01.02.01
     "6beea0a13cc7448c7f6ab8c345915f22e6d5c04c917a66478d6e43b1ceecd6bf": Build(
         size=91322056,
-        sites=_sites(0x1F0558, 0x1F0700, 0x293200, 0x2E85D0, 0x22EA38,
+        sites=_sites(0x1F0558, 0x1F0700, 0x293200, 0x2E85D0, 0x22EA38, 0x1FB028,
                      _p2p_sites(0x43FD4C, 0x43FBE4, 0x3FAAEC, 0x555AB14),
                      store=(STORE_NEED_UPDATE_SMART5, STORE_ZERO_SMART5))
         + _type_match_sites(TypeMatch(
             padding=0x49F20, padding_end=0x4A000, type_key=0x54D3598, get_string=0x2B13C0, assign=0x486B0,
             dispose=0x490E0, box_skip=0x2968E0, box_lookup=0x27D4E4, external_skip=0x294A70, external_lookup=0x2AD6A0,
             external_info=25, dereference=0x2AD3E0)),
-        patched_sha256="a8ac743886d5da5928aa8f9ec51bd2628290910dc5fca4bb36cf2872dfa21284",
-        blocked_sha256="799383efe3f1ea32cd4384fa27eb7d96b17d3f5d591e54157ee4619f2da22a1b",
-        other_patched_sha256=("fc5b94b3a4e6c6f62f08ae0556403e9a7eaeb82723ef69632ea9102ee67c9224",
+        patched_sha256="5d37af608d72a372ac813d46836b3897e2b7c715ec6b28d41d3eaecd89283e2e",
+        blocked_sha256="07be7469e3a3aff068784070188838626ec2754b3b5ecadc667052f3925fd0a1",
+        other_patched_sha256=("a8ac743886d5da5928aa8f9ec51bd2628290910dc5fca4bb36cf2872dfa21284",
+                              "fc5b94b3a4e6c6f62f08ae0556403e9a7eaeb82723ef69632ea9102ee67c9224",
                               "2ca522f96c95f2dd2836024f09fb267065d0da21be05161495b855f12808958c"),
-        other_blocked_sha256=("3dcbf061ba26045022aaf3c3e3f2239feb4b4bc4b30bf0103ab8250d62b8858b",
+        other_blocked_sha256=("799383efe3f1ea32cd4384fa27eb7d96b17d3f5d591e54157ee4619f2da22a1b",
+                              "3dcbf061ba26045022aaf3c3e3f2239feb4b4bc4b30bf0103ab8250d62b8858b",
                               "69173cefdf2791d328353a215a3214ec99493a09f5d5953fc5fa34c2c01dcbfa",
                               # The Smart 5 test printer's development install blocked the unpack step too.
                               "5f00200ad708916bfaa939be5e746d43e39e852db6cf19b2178956f0af94afb6"),

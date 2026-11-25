@@ -105,6 +105,14 @@ The touchscreen now uses the filament's type as Klipper reports it, for Match fi
 
 The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back. Max 4 firmware `01.01.07.02` and Plus 5 firmware `01.01.02.02` need no change: QIDI's app there takes the type from Klipper itself.
 
+## Touchscreen MQTT connection error
+
+QIDI's touchscreen app showed **MQTT connection error** (`QDC_400_004_010_001`) at every start. As the app starts, QIDI's Moonraker reports its connection to QIDI's cloud as down, and the app raises the error. It removes the error only once its first request to QIDI's cloud comes back, about 10 ms later in LAN only mode and 0.9 s later on the Max 4 test printer. On a printer that can't reach QIDI's servers, the request never comes back, and the error stayed on the touchscreen.
+
+The touchscreen app no longer raises this error, at start or when the connection drops later. Its other errors, its connection to QIDI's cloud, and LAN only mode work as before. Moonraker's own MQTT warnings in Fluidd are unchanged.
+
+The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back.
+
 ## Fixes from newer Klipper
 
 QIDI's Klipper is upstream Klipper from August 2024 with QIDI's changes. These later upstream fixes are applied to it when Klipper starts:
