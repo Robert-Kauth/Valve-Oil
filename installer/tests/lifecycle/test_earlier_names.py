@@ -39,6 +39,18 @@ class EarlierNamesTests(unittest.TestCase):
         run_install(self.paths, self.manifest, PlainReporter(io.StringIO()),
                     urlopen=moonraker_urlopen(saved_variables_path=self.paths.config_root / "saved_variables.cfg"))
 
+    def test_replaced_print_guards_and_config_are_removed_during_install(self) -> None:
+        self.install()
+        extras = self.paths.managed_klipper_root / "klippy/extras"
+        old_modules = [extras / name for name in ("vo_box_dry_guard.py", "vo_update_guard.py", "tltg_box_dry_guard.py")]
+        old_configs = [self.root / "config/vo-macros" / name for name in ("box_dry_guard.cfg", "update_guard.cfg")]
+        for path in old_modules + old_configs:
+            path.write_text("# old installer-owned guard\n")
+        self.install()
+        self.assertTrue((extras / "vo_print_guard.py").is_file())
+        self.assertTrue((self.root / "config/vo-macros/print_guard.cfg").is_file())
+        self.assertFalse(any(path.exists() for path in old_modules + old_configs))
+
     def age(self) -> None:
         """Leave the printer as an earlier release did: the same install under the tltg names."""
         root = self.root

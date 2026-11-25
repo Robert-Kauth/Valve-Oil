@@ -93,17 +93,19 @@ def query_printer_state(
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> str:
     try:
-        with urlopen(url, timeout=timeout) as response:
-            payload = json.load(response)
+        status = _query_objects(url, ("print_stats", "virtual_sdcard"), timeout=timeout, urlopen=urlopen)
     except (OSError, urllib.error.URLError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise PrinterStateError() from exc
     try:
-        state = payload["result"]["status"]["print_stats"]["state"]
+        state = status["print_stats"]["state"]
+        active = status["virtual_sdcard"]["is_active"]
     except (KeyError, TypeError) as exc:
         raise PrinterStateError() from exc
-    if not isinstance(state, str) or not state:
+    if (not isinstance(state, str) or state not in {
+            "standby", "printing", "paused", "extracting", "complete", "cancelled", "error"}
+            or not isinstance(active, bool)):
         raise PrinterStateError()
-    return state
+    return "printing" if active else state
 
 
 def ensure_printer_idle(
@@ -129,7 +131,7 @@ def ensure_printer_idle(
     while True:
         try:
             state = query_printer_state(url, timeout=timeout, urlopen=urlopen)
-            if state in {"printing", "paused"}:
+            if state in {"printing", "paused", "extracting"}:
                 raise ActivePrintError()
             # Klipper can go away between the two reads; the heaters are then read again with the state.
             if _heater_on(url, timeout=timeout, urlopen=urlopen):
@@ -193,11 +195,14 @@ def ensure_klipper_idle(
             raise PrinterStateError()
         status = _query_objects(
             url,
-            ("print_stats", "webhooks", "idle_timeout", "toolhead", *heaters),
+            ("print_stats", "virtual_sdcard", "webhooks", "idle_timeout", "toolhead", *heaters),
             timeout=timeout,
             urlopen=urlopen,
         )
-        if status["print_stats"]["state"] in {"printing", "paused"}:
+        active = status["virtual_sdcard"]["is_active"]
+        if not isinstance(active, bool):
+            raise PrinterStateError()
+        if active or status["print_stats"]["state"] in {"printing", "paused", "extracting"}:
             raise ActivePrintError()
         if status["webhooks"]["state"] != "ready":
             raise PrinterStateError()

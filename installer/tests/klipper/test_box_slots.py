@@ -942,7 +942,7 @@ class BoxFilamentGuardTests(QuietTestCase):
         self.assertTrue(gcode.responses)
 
 
-class BoxDryGuardTests(QuietTestCase):
+class PrintDryingAdmissionTests(QuietTestCase):
     START = {"SDCARD_PRINT_FILE": "SDCARD_PRINT_FILE FILENAME=part.gcode",
              "power-loss resume": "SDCARD_POWER_OFF_CONTINUES_PINT_FILE STATE=e30=",
              "M24": "M24"}
@@ -957,15 +957,18 @@ class BoxDryGuardTests(QuietTestCase):
         status = lambda eventtime, value: types.SimpleNamespace(get_status=lambda _eventtime: value)
         printer = Printer({"gcode": gcode, "box_extras": status(0, {"boxes": boxes}),
                            "print_stats": status(0, {"state": state})})
-        load_extra("box_dry_guard").load_config(Config(printer))
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        printer.get_start_args = lambda: {"config_file": str(root / "config/printer.cfg")}
+        config = types.SimpleNamespace(get_printer=lambda: printer, get_prefix_sections=lambda prefix: [])
+        load_extra("print_guard").load_config(config)
         printer.send_event("klippy:ready")
-        return gcode, started
+        return gcode, started, printer
 
     def test_no_print_starts_while_a_box_dries(self):
         for boxes, message in (((2,), "Box 2 is drying."), ((1, 2), "Boxes 1 and 2 are drying.")):
             for name, line in self.START.items():
                 with self.subTest(name, boxes=boxes):
-                    gcode, started = self.printer(boxes)
+                    gcode, started, _ = self.printer(boxes)
                     with self.assertRaisesRegex(CommandError, message + " Stop drying before starting a print."):
                         gcode.run_script(line)
                     self.assertEqual(started, [])
@@ -973,18 +976,29 @@ class BoxDryGuardTests(QuietTestCase):
     def test_prints_start_with_no_box_drying_and_paused_prints_resume(self):
         for name, line in self.START.items():
             with self.subTest(name):
-                gcode, started = self.printer(())
+                gcode, started, _ = self.printer(())
                 gcode.run_script(line)
                 self.assertEqual(started, [line.split()[0]])
-        gcode, started = self.printer((2,), state="paused")
+        gcode, started, _ = self.printer((2,), state="paused")
         gcode.run_script("M24")
         self.assertEqual(started, ["M24"])
+
+    def test_scheduled_sd_work_and_unknown_drying_state_are_not_idle(self):
+        gcode, started, printer = self.printer(())
+        printer.objects["virtual_sdcard"] = types.SimpleNamespace(is_active=lambda: True)
+        with self.assertRaisesRegex(CommandError, "Box drying can't start"):
+            gcode.run_script("BOX_START_DRYING BOX=2 TEMP=65 TIME=3")
+        self.assertEqual(started, [])
+        printer.objects["box_extras"] = types.SimpleNamespace(get_status=lambda eventtime: {"boxes": None})
+        with self.assertRaisesRegex(CommandError, "Cannot read Box drying state"):
+            gcode.run_script("SDCARD_PRINT_FILE FILENAME=part.gcode")
+        self.assertEqual(started, [])
 
     def test_drying_starts_only_outside_a_print(self):
         for state, refused in (("standby", False), ("complete", False), ("cancelled", False),
                                ("extracting", True), ("printing", True), ("paused", True)):
             with self.subTest(state):
-                gcode, started = self.printer((), state=state)
+                gcode, started, _ = self.printer((), state=state)
                 if refused:
                     with self.assertRaisesRegex(CommandError, "Box drying can't start during a print."):
                         gcode.run_script("BOX_START_DRYING BOX=2 TEMP=65 TIME=3")

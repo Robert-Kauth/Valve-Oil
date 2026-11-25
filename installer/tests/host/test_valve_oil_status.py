@@ -156,6 +156,19 @@ class StatusServiceTests(unittest.TestCase):
             with exc:
                 return exc.code, json.load(exc)
 
+    def test_live_installer_lock_keeps_ui_busy_without_a_status_run(self) -> None:
+        from installer.runtime.locking import acquire
+
+        with mock.patch.object(self.server, "_run_active", return_value=False), \
+                mock.patch.object(self.server.Handler.jobs, "busy", return_value=False):
+            self.assertFalse(self.request("/api/status", method="GET")[1]["busy"])
+            with acquire(self.server.INSTALLER_LOCK):
+                body = self.request("/api/status", method="GET")[1]
+                self.assertTrue(body["busy"])
+                self.assertFalse(body["update_now"]["allowed"])
+                self.assertFalse(body["uninstall"]["allowed"])
+            self.assertFalse(self.request("/api/status", method="GET")[1]["busy"])
+
     def test_only_marked_same_origin_json_posts_switch_enrollment(self) -> None:
         marker = self.server.ENROLLMENT_FILE
         before = sorted(path.name for path in self.paths.printer_data_root.iterdir())

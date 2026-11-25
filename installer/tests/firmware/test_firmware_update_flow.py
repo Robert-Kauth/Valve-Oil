@@ -477,6 +477,7 @@ class Printer:
             return Response(json.dumps({"result": {"state": "ready", "process_id": 100}}).encode())
         names = [urllib.parse.unquote(part.split("=")[0]) for part in urllib.parse.urlsplit(url).query.split("&")]
         status = {"print_stats": {"state": self.print_state}, "webhooks": {"state": "ready"},
+                  "virtual_sdcard": {"is_active": False},
                   "heaters": {"available_heaters": ["extruder"]}, "extruder": {"target": self.heater},
                   "closed_loop x": {"stepper_version": "03.01.10.13", "stepper_hd_version": "9.1"},
                   "closed_loop y": {"stepper_version": "03.01.10.13", "stepper_hd_version": "9.1"}}

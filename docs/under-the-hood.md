@@ -12,6 +12,10 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 - **Earlier names move.** Releases before 26.11.22.3 named Valve Oil's files, folders, services, and Klipper modules `tltg` (`tltg_`, `.tltg_`, `tltg-optimized-`). The first run of 26.11.22.3 or later, an update or any other command, moves them to the `vo` names below and points `printer.cfg` at `vo-macros/`; an install or uninstall removes the earlier services and files once their replacements are in place. Configuration backups keep their names (`tltg-optimized-macros-before-*.zip`).
 - **Each service restarts once.** Changes are made first, then each changed service restarts once at the end. After Moonraker restarts, the installer waits for it to answer, then restarts the touchscreen app, `qidi-client`, so it reconnects.
 
+## Print and update admission
+
+Print admission is serialized with the installer by `vo_print_guard.py`, enabled by `vo-macros/print_guard.cfg` on both QIDI and Valve Oil Klipper. It shares `~/printer_data/.vo_installer.lock` while a start command selects or extracts a file and schedules the SD worker; the installer takes that lock exclusively. Readiness checks include active virtual SD work as well as printing, paused and extracting states. `~/printer_data/.vo_firmware_update_pending.json` keeps starts blocked across a firmware update's service restarts and reboots. This protection takes effect after the module is installed and Klipper has restarted; an older running installation does not gain it merely by downloading a new bundle. The same module excludes simultaneous printing and timed Box drying, including the interval before SD work starts. Resume commands and their configured renamed aliases use the same admission check.
+
 ## Klipper configuration
 
 | What | Change |

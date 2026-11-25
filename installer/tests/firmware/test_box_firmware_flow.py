@@ -74,6 +74,7 @@ class Printer(harness.Host):
         if url.endswith("/printer/info"):
             return io.BytesIO(json.dumps({"result": {"state": "ready", "process_id": 100}}).encode())
         status = {"print_stats": {"state": self.print_state}, "webhooks": {"state": "ready"},
+                  "virtual_sdcard": {"is_active": False},
                   "idle_timeout": {"state": "Ready"},
                   "heaters": {"available_heaters": ["extruder", "heater_bed", "heater_generic chamber"]},
                   "extruder": {"target": 0}, "heater_bed": {"target": 0}, "heater_generic chamber": {"target": self.chamber}}
@@ -616,6 +617,7 @@ class Boards(harness.Host):
             if name.startswith("closed_loop") and getattr(self, "drivers", None):
                 status[name] = {"stepper_version": self.drivers}
         status.update({"print_stats": {"state": self.print_state}, "webhooks": {"state": "ready"},
+                       "virtual_sdcard": {"is_active": False},
                        "idle_timeout": {"state": "Ready"},
                        "heaters": {"available_heaters": self.heaters}, **{heater: {"target": 0} for heater in self.heaters}})
         return io.BytesIO(json.dumps({"result": {"status": status}}).encode())

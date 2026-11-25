@@ -463,14 +463,20 @@ def _map(root: Path, absolute: str) -> Path:
 
 # ---- Klipper modules -------------------------------------------------------------------------------------------------
 def remove_earlier_klipper_modules(paths: RuntimePaths, module_destinations: list[str], *, journal) -> list[Path]:
-    """Remove klippy/extras/tltg_<name>.py for each klippy/extras/vo_<name>.py module the package installs. Klipper
-    loads a module only for its config section, so the earlier ones load nothing once their sections are renamed."""
+    """Remove replaced installer-owned modules once their new config sections are in place.
+
+    Includes the old tltg names and the two admission guards replaced by vo_print_guard.
+    The install journal restores removed files if installing the replacement fails.
+    """
     removed = []
     for destination in module_destinations:
         directory, _, name = destination.rpartition("/")
         if directory != "klippy/extras" or not name.startswith("vo_"):
             continue
-        for candidate in (f"tltg_{name[len('vo_'):]}", f"tltg_{name[len('vo_'):]}c"):
+        predecessors = [f"tltg_{name[len('vo_'):]}"]
+        if name == "vo_print_guard.py":
+            predecessors.extend(("vo_box_dry_guard.py", "vo_update_guard.py", "tltg_box_dry_guard.py"))
+        for candidate in [entry for predecessor in predecessors for entry in (predecessor, predecessor + "c")]:
             target = paths.managed_klipper_root / directory / candidate
             if target.is_file() and not target.is_symlink():
                 journal.track_file(target)

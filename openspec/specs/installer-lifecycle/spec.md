@@ -80,6 +80,22 @@ Every installer launcher, including the release download, automatic updates, res
 ### Requirement: Recoverable configuration lifecycle
 Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-printer transactions with validated inputs, recoverable preimages, atomic committed state, and drift-safe reversal.
 
+#### Scenario: Print admission and updating cannot race
+- **WHEN** an installed Valve Oil printer receives a print start from any client
+- **THEN** Klipper holds a shared installer lock through admission, including SD selection, 3MF extraction, and scheduling the print loop
+- **AND** a running installer holding the exclusive lock refuses that start before any print side effects
+- **AND** if print admission wins, an updater either fails to acquire the lock or observes extracting, printing, paused, or active virtual SD work and refuses mutation
+- **AND** a pending QIDI firmware update blocks print admission across service restarts and reboots until completion or recovery removes its marker
+- **AND** missing or malformed virtual SD state prevents an update rather than implying idle
+- **AND** the same admission owner enforces Box drying exclusion, rejects drying during scheduled SD work, and guards public resume commands plus their configured `rename_existing` names
+- **AND** installing that owner removes the replaced guard modules and configuration rather than loading parallel wrappers
+
+#### Scenario: A competing update cannot replace active progress
+- **WHEN** Update now races another installer or automatic update for the installer lock
+- **THEN** only the lock owner creates or finishes its update run and clears its pending release
+- **AND** the losing request reports the lock conflict without replacing the active run
+- **AND** the status API reports busy while the kernel lock is held, even before a run record exists
+
 #### Scenario: Mutation begins only after complete preflight
 - **WHEN** a mutating operation starts
 - **THEN** it validates printer state, prior state, targets, paths, bundle contents, and required storage before backup or writes

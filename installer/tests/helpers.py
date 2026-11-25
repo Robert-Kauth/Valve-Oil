@@ -571,7 +571,7 @@ def moonraker_urlopen(
 ):
     payload = raw_payload
     if payload is None:
-        payload = {"result": {"status": {"print_stats": {"state": state}}}}
+        payload = {"result": {"status": {"print_stats": {"state": state}, "virtual_sdcard": {"is_active": False}}}}
     process = {"pid": 100}
 
     def saved_variables():

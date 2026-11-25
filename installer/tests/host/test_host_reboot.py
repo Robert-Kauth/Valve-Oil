@@ -322,6 +322,7 @@ class HostRebootTests(unittest.TestCase):
             return moonraker_urlopen(raw_payload={"result": {"status": {
                 "heaters": {"available_heaters": ["extruder", "heater_generic heater_box1"]},
                 "print_stats": {"state": print_state},
+                "virtual_sdcard": {"is_active": False},
                 "webhooks": {"state": webhooks},
                 "idle_timeout": {"state": command},
                 "toolhead": {"print_time": 1000.0, "estimated_print_time": 1000.0 + still_for},

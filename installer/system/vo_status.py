@@ -557,7 +557,7 @@ def status_body(jobs: Jobs) -> dict:
     settings = update_settings()
     outside = not in_window(settings)
     live = live_printer()
-    busy = jobs.busy() or _run_active(_record(data.get("run")))
+    busy = jobs.busy() or _run_active(_record(data.get("run"))) or installer_lock_held()
     pending = [item for item in map(_pending, _records(data.get("pending"))) if _still_waiting(item, installed)]
     for item in pending:
         item["blocked_by"] = _live_blockers(item["blocked_by"], live, enabled,
@@ -996,15 +996,20 @@ def live_printer() -> tuple[str, ...] | None:
     printing (or paused), heaters_on, klipper_not_ready, or printer_state_unknown; None when Moonraker can't be
     read."""
     try:
-        status = _moonraker_objects(("print_stats", "webhooks", "heaters"))
+        status = _moonraker_objects(("print_stats", "virtual_sdcard", "webhooks", "heaters"))
     except (OSError, ValueError, KeyError, TypeError):
         return None
     state = _record(status.get("print_stats")).get("state")
     if not isinstance(state, str) or not state:
         # A Klipper halted on an error has no print state; nothing is updated onto it.
         return ("klipper_not_ready",) if _klipper_state() == "error" else ("printer_state_unknown",)
-    if state in ("printing", "paused"):
+    active = _record(status.get("virtual_sdcard")).get("is_active")
+    if not isinstance(active, bool):
+        return ("printer_state_unknown",)
+    if active or state in ("printing", "paused", "extracting"):
         return ("printing",)
+    if state not in ("standby", "complete", "cancelled", "error"):
+        return ("printer_state_unknown",)
     if _record(status.get("webhooks")).get("state") != "ready":
         return ("klipper_not_ready",)
     heaters = _record(status.get("heaters")).get("available_heaters")

@@ -1441,6 +1441,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.fail(f"Unexpected URL: {url}")
             names = [urllib.parse.unquote(part.split("=")[0]) for part in urllib.parse.urlsplit(url).query.split("&")]
             status = {"print_stats": {"state": state["print"]}, "webhooks": {"state": "ready"},
+                      "virtual_sdcard": {"is_active": False},
                       "heaters": {"available_heaters": []},
                       **{name: {"mcu_version": version} for name, version in versions.items()}}
             return _JsonResponse({"result": {"status": {name: status[name] for name in names if name in status}}})
