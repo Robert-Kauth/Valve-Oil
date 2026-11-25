@@ -29,7 +29,7 @@ class PrintGuardTests(unittest.TestCase):
                 if command not in printer.gcode.ready_gcode_handlers:
                     continue  # QIDI recovery is not present on every model.
                 with self.subTest(printer=printer_id, command=command):
-                    with acquire(lock), self.assertRaisesRegex(printer.command_error, "Valve Oil is updating"):
+                    with acquire(lock), self.assertRaisesRegex(printer.command_error, "Another printer operation is in progress"):
                         printer.run(command)
                     self.assertFalse(printer.status("virtual_sdcard")["is_active"])
                     self.assertEqual(printer.status("extruder")["target"], 0.)
@@ -37,26 +37,45 @@ class PrintGuardTests(unittest.TestCase):
             printer.print_file("M118 MSG=print_admission_pass\n")
             self.assertEqual(printer.status("print_stats")["state"], "complete")
 
-    def test_paused_print_resume_and_native_aliases_wait_without_moving(self):
+    def test_paused_print_and_native_aliases_resume_during_an_hourly_check(self):
         from installer.tests.gcode_flow import slicer
 
         for printer_id in FIRMWARE:
             for pack in slicer.PACKS:
-                with self.subTest(printer=printer_id, slicer=pack):
-                    printer = self.printer(printer_id)
-                    printer.start_print(slicer.print_with_pause(pack, printer_id).text, nozzle=220.)
-                    self.assertEqual(printer.status("print_stats")["state"], "paused")
-                    assert printer.toolhead is not None
-                    moves = len(printer.toolhead.moves)
-                    with acquire(printer.root / ".vo_installer.lock"):
-                        for command in ("RESUME", "_KM_RESUME_BASE", "RESUME_PRINT", "M24.6245197"):
-                            with self.assertRaisesRegex(printer.command_error, "Valve Oil is updating"):
-                                printer.run(command)
-                        self.assertEqual(len(printer.toolhead.moves), moves)
-                        self.assertTrue(printer.status("pause_resume")["is_paused"])
-                    printer.run("RESUME")
-                    printer.reactor.advance(printer.reactor.monotonic())
-                    self.assertEqual(printer.status("print_stats")["state"], "complete")
+                for command in ("RESUME", "_KM_RESUME_BASE", "RESUME_PRINT", "TRY_RESUME_PRINT", "M24.6245197"):
+                    with self.subTest(printer=printer_id, slicer=pack, command=command):
+                        printer = self.printer(printer_id)
+                        printer.start_print(slicer.print_with_pause(pack, printer_id).text, nozzle=220.)
+                        self.assertEqual(printer.status("print_stats")["state"], "paused")
+                        with acquire(printer.root / ".vo_installer.lock"):
+                            printer.run(command)
+                            printer.reactor.advance(printer.reactor.monotonic())
+                        self.assertEqual(printer.status("print_stats")["state"], "complete")
+
+    def test_slicer_print_start_does_not_readmit_an_active_sd_print(self):
+        from installer.tests.gcode_flow import sdcard, slicer
+
+        for printer_id in FIRMWARE:
+            printer = self.printer(printer_id)
+            sdcard.point_at(printer)
+            path = printer.root / ".cache" / "already-admitted.gcode"
+            printer.set_filament_detected(True)
+            path.write_text(slicer.print_from_start("orca", printer_id, filaments=[slicer.Filament()] * 8, tool=0).text)
+            printer.run("SDCARD_PRINT_FILE FILENAME=already-admitted.gcode")
+            self.assertTrue(printer.status("virtual_sdcard")["is_active"])
+            with acquire(printer.root / ".vo_installer.lock"):
+                printer.reactor.advance(printer.reactor.monotonic())
+            self.assertEqual(printer.status("print_stats")["state"], "complete")
+
+    def test_read_only_installer_lock_does_not_block_printing(self):
+        printer = self.printer()
+        lock = printer.root / ".vo_installer.lock"
+        lock.touch(mode=0o444)
+        try:
+            printer.print_file("M118 MSG=read_only_lock_pass\n")
+            self.assertEqual(printer.status("print_stats")["state"], "complete")
+        finally:
+            lock.chmod(0o600)
 
     def test_print_admission_holds_lock_until_sd_work_is_visible(self):
         """An update loses during start; after start it sees active SD before print_stats updates."""

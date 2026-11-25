@@ -37,27 +37,31 @@ def run_update_now(*, paths: RuntimePaths, reporter, environ: dict[str, str], ur
     does the board work installs do.
     """
     job = environ.get(JOB_ENV) or None
-    pending = firmware_update.load_record(paths)
-    if pending is not None:
-        # The firmware update's own run reports progress; this job is linked to it, or to the run it starts.
-        record = None
-        if job is not None and not valve_oil_status.attach_job(paths, job):
-            record = valve_oil_status.begin_run(paths, kind="update_now", step="resume",
-                                                step_label="Continuing the firmware update", job=job,
-                                                firmware_update=pending.get("id"))
-        result = firmware_update.resume_firmware_update(paths=paths, reporter=reporter, environ=environ, run=run,
-                                                        urlopen=urlopen)
-        if result.state != firmware_update.NOT_NEEDED:
-            if record is not None:  # a no-op once the firmware update's run has replaced it
-                valve_oil_status.finish_run(paths, record.id, message=result.message, state=(
-                    valve_oil_status.SUCCEEDED if result.state == firmware_update.SUCCEEDED
-                    else valve_oil_status.FAILED))
-            return result.state == firmware_update.SUCCEEDED
-        # Another release's record, dropped as nothing of it was installed: go on with the latest release.
-        if record is not None:
-            valve_oil_status.finish_run(paths, record.id, state=valve_oil_status.SUCCEEDED, message=result.message)
     record = None
     try:
+        pending = firmware_update.load_record(paths)
+        if pending is not None:
+            # The firmware update's own run reports progress; this job follows it.
+            if job is not None and not valve_oil_status.attach_job(paths, job):
+                with acquire(paths.lock_path):
+                    # A run may have started since the first attach attempt.
+                    if not valve_oil_status.attach_job(paths, job):
+                        record = valve_oil_status.begin_run(paths, kind="update_now", step="resume",
+                                                            step_label="Continuing the firmware update", job=job,
+                                                            firmware_update=pending.get("id"))
+            # The firmware unit needs the installer lock itself; do not hold it while following.
+            result = firmware_update.resume_firmware_update(paths=paths, reporter=reporter, environ=environ, run=run,
+                                                            urlopen=urlopen)
+            if result.state != firmware_update.NOT_NEEDED:
+                if record is not None:  # a no-op once the firmware update's run has replaced it
+                    valve_oil_status.finish_run(paths, record.id, message=result.message, state=(
+                        valve_oil_status.SUCCEEDED if result.state == firmware_update.SUCCEEDED
+                        else valve_oil_status.FAILED))
+                return result.state == firmware_update.SUCCEEDED
+            # Another release's record, dropped as nothing of it was installed: go on with the latest release.
+            if record is not None:
+                valve_oil_status.finish_run(paths, record.id, state=valve_oil_status.SUCCEEDED, message=result.message)
+            record = None
         with acquire(paths.lock_path):
             record = valve_oil_status.begin_run(
                 paths, kind="update_now", step="check", step_label="Checking that the printer is idle", job=job)

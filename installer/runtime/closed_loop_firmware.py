@@ -33,6 +33,9 @@ import urllib.parse
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from .errors import PrinterStateError
+from .safety import print_in_progress
+
 AXES = ("x", "y")
 HARDWARE = "9.1"  # what the admitted drivers report: 0x80 | encoder direction << 4 | 1, not a board identity
 MAX_TRANSFERS = 3  # per driver per run
@@ -268,8 +271,8 @@ def idle_blocker(api: KlipperAPI) -> str | None:
     if api.state() != "ready":
         return "printer_state_unknown"
     try:
-        status = api.query("print_stats", "pause_resume", "idle_timeout", "heaters")
-        if status["print_stats"]["state"] in ("printing", "paused") or (status.get("pause_resume") or {}).get(
+        status = api.query("print_stats", "virtual_sdcard", "pause_resume", "idle_timeout", "heaters")
+        if print_in_progress(status) or (status.get("pause_resume") or {}).get(
                 "is_paused"):
             return "printing"
         if (status.get("idle_timeout") or {}).get("state") == "Printing":
@@ -279,7 +282,7 @@ def idle_blocker(api: KlipperAPI) -> str | None:
         targets = api.query(*heaters) if heaters else {}
         if any(float((targets.get(name) or {}).get("target") or 0) != 0 for name in heaters):
             return "heaters_on"
-    except (KlipperError, KeyError, TypeError, ValueError):
+    except (KlipperError, PrinterStateError, KeyError, TypeError, ValueError):
         return "printer_state_unknown"
     return None
 

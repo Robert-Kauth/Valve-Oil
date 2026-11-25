@@ -1458,8 +1458,13 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid/printer/objects/query?print_stats")
         env["VO_AUTO_UPDATE_CHECKSUM_URL"] = "https://example.invalid/latest.sha256"
         before = snapshot_tree(printer_root)
-        check = functools.partial(run_auto_update_check, urlopen=urlopen, run=forbidden, start_firmware=forbidden,
-                                  deliver=forbidden, read_session=forbidden)
+        def check(**kwargs):
+            from installer.runtime.locking import acquire_shared
+
+            with acquire_shared(paths.lock_path):
+                # Print admission can proceed throughout an unenrolled check.
+                return run_auto_update_check(**kwargs, urlopen=urlopen, run=forbidden, start_firmware=forbidden,
+                                             deliver=forbidden, read_session=forbidden)
         with mock.patch("installer.runtime.cli.run_auto_update_check", side_effect=check), \
                 mock.patch("installer.runtime.cli.repair_installer_ownership", side_effect=forbidden), \
                 mock.patch("installer.runtime.cli.recover_pending_system_optimization", side_effect=forbidden), \

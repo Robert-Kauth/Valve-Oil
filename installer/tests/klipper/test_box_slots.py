@@ -989,10 +989,20 @@ class PrintDryingAdmissionTests(QuietTestCase):
         with self.assertRaisesRegex(CommandError, "Box drying can't start"):
             gcode.run_script("BOX_START_DRYING BOX=2 TEMP=65 TIME=3")
         self.assertEqual(started, [])
+        printer.objects["virtual_sdcard"] = types.SimpleNamespace(is_active=lambda: False)
         printer.objects["box_extras"] = types.SimpleNamespace(get_status=lambda eventtime: {"boxes": None})
         with self.assertRaisesRegex(CommandError, "Cannot read Box drying state"):
             gcode.run_script("SDCARD_PRINT_FILE FILENAME=part.gcode")
         self.assertEqual(started, [])
+
+    def test_only_running_drying_blocks_a_new_print(self):
+        for dry_state in (None, -1, 2, "unknown"):
+            with self.subTest(dry_state=dry_state):
+                gcode, started, printer = self.printer(())
+                printer.objects["box_extras"] = types.SimpleNamespace(
+                    get_status=lambda eventtime: {"boxes": [{"dry_state": dry_state}]})
+                gcode.run_script("SDCARD_PRINT_FILE FILENAME=part.gcode")
+                self.assertEqual(started, ["SDCARD_PRINT_FILE"])
 
     def test_drying_starts_only_outside_a_print(self):
         for state, refused in (("standby", False), ("complete", False), ("cancelled", False),

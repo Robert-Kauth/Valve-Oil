@@ -14,6 +14,8 @@ from typing import Callable
 from .errors import (ActivePrintError, FreeSpaceError, HeaterOnError, InstallerError, KlipperBusyError, KlipperNotReadyError,
                      PrinterStateError, RecoveryRequiredError)
 
+BUSY_PRINT_STATES = frozenset({"printing", "paused", "extracting"})
+
 DiskUsageFn = Callable[[Path], object]
 UrlOpenFn = Callable[..., object]
 
@@ -96,6 +98,11 @@ def query_printer_state(
         status = _query_objects(url, ("print_stats", "virtual_sdcard"), timeout=timeout, urlopen=urlopen)
     except (OSError, urllib.error.URLError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise PrinterStateError() from exc
+    return print_state(status)
+
+
+def print_state(status: dict) -> str:
+    """Validate a Klipper snapshot, including SD work not yet reflected in print_stats."""
     try:
         state = status["print_stats"]["state"]
         active = status["virtual_sdcard"]["is_active"]
@@ -106,6 +113,10 @@ def query_printer_state(
             or not isinstance(active, bool)):
         raise PrinterStateError()
     return "printing" if active else state
+
+
+def print_in_progress(status: dict) -> bool:
+    return print_state(status) in BUSY_PRINT_STATES
 
 
 def ensure_printer_idle(
@@ -131,7 +142,7 @@ def ensure_printer_idle(
     while True:
         try:
             state = query_printer_state(url, timeout=timeout, urlopen=urlopen)
-            if state in {"printing", "paused", "extracting"}:
+            if state in BUSY_PRINT_STATES:
                 raise ActivePrintError()
             # Klipper can go away between the two reads; the heaters are then read again with the state.
             if _heater_on(url, timeout=timeout, urlopen=urlopen):
@@ -199,10 +210,7 @@ def ensure_klipper_idle(
             timeout=timeout,
             urlopen=urlopen,
         )
-        active = status["virtual_sdcard"]["is_active"]
-        if not isinstance(active, bool):
-            raise PrinterStateError()
-        if active or status["print_stats"]["state"] in {"printing", "paused", "extracting"}:
+        if print_in_progress(status):
             raise ActivePrintError()
         if status["webhooks"]["state"] != "ready":
             raise PrinterStateError()

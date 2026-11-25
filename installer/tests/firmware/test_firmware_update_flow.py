@@ -235,8 +235,9 @@ class Klipper:
 
     def _object(self, name):
         p = self.printer
-        if name in ("print_stats", "pause_resume", "idle_timeout", "heaters", "extruder"):
-            return {"print_stats": {"state": p.print_state}, "pause_resume": {"is_paused": False},
+        if name in ("print_stats", "virtual_sdcard", "pause_resume", "idle_timeout", "heaters", "extruder"):
+            return {"print_stats": {"state": p.print_state}, "virtual_sdcard": {"is_active": False},
+                    "pause_resume": {"is_paused": False},
                     "idle_timeout": {"state": "Idle"}, "heaters": {"available_heaters": ["extruder"]},
                     "extruder": {"target": p.heater}}[name]
         if name == "configfile":

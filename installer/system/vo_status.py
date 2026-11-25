@@ -191,7 +191,7 @@ KLIPPER_SWITCH_BLOCKERS = {
     "printing": "a print is running or paused",
     "printer_state_unknown": "Moonraker didn't answer, so whether a print is running isn't known",
     "run_in_progress": "a Valve Oil update is running",
-    "installer_busy": "another installer run is in progress",
+    "installer_busy": "another printer operation is in progress",
     "firmware_update_pending": "a QIDI firmware update hasn't finished; finish it with Update now or ./install.sh first",
     "valve_oil_unavailable": "Valve Oil's Klipper isn't available",
 }
@@ -235,7 +235,7 @@ LIVE_BLOCKERS = {
 OUTSIDE_WINDOW = "it's outside the update window"
 UPDATE_NOW_BLOCKERS = {
     "run_in_progress": "another update is still running",
-    "installer_busy": "another installer run is in progress",
+    "installer_busy": "another printer operation is in progress",
     "installer_missing": "Valve Oil's installer is not in " + str(BUNDLE),
 }
 UNINSTALL_BLOCKERS = {
@@ -557,7 +557,8 @@ def status_body(jobs: Jobs) -> dict:
     settings = update_settings()
     outside = not in_window(settings)
     live = live_printer()
-    busy = jobs.busy() or _run_active(_record(data.get("run"))) or installer_lock_held()
+    run_busy = jobs.busy() or _run_active(_record(data.get("run")))
+    busy = run_busy or installer_lock_held()
     pending = [item for item in map(_pending, _records(data.get("pending"))) if _still_waiting(item, installed)]
     for item in pending:
         item["blocked_by"] = _live_blockers(item["blocked_by"], live, enabled,
@@ -588,9 +589,9 @@ def status_body(jobs: Jobs) -> dict:
         "job": jobs.current(data.get("run")),
         "busy": busy,
         "printer_busy": live is not None and "printing" in live,
-        "update_now": _update_now(busy, live),
-        "uninstall": _uninstall(busy, live),
-        "klipper": klipper_body(live, busy),
+        "update_now": _update_now(run_busy, live),
+        "uninstall": _uninstall(run_busy, live),
+        "klipper": klipper_body(live, run_busy),
     }
     body["support"] = {"issue_url": support_issue_url(body)}
     return body
@@ -1104,7 +1105,7 @@ def _uninstall(busy: bool, live: tuple[str, ...] | None) -> dict:
 
 
 def installer_lock_held() -> bool:
-    """Whether an installer run holds its lock, from the kernel's lock table, without taking the lock."""
+    """Whether an exclusive installer lock is held, without mistaking a shared admission or probe for an update."""
     try:
         info = INSTALLER_LOCK.stat()
         table = PROC_LOCKS.read_text(encoding="utf-8")
@@ -1113,7 +1114,7 @@ def installer_lock_held() -> bool:
     device = f"{os.major(info.st_dev):02x}:{os.minor(info.st_dev):02x}:{info.st_ino}"
     for line in table.splitlines():
         fields = line.split()
-        if len(fields) > 5 and fields[1] == "FLOCK" and device in fields:
+        if len(fields) > 5 and fields[1] == "FLOCK" and fields[3] == "WRITE" and fields[5] == device:
             return True
     return False
 

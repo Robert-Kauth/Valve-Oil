@@ -62,10 +62,14 @@ class PrintGuard:
 
     def _guarded(self, name, original, admission):
         def handler(gcmd):
+            # Admission already happened before SD work became active. Hourly
+            # checks must not interrupt PRINT_START or a paused print's resume.
+            if admission is not Admission.DRY and self._print_active():
+                return original(gcmd)
             handle = None
             try:
                 handle = os.open(os.path.join(self.data_dir, INSTALLER_LOCK),
-                                 os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW
+                                 os.O_CREAT | os.O_RDONLY | os.O_NOFOLLOW
                                  | os.O_CLOEXEC | os.O_NONBLOCK, 0o600)
                 if not stat.S_ISREG(os.fstat(handle).st_mode):
                     raise OSError("Installer lock is not a regular file")
@@ -75,7 +79,7 @@ class PrintGuard:
                     os.close(handle)
                 if handle is not None and exc.errno in (errno.EAGAIN, errno.EACCES):
                     logging.info("vo_print_guard: %s refused: installer busy", name)
-                    raise gcmd.error("Valve Oil is updating. Wait for it to finish before starting a print or drying.")
+                    raise gcmd.error("Another printer operation is in progress. Wait for it to finish before starting a print or drying.")
                 logging.exception("vo_print_guard: %s could not acquire %s", name, INSTALLER_LOCK)
                 raise gcmd.error("Cannot verify Valve Oil update safety. Check the Klipper log before printing.")
             try:
@@ -97,15 +101,16 @@ class PrintGuard:
             return None
         return print_stats.get_status(self.printer.get_reactor().monotonic()).get("state")
 
+    def _print_active(self):
+        sd = self.printer.lookup_object("virtual_sdcard", None)
+        return self._print_state() in ("extracting", "printing", "paused") or (sd is not None and sd.is_active())
+
     def _check_drying(self, gcmd, admission):
         if admission is Admission.DRY:
-            sd = self.printer.lookup_object("virtual_sdcard", None)
-            if self._print_state() in ("extracting", "printing", "paused") or (sd is not None and sd.is_active()):
+            if self._print_active():
                 raise gcmd.error("Box drying can't start during a print. Set the Box heater target instead.")
             return
         if admission not in (Admission.START, Admission.START_OR_RESUME):
-            return
-        if admission is Admission.START_OR_RESUME and self._print_state() == "paused":
             return
         try:
             boxes = self.drying_boxes()
@@ -126,7 +131,7 @@ class PrintGuard:
             return []
         eventtime = self.printer.get_reactor().monotonic()
         boxes = box_extras.get_status(eventtime).get("boxes")
-        if not isinstance(boxes, list) or any(not hasattr(box, "get") or box.get("dry_state") not in (0, 1) for box in boxes):
+        if not isinstance(boxes, list) or any(not hasattr(box, "get") for box in boxes):
             raise ValueError("Invalid Box drying status")
         return [number for number, box in enumerate(boxes, 1)
                 if box.get("dry_state") == 1]
