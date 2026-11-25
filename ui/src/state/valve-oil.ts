@@ -405,6 +405,35 @@ export function shownUpdate(view: VoStatusView | null, dismissed: string[]): VoU
 /** Whether an update is running, or the printer went quiet during one: what the app shell warns about. */
 export const updateRunning = (s: ValveOilState) => s.status?.busy === true || (s.expectUpdate && s.reconnectingSince != null)
 
+/** The live Klipper warning closes the gap before the status service poll sees an automatic update start. */
+export const printerReportsUpdateRunning = (s: PrinterState) => klipperSeesUpdate(s) === true
+
+/** Current imperative guard for actions that must not run while Valve Oil is updating. */
+export const updateRunningNow = () => updateRunning(valveOil.get()) || printerReportsUpdateRunning(printer.get())
+
+/** The fresh update state required before a consequential action can run. */
+export type LiveUpdateState = 'running' | 'idle' | 'unknown'
+const LIVE_UPDATE_STATE_TIMEOUT_MS = 5_000
+
+/** Rechecks the status service immediately before a consequential action instead of trusting the last poll. */
+export async function readLiveUpdateState(): Promise<LiveUpdateState> {
+  if (updateRunningNow()) return 'running'
+  try {
+    const status = parseVoStatus(await request('/status', 'GET', AbortSignal.timeout(LIVE_UPDATE_STATE_TIMEOUT_MS)))
+    // A poll or live Klipper warning may have observed the update while this request was in flight. Never let an
+    // older idle response overwrite that newer safety state or authorize the action that requested this check.
+    if (updateRunningNow()) return 'running'
+    if (!status) return 'unknown'
+    applyStatus(status)
+    return status.busy || printerReportsUpdateRunning(printer.get()) ? 'running' : 'idle'
+  } catch {
+    // A live Klipper warning or an update already seen by the page still wins if the status service is restarting.
+    return updateRunningNow() ? 'running' : 'unknown'
+  }
+}
+
 export function useUpdateRunning(): boolean {
-  return useStore(valveOil, updateRunning)
+  const statusRunning = useStore(valveOil, updateRunning)
+  const warningRunning = useStore(printer, printerReportsUpdateRunning)
+  return statusRunning || warningRunning
 }

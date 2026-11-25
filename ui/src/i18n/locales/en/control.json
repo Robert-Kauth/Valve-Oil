@@ -125,6 +125,7 @@
     "target_temperature": "Target temperature (°C)",
     "fan_breakpoints": "Fan breakpoints",
     "calibrate_note": "Runs {{command}}, which heats the {{name}} and takes a few minutes. Use a target close to what you print at. SAVE_CONFIG keeps the result and restarts Klipper.",
+    "calibrate_locked": "Calibration can’t start while the printer is printing.",
     "temperature_fans": "Temperature fans",
     "fan_speed": "{{temp}} · fan {{speed}}%",
     "sensors": "Sensors",

@@ -1,9 +1,118 @@
 // The System screen's calculations, one block per source file.
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createBuffer, klipperChartValues, mcuChartValues, pushSample } from './chart-data'
 import { collectorPath, referencedObjects } from './collectors'
 import { MAX_LINES, tailText } from './log-tail'
 import { faultReportName, parseFaultCheck } from './fault-check'
+
+function fakeStorage() {
+  const values = new Map<string, string>()
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => void values.set(key, value),
+    removeItem: (key: string) => void values.delete(key),
+  }
+}
+
+function statusResponse(busy: boolean) {
+  return new Response(
+    JSON.stringify({
+      schema: 1,
+      updated_at: '2026-11-23T20:00:00Z',
+      release: { installed: '26.11.23.1' },
+      printer: { id: 'max4', name: 'QIDI Max 4', firmware: '01.01.07.01', target_firmware: '01.01.07.01' },
+      auto_update: { enabled: true, scheduled: true },
+      check: { at: '2026-11-23T20:00:00Z', result: 'ok', message: '', next_at: null },
+      pending: [],
+      boards: [],
+      run: null,
+      job: null,
+      busy,
+      printer_busy: false,
+      update_now: { allowed: !busy, blocked_by: busy ? [{ code: 'run_in_progress', message: 'an update is running' }] : [] },
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  )
+}
+
+type LiveCase = 'idle' | 'running' | 'network failure' | 'HTTP failure' | 'timeout' | 'malformed payload' | 'stale cache'
+type ActionCase = 'klipper service start' | 'klipper service stop' | 'klipper service restart' | 'moonraker service start' | 'moonraker service restart' | 'Klipper restart' | 'firmware restart' | 'Klipper service recovery' | 'host reboot' | 'host shutdown'
+
+async function actionHarness(state: LiveCase) {
+  vi.resetModules()
+  vi.stubGlobal('location', new URL('http://printer.test/valve-oil/'))
+  vi.stubGlobal('localStorage', fakeStorage())
+  vi.stubGlobal('sessionStorage', fakeStorage())
+  vi.stubGlobal('document', { hidden: false, addEventListener: () => {} })
+  const response = state === 'idle' || state === 'stale cache' ? statusResponse(false)
+    : state === 'running' ? statusResponse(true)
+      : state === 'malformed payload' ? new Response('{}', { status: 200 })
+        : state === 'HTTP failure' ? new Response(JSON.stringify({ error: 'unavailable' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+          : state === 'timeout' ? new DOMException('The operation timed out', 'TimeoutError')
+            : new TypeError('Failed to fetch')
+  const fetchMock = vi.fn().mockImplementation(() => (response instanceof Error ? Promise.reject(response) : Promise.resolve(response)))
+  vi.stubGlobal('fetch', fetchMock)
+  const actions = await import('./Services')
+  const { client } = await import('../../state/printer')
+  if (state === 'stale cache') {
+    const { readLiveUpdateState } = await import('../../state/valve-oil')
+    expect(await readLiveUpdateState()).toBe('idle')
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+  }
+  const call = vi.spyOn(client, 'call').mockResolvedValue(undefined)
+  return { actions, call }
+}
+
+async function runAction(action: ActionCase, state: LiveCase, goAheadUnchecked = false) {
+  const { actions, call } = await actionHarness(state)
+  const unchecked = vi.fn().mockResolvedValue(goAheadUnchecked)
+  if (action === 'klipper service start') await actions.dispatchServiceAction('klipper', 'start', 'idle', unchecked)
+  else if (action === 'klipper service stop') await actions.dispatchServiceAction('klipper', 'stop', 'idle', unchecked)
+  else if (action === 'klipper service restart') await actions.dispatchServiceAction('klipper', 'restart', 'idle', unchecked)
+  else if (action === 'moonraker service start') await actions.dispatchServiceAction('moonraker', 'start', 'idle', unchecked)
+  else if (action === 'moonraker service restart') await actions.dispatchServiceAction('moonraker', 'restart', 'idle', unchecked)
+  else if (action === 'Klipper restart') await actions.dispatchKlipperAction('restart', 'idle', unchecked)
+  else if (action === 'firmware restart') await actions.dispatchKlipperAction('firmware-restart', 'idle', unchecked)
+  else if (action === 'Klipper service recovery') await actions.dispatchKlipperAction('service-restart', 'idle', unchecked)
+  else if (action === 'host reboot') await actions.dispatchHostPowerAction('reboot', 'idle', unchecked)
+  else await actions.dispatchHostPowerAction('shutdown', 'idle', unchecked)
+  const expectedMethod = action === 'Klipper restart' ? 'printer.restart'
+    : action === 'firmware restart' ? 'printer.firmware_restart'
+      : action === 'host reboot' ? 'machine.reboot'
+        : action === 'host shutdown' ? 'machine.shutdown'
+          : action === 'klipper service start' || action === 'moonraker service start' ? 'machine.services.start'
+            : action === 'klipper service stop' ? 'machine.services.stop'
+              : 'machine.services.restart'
+  const expectedService = action === 'moonraker service start' || action === 'moonraker service restart' ? 'moonraker'
+    : action === 'klipper service start' || action === 'klipper service stop' || action === 'klipper service restart' || action === 'Klipper service recovery' ? 'klipper'
+      : null
+  return { sent: call.mock.calls.filter(([method, params]) => method === expectedMethod && (expectedService == null || params?.service === expectedService)), asked: unchecked.mock.calls.length }
+}
+
+afterEach(() => vi.unstubAllGlobals())
+
+describe('consequential actions', () => {
+  const actions: ActionCase[] = ['klipper service start', 'klipper service stop', 'klipper service restart', 'moonraker service start', 'moonraker service restart', 'Klipper restart', 'firmware restart', 'Klipper service recovery', 'host reboot', 'host shutdown']
+
+  const unknownStates: LiveCase[] = ['network failure', 'HTTP failure', 'timeout', 'malformed payload', 'stale cache']
+
+  it.each(actions)('dispatches %s once after a fresh idle read, without asking', async (action) => {
+    expect(await runAction(action, 'idle')).toEqual({ sent: [expect.anything()], asked: 0 })
+  })
+
+  it.each(actions)('does not dispatch %s, or offer to, while an update runs', async (action) => {
+    expect(await runAction(action, 'running', true)).toEqual({ sent: [], asked: 0 })
+  })
+
+  it.each(actions.flatMap((action) => unknownStates.map((state) => [action, state] as const)))('asks before %s when the live state is %s, and holds it when declined', async (action, state) => {
+    expect(await runAction(action, state, false)).toEqual({ sent: [], asked: 1 })
+  })
+
+  // Restarting Klipper or rebooting is how an operator recovers a status service that doesn't answer.
+  it.each(actions.flatMap((action) => unknownStates.map((state) => [action, state] as const)))('dispatches %s once when the operator goes ahead with the live state %s', async (action, state) => {
+    expect(await runAction(action, state, true)).toEqual({ sent: [expect.anything()], asked: 1 })
+  })
+})
 
 describe('chart-data.ts', () => {
   describe('mcuChartValues', () => {

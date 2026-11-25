@@ -31,7 +31,14 @@ export function Toasts() {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-20 z-70 flex flex-col items-center gap-2 px-4 md:bottom-6">
       {list.map((item) => (
-        <div key={item.id} className="pointer-events-auto flex max-w-[520px] items-start gap-2.5 rounded-xl bg-surface px-3.5 py-2.5" style={{ boxShadow: 'var(--shadow-overlay)' }}>
+        <div
+          key={item.id}
+          className="pointer-events-auto flex max-w-[520px] items-start gap-2.5 rounded-xl bg-surface px-3.5 py-2.5"
+          style={{ boxShadow: 'var(--shadow-overlay)' }}
+          role={item.tone === 'error' ? 'alert' : 'status'}
+          aria-live={item.tone === 'error' ? 'assertive' : 'polite'}
+          aria-atomic="true"
+        >
           {item.tone === 'error' ? <CircleAlert size={17} className="mt-px flex-none text-bad" /> : <CircleCheck size={17} className="mt-px flex-none text-good" />}
           <span className="min-w-0 flex-1 break-words">{item.text}</span>
           <button className="iconbtn -my-1 -mr-2 h-7 w-7" onClick={() => dismiss(item.id)} aria-label={t('common.dismiss')}>

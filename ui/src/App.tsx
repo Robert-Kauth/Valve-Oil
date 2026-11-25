@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useRef, useState, type ReactNode } from 'react'
 import {
   Cpu,
   Ellipsis,
@@ -18,14 +18,14 @@ import {
   X,
 } from 'lucide-react'
 import { href, useRoute, type Route } from './lib/router'
-import { client, runGcode, usePrinter } from './state/printer'
+import { client, usePrinter } from './state/printer'
 import { useJob, useJobActive, jobProgress } from './state/job'
 import { useBoxBusy, useBoxPresent } from './state/box'
 import { useWarnings } from './state/warnings'
 import { Toasts, attempt } from './components/toast'
 import { UploadsPanel } from './components/Upload'
 import { BedScrewsDialog, ManualProbeDialog } from './components/tune/HelperDialogs'
-import { AskHost, Loading, confirm } from './components/ui'
+import { AskHost, Loading, confirm, useModalFocus } from './components/ui'
 import { LogoMark } from './components/Logo'
 import { NotificationsButton } from './components/Notifications'
 import { HealthButton } from './components/Panels'
@@ -40,6 +40,7 @@ import { installStepText, installTitle } from './components/updates/Install'
 import { fluiddUrl } from './lib/links'
 import { useTheme } from './lib/theme'
 import { t, type MessageKey } from './i18n'
+import { confirmAndSaveConfig } from './components/save-config'
 
 // Screens other than Home and Updates load when first opened, so the first page a tablet shows is small.
 const FilesScreen = lazy(() => import('./screens/Files').then((m) => ({ default: m.FilesScreen })))
@@ -90,6 +91,7 @@ export function App() {
   const conn = usePrinter((s) => s.conn)
   const klippy = usePrinter((s) => s.klippy)
   const boxPresent = useBoxPresent()
+  const klippyMessage = usePrinter((s) => s.klippyMessage)
   const shown: Route = route === 'filaments' && !boxPresent && klippy === 'ready' ? 'home' : route
   // Uninstalling removes Valve Oil UI itself, so nothing else on the page is used until it ends.
   const uninstalling = useUninstallShown()
@@ -98,6 +100,7 @@ export function App() {
   // Updates talks to Valve Oil's status service, not Moonraker, so it stays up while an update restarts Moonraker.
   if (shown === 'updates') body = <UpdatesScreen />
   else if (conn !== 'open') body = <NotReady title={conn === 'connecting' ? t('app.conn.connecting') : t('app.conn.unreachable')} detail={t('app.conn.trying', { url: client.wsUrl })} />
+  else if (klippy === 'unknown' && NEEDS_KLIPPER.includes(shown)) body = <NotReady title={t('common.loading')} detail={klippyMessage} />
   else if (klippy !== 'ready' && NEEDS_KLIPPER.includes(shown)) body = <KlippyNotReady />
   else body = <Suspense fallback={<Loading className="py-16" size={24} />}>{SCREENS[shown]()}</Suspense>
 
@@ -106,7 +109,7 @@ export function App() {
   return (
     <div className="flex h-full">
       <aside className="rail hidden md:flex">
-        <a href={href('home')} className="mb-2 grid place-items-center pt-1 pb-1" title="Valve Oil">
+        <a href={href('home')} className="mb-2 grid place-items-center pt-1 pb-1" title="Valve Oil" aria-label={t('app.nav.home')}>
           <LogoMark height={46} />
         </a>
         {NAV.map((n) => (
@@ -125,7 +128,7 @@ export function App() {
         <TopBar />
         <UpdateBanner />
         <Warnings />
-        {klippy !== 'ready' && conn === 'open' && !NEEDS_KLIPPER.includes(shown) && shown !== 'updates' && <KlippyStrip />}
+        {klippy !== 'ready' && klippy !== 'unknown' && conn === 'open' && !NEEDS_KLIPPER.includes(shown) && shown !== 'updates' && <KlippyStrip />}
         <div className="min-h-0 flex-1 overflow-auto">
           <div className={cockpit ? 'h-full p-3.5 pb-24 md:p-[18px] md:pb-[18px]' : `mx-auto grid grid-cols-1 content-start gap-3.5 p-3.5 pb-24 md:p-[18px] md:pb-[18px] ${shown === 'system' ? '' : 'max-w-[1500px]'}`}>{body}</div>
         </div>
@@ -158,22 +161,34 @@ function RailItem({ item, on }: { item: NavItem; on: boolean }) {
 
 function MobileNav({ nav, route }: { nav: NavItem[]; route: Route }) {
   const [more, setMore] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const main = nav.filter((n) => n.mobile)
   const rest = [...nav.filter((n) => !n.mobile), ...NAV_END]
   const inRest = rest.some((n) => n.route === route)
   const cls = (on: boolean) => `grid justify-items-center gap-1 px-2 text-[10.5px] font-semibold ${on ? 'text-accent-ink' : 'text-ink-3'}`
+  // The More panel is modal for the keyboard, as a dialog is; focus goes back to More when it closes.
+  useModalFocus(more, panelRef, () => setMore(false), triggerRef)
   return (
     <>
       {more && (
         <div className="fixed inset-0 z-40 md:hidden" onClick={() => setMore(false)}>
-          <div className="absolute inset-x-2 bottom-[72px] grid grid-cols-4 gap-1 rounded-2xl bg-surface p-2" style={{ boxShadow: 'var(--shadow-overlay)' }}>
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('app.nav.more')}
+            className="absolute inset-x-2 bottom-[72px] grid grid-cols-3 gap-1 rounded-2xl bg-surface p-2 sm:grid-cols-4"
+            style={{ boxShadow: 'var(--shadow-overlay)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
             {rest.map((n) => (
-              <a key={n.route} href={href(n.route)} className={`rail-item w-auto ${route === n.route ? 'on' : ''}`}>
+              <a key={n.route} href={href(n.route)} className={`rail-item ${route === n.route ? 'on' : ''}`} onClick={() => setMore(false)}>
                 {n.icon}
                 {t(n.labelKey)}
               </a>
             ))}
-            <a href={fluiddUrl()} className="rail-item w-auto">
+            <a href={fluiddUrl()} className="rail-item" onClick={() => setMore(false)}>
               <ExternalLink size={20} />
               Fluidd
             </a>
@@ -187,7 +202,13 @@ function MobileNav({ nav, route }: { nav: NavItem[]; route: Route }) {
             {t(n.labelKey)}
           </a>
         ))}
-        <button className={`border-0 bg-transparent ${cls(inRest || more)}`} onClick={() => setMore((m) => !m)} aria-expanded={more}>
+        <button
+          ref={triggerRef}
+          className={`border-0 bg-transparent ${cls(inRest || more)}`}
+          onClick={() => setMore(!more)}
+          aria-expanded={more}
+          aria-haspopup="dialog"
+        >
           <Ellipsis size={I} />
           {t('app.nav.more')}
         </button>
@@ -229,7 +250,10 @@ function StatusPill() {
   const conn = usePrinter((s) => s.conn)
   const klippy = usePrinter((s) => s.klippy)
   const busy = useBoxBusy()
+  const connLost = usePrinter((s) => s.connLost)
   const idle = usePrinter((s) => s.status.idle_timeout?.state as string | undefined)
+  // Reconnect attempts after a drop stay Offline until one succeeds; only the first connection is loading.
+  if ((conn === 'connecting' && !connLost) || (conn === 'open' && klippy === 'unknown')) return <span className="pill">{t('common.loading')}</span>
   if (conn !== 'open') return <span className="pill tone-bad">{t('app.status.offline')}</span>
   if (klippy !== 'ready') return <span className="pill tone-bad">{klippyPill(klippy)}</span>
   if (job.state === 'printing') return <span className="pill tone-accent">{t('app.status.printing', { pct: Math.floor(jobProgress(job) * 100) })}</span>
@@ -288,11 +312,11 @@ function SaveConfigButton() {
   const sections = Object.keys(items ?? {})
   return (
     <button
-      className="btn btn-sm btn-primary mr-auto sm:mr-0"
+      className="btn btn-sm btn-primary max-w-full whitespace-normal"
       disabled={printing}
       title={printing ? t('app.save_config.waits') : undefined}
-      onClick={async () => {
-        const ok = await confirm({
+      onClick={() =>
+        confirmAndSaveConfig({
           title: t('app.save_config.confirm_title'),
           body: (
             <>
@@ -302,8 +326,7 @@ function SaveConfigButton() {
           ),
           confirm: t('app.save_config.confirm'),
         })
-        if (ok) attempt(() => runGcode('SAVE_CONFIG'))
-      }}
+      }
     >
       {t('app.save_config.button')}
     </button>
@@ -317,32 +340,32 @@ function TopBar() {
   // The model the installer detected (QIDI Max 4, Plus 5, or Smart 5), from Valve Oil's status service.
   const name = useStore(valveOil, (s) => s.status?.printer.name ?? null)
   return (
-    <div className="relative flex flex-wrap items-center gap-3 border-b border-line px-3.5 py-2.5 pt-[max(10px,env(safe-area-inset-top))] sm:flex-nowrap md:px-[18px]" style={{ background: 'var(--page)' }}>
-      <a href={href('home')} className="flex items-center gap-2.5 md:hidden">
+    <div className="topbar relative flex flex-wrap items-center gap-x-2 border-b border-line px-3.5 py-2.5 pt-[max(10px,env(safe-area-inset-top))] lg:gap-x-3 md:px-[18px]" style={{ background: 'var(--page)' }}>
+      <a href={href('home')} className="flex flex-none items-center gap-2.5 md:hidden" aria-label={t('app.nav.home')}>
         <LogoMark height={30} />
       </a>
       {/* i18n-ignore: the product's wordmark */}
-      <span className="wordmark hidden sm:inline">VALVE OIL</span>
+      <span className="wordmark hidden md:inline">VALVE OIL</span>
       {name && (
         <>
-          <span className="hidden text-ink-3 sm:inline">|</span>
-          <span className="hidden min-w-0 truncate font-semibold text-ink-2 sm:inline">{name}</span>
+          <span className="hidden text-ink-3 xl:inline">|</span>
+          <span className="hidden min-w-0 truncate font-semibold text-ink-2 xl:inline">{name}</span>
         </>
       )}
-      <StatusPill />
-      <div className="order-1 flex-1 sm:order-none" />
-      {/* On phones this is the top bar's second row, under the logo and E-stop; the Health and Notifications popups open below it. */}
-      <div className="order-2 flex w-full items-center justify-end gap-3 sm:contents">
+      {/* Status text must not displace the controls: on a phone it wraps onto its own row below them. */}
+      <div className="topbar-state order-last flex w-full min-w-0 flex-wrap items-center gap-2 empty:hidden max-md:[&:not(:empty)]:mt-2 md:order-none md:w-auto md:flex-initial [&_.pill]:max-w-full [&_.pill]:whitespace-normal [&_.pill]:[overflow-wrap:anywhere]">
+        <StatusPill />
         <SaveConfigButton />
-        <MiniTemps />
-        <HealthButton />
-        <NotificationsButton />
-        <button className="iconbtn" onClick={toggleTheme} aria-label={t('app.topbar.switch_theme')} title={t('app.topbar.switch_theme')}>
-          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-        </button>
       </div>
+      <div className="flex-1" />
+      <MiniTemps />
+      <HealthButton />
+      <NotificationsButton />
+      <button className="iconbtn" onClick={toggleTheme} aria-label={t('app.topbar.switch_theme')} title={t('app.topbar.switch_theme')}>
+        {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+      </button>
       <button
-        className="estop order-1 sm:order-none"
+        className="estop flex-none"
         disabled={conn !== 'open'}
         onClick={async () => {
           // Fluidd's "Confirm emergency stop" setting, shared with it.
@@ -351,8 +374,8 @@ function TopBar() {
         }}
         title={t('app.topbar.estop_title')}
       >
-        <X size={14} /> <span className="hidden sm:inline">{t('app.topbar.estop')}</span>
-        <span className="sm:hidden">{t('app.topbar.estop_short')}</span>
+        <X size={14} /> <span className="hidden lg:inline">{t('app.topbar.estop')}</span>
+        <span className="lg:hidden">{t('app.topbar.estop_short')}</span>
       </button>
     </div>
   )
@@ -397,7 +420,7 @@ const more = (to: string, text: string, external?: boolean) => (
 
 function NotReady({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="mx-auto mt-[8vh] grid w-full max-w-[560px] justify-items-center gap-3 p-6 text-center">
+    <div role="status" className="mx-auto mt-[8vh] grid w-full max-w-[560px] justify-items-center gap-3 p-6 text-center">
       <LogoMark height={84} />
       <div className="mt-2 text-[20px] font-bold">{title}</div>
       <div className="whitespace-pre-line text-ink-2">{detail}</div>

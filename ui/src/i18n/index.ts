@@ -8,6 +8,8 @@
 // from a language falls back to English.
 import { createStore } from '../lib/store'
 import { en } from './en'
+import { resolveLanguage, savedChoice, STORAGE_KEY, type Lang, type LangChoice } from './preference'
+export { LANGUAGES, browserLanguage, type Lang, type LangChoice } from './preference'
 
 export type Messages = typeof en
 
@@ -20,18 +22,6 @@ type Leaves<T, P extends string = ''> = {
 /** Every message's key, such as `settings.general.title`, with a plural message's suffixes left off. */
 export type MessageKey = Leaves<Messages>
 export type Vars = Record<string, string | number | null | undefined>
-
-export const LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'es', name: 'Español' },
-  { code: 'ru', name: 'Русский' },
-] as const
-export type Lang = (typeof LANGUAGES)[number]['code']
-/** A language picked in Settings, or `auto` to follow the browser. */
-export type LangChoice = Lang | 'auto'
-
-const STORAGE_KEY = 'vo-language'
-const isLang = (v: unknown): v is Lang => LANGUAGES.some((l) => l.code === v)
 
 type Table = Map<string, string>
 
@@ -77,28 +67,9 @@ let current: Table = english
 let ready = false
 let latestApply = 0
 
-function savedChoice(): LangChoice {
-  try {
-    const v = localStorage.getItem(STORAGE_KEY)
-    return isLang(v) ? v : 'auto'
-  } catch {
-    return 'auto'
-  }
-}
-
-/** The first of the browser's languages that the UI has, else English. */
-export function browserLanguage(): Lang {
-  const list = typeof navigator === 'undefined' ? [] : navigator.languages?.length ? navigator.languages : [navigator.language]
-  for (const tag of list) {
-    const primary = tag?.toLowerCase().split('-')[0]
-    if (isLang(primary)) return primary
-  }
-  return 'en'
-}
-
 async function apply(choice: LangChoice) {
   const request = ++latestApply
-  const lang = choice === 'auto' ? browserLanguage() : choice
+  const lang = resolveLanguage(choice)
   let table = english
   try {
     table = await loadTable(lang)
