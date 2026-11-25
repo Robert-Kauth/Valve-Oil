@@ -66,6 +66,8 @@ class BoxTrace:
         self.motors = []
         self.last_positions = None
         self.last_status = {}
+        self.pending = []
+        self.pending_checks = 0
         self.idle_samples = 0
         self.printer.register_event_handler("klippy:ready", self._ready)
         self._write("---- klippy start")
@@ -213,17 +215,31 @@ class BoxTrace:
             wrapped = self._wrap_object(short, obj)
             self._write("object %s wrapped %s" % (name, wrapped))
             for attr in SUB_OBJECTS.get(name, ()):
-                sub = getattr(obj, attr, None)
-                if sub is None:
-                    self._write("object %s has no %s" % (name, attr))
-                    continue
-                wrapped = self._wrap_object("%s.%s" % (short, attr), sub)
-                self._write("object %s.%s (%s) wrapped %s" % (
-                    name, attr, type(sub).__name__, wrapped))
+                self.pending.append((name, short, obj, attr))
         self._write("motors sampled: %s" % ([m for m, _ in self.motors],))
         self.reactor.register_timer(self._sample, self.reactor.NOW)
         self.reactor.register_timer(self._status, self.reactor.NOW)
+        self.reactor.register_timer(self._wrap_pending, self.reactor.NOW)
         self._write("ready")
+
+    def _wrap_pending(self, eventtime):
+        """Wrap helper objects once they exist: QIDI creates some, such as
+        the Box adapter, only after klippy:ready. Gives up after a minute."""
+        for item in list(self.pending):
+            name, short, obj, attr = item
+            sub = getattr(obj, attr, None)
+            if sub is None:
+                continue
+            self.pending.remove(item)
+            wrapped = self._wrap_object("%s.%s" % (short, attr), sub)
+            self._write("object %s.%s (%s) wrapped %s" % (
+                name, attr, type(sub).__name__, wrapped))
+        self.pending_checks += 1
+        if not self.pending or self.pending_checks > 60:
+            for name, _short, _obj, attr in self.pending:
+                self._write("object %s has no %s" % (name, attr))
+            return self.reactor.NEVER
+        return eventtime + 1.
 
     # ----------------------------------------------------------- sampling
     def _positions(self):
