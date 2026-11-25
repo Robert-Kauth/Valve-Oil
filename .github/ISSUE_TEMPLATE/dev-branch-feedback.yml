@@ -154,6 +154,6 @@ body:
     id: logs
     attributes:
       label: Logs and files
-      description: For anything odd or failed, attach `klippy.log` from right after it, and the sliced file, zipped. See [Logs](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md#logs).
+      description: For anything odd or failed, attach the support bundle from **Report a problem → Open an issue** in Valve Oil UI (**Updates**) or Fluidd (**Settings → Valve Oil**), which downloads `valve-oil-support-….zip`, or `klippy.log` from right after it, and the sliced file, zipped. See [Logs](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md#logs).
     validations:
       required: false

@@ -1162,6 +1162,15 @@ Valve Oil's configuration SHALL unregister the vendor Box load-cell timers (`_re
 - **THEN** `klippy.log` gets a warning naming the MCU, the command, how many ms late or ahead it is, for one too far ahead how far the MCU's clock reaches, and the Python calls that sent it, at most once every 10 s for each MCU and command, with a count of the ones in between
 - **AND** the command is sent unchanged, and commands without a clock parameter are not checked
 
+### Requirement: MCU command stalls are reported
+Valve Oil's configuration SHALL report an MCU that leaves Klipper's commands unacknowledged, which Klipper itself reports only when the MCU sends nothing at all.
+
+#### Scenario: MCU stops taking commands
+- **WHEN** an MCU leaves commands Klipper sent it unacknowledged for 3 seconds, by its serial counters read once a second
+- **THEN** the console and `klippy.log` name the MCU, how long it has taken no commands, and whether it still sends data
+- **AND** when it acknowledges commands again, or Klipper shuts down first, the console and `klippy.log` give how long it took none, from when, and how many bytes Klipper resent to it
+- **AND** Diagnostics reports each such stall with its length
+
 ### Requirement: Macros read cheap printer facts
 Valve Oil's macros SHALL NOT read `printer.configfile`, `printer.gcode`, `printer.multi_color_controller`, or `printer.box_extras`, whose whole status Klipper copies on its main loop. They SHALL read Box availability, whether `T_MANAGER` is registered, the loaded slot, and the configured `max_accel` from `vo_macro_status`, which SHALL report the values those objects gave.
 

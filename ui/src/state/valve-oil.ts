@@ -321,6 +321,18 @@ export function dismissUpdate(id: string) {
   saveLocal(DISMISSED_UPDATES_KEY, JSON.stringify(dismissed))
 }
 
+async function saveSupportBundle(base: string) {
+  patch({ supportPending: true, supportError: '' })
+  try {
+    const { blob, name } = await voSupportBundle(base)
+    saveBlob(blob, name)
+  } catch (e) {
+    patch({ supportError: errorText(e) })
+  } finally {
+    patch({ supportPending: false })
+  }
+}
+
 /**
  * Opens the prefilled issue, then downloads the support bundle to attach to it. The issue opens first, while the click
  * still lets this page open a tab.
@@ -331,15 +343,14 @@ export async function reportProblem() {
   const base = apiBase()
   if (!url || !base || s.supportPending) return
   window.open(url, '_blank', 'noopener,noreferrer')
-  patch({ supportPending: true, supportError: '' })
-  try {
-    const { blob, name } = await voSupportBundle(base)
-    saveBlob(blob, name)
-  } catch (e) {
-    patch({ supportError: errorText(e) })
-  } finally {
-    patch({ supportPending: false })
-  }
+  await saveSupportBundle(base)
+}
+
+/** Downloads the support bundle without opening an issue: for the System screen's Diagnostics check. */
+export async function downloadSupportBundle() {
+  const base = apiBase()
+  if (!base || valveOil.get().supportPending) return
+  await saveSupportBundle(base)
 }
 
 /**
