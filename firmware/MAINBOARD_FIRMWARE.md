@@ -16,7 +16,7 @@ The fixed firmware reports its version as `02.01.01.12-valve-oil.1`, which is QI
 
 The fix changes four instructions, the version string, and the space the shorter data dictionary frees, which holds the new reply-length table. Nothing else about the mainboard changes.
 
-The manifest's `targets` pin an image for each printer's target QIDI firmware: the fix for Max 4 `01.01.07.01`, and QIDI's stock `02.01.01.12` for Plus 5 `01.01.02.01`. The Plus 5 ships the same mainboard image, but its motors aren't closed-loop, so it keeps QIDI's.
+The manifest's `targets` pin an image for each printer's target QIDI firmware: the fix for Max 4 `01.01.07.02`, and QIDI's stock `02.01.01.12` for Plus 5 `01.01.02.02`. The Plus 5 ships the same mainboard image, but its motors aren't closed-loop, so it keeps QIDI's.
 
 The manifest also lists QIDI's `02.01.01.11` (`33375f0d…`), from Max 4 `01.01.06.03` and the first `01.01.06.04` package, as a predecessor: it is admitted as the firmware a mainboard runs, so it can be backed up and replaced, but it is never programmed. The Klipper of later packages looks up a command `02.01.01.11` doesn't have, so a mainboard on it is replaced only once the printer runs the target firmware, with the fix built from QIDI's stock `02.01.01.12`. Until then the installer and the script say `the mainboard will be updated after the QIDI firmware update to 01.01.07.01` and change nothing.
 

@@ -186,7 +186,7 @@ Each Valve Oil release brings the printer to one QIDI firmware, the newest it su
 | Printer | Valve Oil updates it to | From |
 |---|---|---|
 | QIDI Max 4 | `01.01.07.02` | `01.01.06.03`, `01.01.06.04`, `01.01.06.05`, `01.01.07.01` |
-| QIDI Plus 5 | `01.01.02.01` | nothing older yet |
+| QIDI Plus 5 | `01.01.02.02` | `01.01.02.01` |
 | QIDI Smart 5 | `01.01.02.01` | nothing older yet |
 
 When you install or update Valve Oil on one of the older firmware versions, the installer updates the firmware without asking, so every printer runs the same QIDI firmware. It first says what it does:
@@ -230,7 +230,7 @@ While Valve Oil is installed, the touchscreen doesn't offer QIDI's online firmwa
 
 An update you start from a USB drive, or from a `QD_Mandatory_Update.zip` file, still installs QIDI's package. It's the way back onto a printer that can no longer be reached over the network. QIDI's package replaces the touchscreen app, Klipper, Moonraker, Fluidd, and the config folder, so it removes much of Valve Oil, and with the config folder Valve Oil's record of what it changed in the printer's system. Run the install command again afterwards. An [uninstall](#uninstall) after a USB update can't undo every system change Valve Oil made.
 
-This applies to the touchscreen apps Valve Oil has reviewed: Max 4 firmware `01.01.07.01` and `01.01.07.02` and Plus 5 and Smart 5 firmware `01.01.02.01`. On the Max 4's older firmware, and on a touchscreen app that has been replaced or changed, the touchscreen offers QIDI's online updates as it does without Valve Oil. Uninstalling Valve Oil puts QIDI's touchscreen app back, and with it QIDI's online updates.
+This applies to the touchscreen apps Valve Oil has reviewed: Max 4 firmware `01.01.07.01` and `01.01.07.02`, Plus 5 firmware `01.01.02.01` and `01.01.02.02`, and Smart 5 firmware `01.01.02.01`. On the Max 4's older firmware, and on a touchscreen app that has been replaced or changed, the touchscreen offers QIDI's online updates as it does without Valve Oil. Uninstalling Valve Oil puts QIDI's touchscreen app back, and with it QIDI's online updates.
 
 ### Automatic updates
 

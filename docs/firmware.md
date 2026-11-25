@@ -19,7 +19,7 @@ Each board is flashed only while the printer is idle and ready, with every heate
 
 Before flashing, Valve Oil reads the board's bootloader and firmware and flashes only builds it recognizes. It keeps a copy of QIDI's firmware under `~/printer_data/` (`.vo_thr_firmware_backups/`, `.vo_mainboard_firmware_backups/`, `.vo_box_firmware_backups/`), and reads the result back to check it matches exactly, with the bootloader unchanged. A board it can't flash safely, for example because a heater is on, keeps its firmware; the install still finishes, says why, and the next install tries again.
 
-The THR and mainboard firmware are built for the newest QIDI firmware Valve Oil supports. On the Max 4 with an older QIDI firmware, they're flashed once Valve Oil has [updated the QIDI firmware](install.md#qidi-firmware-updates) to `01.01.07.02`; until then the installer says `THR: will be updated after the QIDI firmware update to 01.01.07.02. Its firmware is not changed now.` USB Boxes are flashed on any supported firmware.
+The THR and mainboard firmware are built for the newest QIDI firmware Valve Oil supports. On an older QIDI firmware, they're flashed once Valve Oil has [updated the QIDI firmware](install.md#qidi-firmware-updates), to `01.01.07.02` on the Max 4 and `01.01.02.02` on the Plus 5; until then the installer says `THR: will be updated after the QIDI firmware update to 01.01.07.02. Its firmware is not changed now.` USB Boxes are flashed on any supported firmware.
 
 A board whose bootloader or firmware Valve Oil doesn't recognize is never flashed. On a new install that stops the install; on an update it gets a printer warning with a prefilled support issue. See [Boards Valve Oil doesn't support yet](install.md#boards-valve-oil-doesnt-support-yet).
 
@@ -27,7 +27,7 @@ Uninstalling Valve Oil doesn't change firmware. To put QIDI's firmware back on a
 
 ## Toolhead accelerometer fix
 
-On the Max 4 with QIDI firmware `01.01.07.01` or `01.01.07.02` and the Plus 5 with `01.01.02.01`, QIDI's toolhead board (THR) firmware reads its accelerometer incorrectly, which affects input shaper calibration. Both printers use the same toolhead board and THR firmware. The Smart 5 with `01.01.02.01` runs a later THR firmware, `02.02.01.09`, with the same bug. Valve Oil's THR firmware fixes the LIS2DW FIFO bug, with a build for each of QIDI's two THR firmware versions.
+On the Max 4 with QIDI firmware `01.01.07.01` or `01.01.07.02` and the Plus 5 with `01.01.02.01` or `01.01.02.02`, QIDI's toolhead board (THR) firmware reads its accelerometer incorrectly, which affects input shaper calibration. Both printers use the same toolhead board and THR firmware. The Smart 5 with `01.01.02.01` runs a later THR firmware, `02.02.01.09`, with the same bug. Valve Oil's THR firmware fixes the LIS2DW FIFO bug, with a build for each of QIDI's two THR firmware versions.
 
 > [!IMPORTANT]
 > **After the THR is flashed, run input shaper calibration before bed leveling or printing.** Your saved calibration stays in use, including after a [QIDI firmware update](install.md#qidi-firmware-updates), which puts it back before the THR is flashed, but it was measured with QIDI's firmware. Fluidd shows the warning `Run input shaper calibration.` until a new calibration is saved. Run input shaper calibration on its own first: the screen's calibration page runs bed leveling before input shaping when both are checked. The installer does not run calibration for you.

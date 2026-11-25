@@ -43,7 +43,7 @@ sys.modules.setdefault("requests", types.ModuleType("requests"))
 import configfile  # noqa: E402  (Klipper's)
 import gcode as klipper_gcode  # noqa: E402  (Klipper's)
 
-FIRMWARE = {"max4": "01.01.07.02", "plus5": "01.01.02.01", "smart5": "smart5-01.01.02.01"}
+FIRMWARE = {"max4": "01.01.07.02", "plus5": "01.01.02.02", "smart5": "smart5-01.01.02.01"}
 
 # Klipper modules loaded from klipper/klippy/extras for their sections, or when another module loads them.
 KLIPPER_MODULES = {

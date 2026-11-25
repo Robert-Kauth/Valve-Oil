@@ -347,7 +347,7 @@ With Valve Oil, its Box monitor does this instead:
 - **Klipper restarts only while the printer is idle,** with no print running or paused and no heater on, and the heaters are never turned off for it. Otherwise a printer warning says `A USB Box was connected or disconnected.`, and Klipper restarts once the printer is idle.
 - **Installs and board firmware go first.** While the installer runs or a board's firmware is written or waits for its rescue, the monitor changes nothing, and catches up when that ends.
 
-The touchscreen still shows the Boxes, their firmware, and its Box notices. This applies to the touchscreen apps of Max 4 firmware `01.01.07.01` and `01.01.07.02` and Plus 5 and Smart 5 firmware `01.01.02.01`; with any other app, the app keeps managing `box.cfg` as before. A `box.cfg` you've edited, so it's no longer in QIDI's layout, is left as it is. Uninstall puts QIDI's app back, which writes `box.cfg` again when it next starts. RS-485 Boxes aren't in `box.cfg`, and aren't affected.
+The touchscreen still shows the Boxes, their firmware, and its Box notices. This applies to the touchscreen apps of Max 4 firmware `01.01.07.01` and `01.01.07.02`, Plus 5 firmware `01.01.02.01` and `01.01.02.02`, and Smart 5 firmware `01.01.02.01`; with any other app, the app keeps managing `box.cfg` as before. A `box.cfg` you've edited, so it's no longer in QIDI's layout, is left as it is. Uninstall puts QIDI's app back, which writes `box.cfg` again when it next starts. RS-485 Boxes aren't in `box.cfg`, and aren't affected.
 
 ## Box disconnects
 
@@ -355,7 +355,7 @@ See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [T
 
 ## RS-485 Boxes
 
-QIDI's Max 4 firmware `01.01.07.01` and later and Plus 5 and Smart 5 firmware `01.01.02.01` include support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
+QIDI's Max 4 firmware `01.01.07.01` and later, Plus 5 firmware `01.01.02.01` and later, and Smart 5 firmware `01.01.02.01` include support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
 
 - **If you have RS-485 hardware,** the console asks you to open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues) once per Klipper start. Attach `vo_box485_report.json` and `vo_box485.log` from the `logs` folder in Fluidd. The log records what QIDI's code sends to and receives from each device, and the report summarizes the setup. Chip ids and USB serial numbers are replaced with codes that can't be traced back to your hardware. Nothing about how the hardware works is changed.
 - **To write the report yourself,** run `VO_RS_BOX_REPORT`. It says whether RS-485 hardware was found, and if it was, starts the log right away.

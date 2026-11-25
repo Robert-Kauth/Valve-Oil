@@ -43,6 +43,8 @@ KNOWN_BUILDS = {
         ("01.01.06.01-01.01.06.04", "staged"),
     "fc20d82a58b740c0d5e23a4043c23f3d2b9dcb386e72cda4e4619292331f6589":
         ("Plus 5 01.01.02.01", "single"),
+    "c622d664d8e2cdecf01d4347b7fbf5c96ba3ba25ff83adabb4c1b3c760f65401":
+        ("Plus 5 01.01.02.02", "single"),
 }
 # Vendor arguments traced live on 01.01.07.01 (01.01.07.02 passes the same
 # ones: its load and unload methods are 01.01.07.01's). They stand in for the vendor

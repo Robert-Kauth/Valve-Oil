@@ -456,7 +456,7 @@ class MainboardFirmwareFlowTests(UsbBoardFlowCases, unittest.TestCase):
         before, = (paths.printer_data_root / mainboard_firmware.BACKUP_DIRECTORY).glob("*/before/application.bin")
         self.assertEqual(before.read_bytes(), harness.predecessor_image(printer.stock))
         # A mainboard pinned to QIDI's image (the Plus 5) gets that image itself.
-        paths, printer, reporter = self.fixture("predecessor", soc_prefix="QD_PLUS5_SOC_", firmware="01.01.02.01")
+        paths, printer, reporter = self.fixture("predecessor", soc_prefix="QD_PLUS5_SOC_", firmware="01.01.02.02")
         self.qidi_image_in_update(paths, printer)
         self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
         self.assertEqual((printer.transfers, self.identity(printer)), ([("mcu", False)], "stock"))
@@ -471,7 +471,7 @@ class MainboardFirmwareFlowTests(UsbBoardFlowCases, unittest.TestCase):
 
     def test_plus5_mainboard_gets_only_qidi_firmware(self):
         # The Plus 5 has no closed-loop drivers, so its mainboard is pinned to QIDI's image.
-        plus5 = {"soc_prefix": "QD_PLUS5_SOC_", "firmware": "01.01.02.01"}
+        plus5 = {"soc_prefix": "QD_PLUS5_SOC_", "firmware": "01.01.02.02"}
         paths, printer, reporter = self.fixture("stock", **plus5)
         self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
         self.assertEqual((printer.transfers, printer.states), ([], printer.original))

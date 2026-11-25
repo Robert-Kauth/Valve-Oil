@@ -21,7 +21,7 @@ from scripts.klipper_macro_source import (
 MAX4_MACRO_ROOT = PRINTER_MACRO_ROOT / "max4"
 NEWEST_STOCK = {
     "max4": REPO_ROOT / "installer/stock/qidi-max4-defaults/firmwares/01.01.07.01",
-    "plus5": REPO_ROOT / "installer/stock/qidi-plus5-defaults/firmwares/01.01.02.01",
+    "plus5": REPO_ROOT / "installer/stock/qidi-plus5-defaults/firmwares/01.01.02.02",
     "smart5": REPO_ROOT / "installer/stock/qidi-smart5-defaults/firmwares/01.01.02.01",
 }
 
