@@ -709,12 +709,19 @@ class UpdateNowRunTests(unittest.TestCase):
 
         root = temp_path("vo-update-now-")
         paths = resolve_runtime_paths(bundle_root=root / "bundle", environ={"VO_PRINTER_DATA_ROOT": str(root)})
+        output = io.StringIO()
         with acquire(paths.lock_path):
-            finished = update_now.run_update_now(paths=paths, reporter=create_reporter(io.StringIO(), prefer_plain=True), environ={})
-        run = status_file.load_status(paths).run
+            active = status_file.begin_run(paths, kind="automatic", step="install")
+            before = status_file.status_path(paths).read_bytes()
+            finished = update_now.run_update_now(paths=paths, reporter=create_reporter(output, prefer_plain=True), environ={})
+            self.assertEqual(status_file.status_path(paths).read_bytes(), before)
+            self.assertTrue(status_file.run_active(status_file.load_status(paths).run))
         self.assertFalse(finished)
-        self.assertEqual((run.kind, run.state), ("update_now", status_file.FAILED))
-        self.assertIn("already in progress", run.message)
+        self.assertIn("already in progress", output.getvalue())
+        status_file.finish_run(paths, active.id, state=status_file.SUCCEEDED)
+        completed = status_file.load_status(paths).run
+        assert completed is not None
+        self.assertEqual(completed.state, status_file.SUCCEEDED)
 
 
 if __name__ == "__main__":

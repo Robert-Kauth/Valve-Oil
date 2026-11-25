@@ -56,10 +56,11 @@ def run_update_now(*, paths: RuntimePaths, reporter, environ: dict[str, str], ur
         # Another release's record, dropped as nothing of it was installed: go on with the latest release.
         if record is not None:
             valve_oil_status.finish_run(paths, record.id, state=valve_oil_status.SUCCEEDED, message=result.message)
-    record = valve_oil_status.begin_run(paths, kind="update_now", step="check", step_label="Checking that the printer is idle",
-                                        job=job)
+    record = None
     try:
         with acquire(paths.lock_path):
+            record = valve_oil_status.begin_run(
+                paths, kind="update_now", step="check", step_label="Checking that the printer is idle", job=job)
             safety.ensure_no_recovery_sentinel(paths.recovery_sentinel_path)
             safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
             # Update now never installs onto a Klipper that isn't ready; ./install.sh is what may repair one.
@@ -74,15 +75,18 @@ def run_update_now(*, paths: RuntimePaths, reporter, environ: dict[str, str], ur
                 environ={**environ, KIND_ENV: "update_now"},
             )
             write_state(paths, checksum)
+            valve_oil_status.clear_pending(paths, kind=valve_oil_status.RELEASE)
+            valve_oil_status.finish_run(paths, record.id, state=valve_oil_status.SUCCEEDED,
+                                        message="The latest Valve Oil release is installed.")
     except InstallerError as exc:
         reporter.line(exc.message)
-        valve_oil_status.finish_run(paths, record.id, state=valve_oil_status.FAILED, message=exc.message)
+        if record is not None:
+            valve_oil_status.finish_run(paths, record.id, state=valve_oil_status.FAILED, message=exc.message)
         return False
     except BaseException:
-        valve_oil_status.finish_run(paths, record.id, state=valve_oil_status.FAILED, message=STOPPED)
+        if record is not None:
+            valve_oil_status.finish_run(paths, record.id, state=valve_oil_status.FAILED, message=STOPPED)
         raise
-    valve_oil_status.clear_pending(paths, kind=valve_oil_status.RELEASE)
-    valve_oil_status.finish_run(paths, record.id, state=valve_oil_status.SUCCEEDED, message="The latest Valve Oil release is installed.")
     reporter.line("The latest Valve Oil release is installed.")
     return True
 
