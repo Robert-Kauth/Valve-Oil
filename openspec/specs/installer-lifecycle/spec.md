@@ -925,6 +925,13 @@ The reviewed patched builds of QIDI's touchscreen executable SHALL label each Bo
 - **WHEN** a slot's filament changes while the touchscreen app runs, from the touchscreen, Fluidd, a spool tag, or `SAVE_VARIABLE`
 - **THEN** the slot's label follows the new filament's type, and the slot's edit screen preselects the slot's filament by vendor and full name
 
+### Requirement: Touchscreen never raises its MQTT connection error
+The reviewed patched builds of QIDI's touchscreen executable SHALL never raise the MQTT connection error `QDC_400_004_010_001`, while the app's other errors, its MQTT handling, and LAN only mode stay as QIDI wrote them. The patch travels with the firmware notice patch, with and without QIDI's package updates blocked.
+
+#### Scenario: Moonraker reports MQTT not connected
+- **WHEN** the touchscreen app starts, or Moonraker's MQTT status, the app's QIDI account, or LAN only mode changes, and QIDI's condition for the error holds
+- **THEN** the error is not raised, and the app's later check to clear it finds nothing to clear
+
 ### Requirement: Klipper C helper library carries upstream fixes
 Normal install and update SHALL replace a reviewed build of QIDI's Klipper C helper library, `klippy/chelper/c_helper.so`, with the package's build of the same Klipper sources with upstream's later fixes for expired pressure advance entries, trsync timeout extension, step queue appends far in the future, and serial queue pipe descriptors, independently of optional OS optimization policy, with the same preservation and restoration as the other guarded host patches.
 

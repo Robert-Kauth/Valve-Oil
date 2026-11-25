@@ -20,8 +20,8 @@ If you want to help support content like this, consider subscribing on YouTube, 
 
 | Printer | QIDI firmware |
 |---|---|
-| QIDI Max 4 | `01.01.06.03`, `01.01.06.04`, `01.01.06.05`, `01.01.07.01` |
-| QIDI Plus 5 | `01.01.02.01` |
+| QIDI Max 4 | `01.01.06.03`, `01.01.06.04`, `01.01.06.05`, `01.01.07.01`, `01.01.07.02` |
+| QIDI Plus 5 | `01.01.02.01`, `01.01.02.02` |
 | QIDI Smart 5 | `01.01.02.01` |
 
 ### Community-supported printers

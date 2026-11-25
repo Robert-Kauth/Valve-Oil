@@ -27,7 +27,7 @@ Every install and update, including one run with `--yes` and each release an aut
 
 The hourly update check also notices a USB Box that isn't on this firmware, such as one connected since the last install, from the version Klipper reports, without stopping anything. With automatic updates on and the printer idle, it reads that Box, which stops Klipper and the touchscreen, and flashes it in the same run. With them off, a printer warning says new firmware is waiting for it. A Box the check tried and couldn't flash isn't tried again by later checks until it reports another version; the next install tries again. A QIDI firmware update the installer runs doesn't flash Boxes: QIDI's package resets the Box list in `box.cfg`, and the next install or update check flashes them once the touchscreen has found them again.
 
-The manifest's `targets` pin this image for both Max 4 `01.01.07.01` and Plus 5 `01.01.02.01`; the Box is the same on both printers.
+The manifest's `targets` pin this image for both Max 4 `01.01.07.02` and Plus 5 `01.01.02.02`; the Box is the same on both printers.
 
 Run these from the unpacked installer folder (`~/valve-oil`) over SSH:
 

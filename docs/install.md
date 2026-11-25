@@ -185,15 +185,15 @@ Each Valve Oil release brings the printer to one QIDI firmware, the newest it su
 
 | Printer | Valve Oil updates it to | From |
 |---|---|---|
-| QIDI Max 4 | `01.01.07.01` | `01.01.06.03`, `01.01.06.04`, `01.01.06.05` |
-| QIDI Plus 5 | `01.01.02.01` | nothing older yet |
+| QIDI Max 4 | `01.01.07.02` | `01.01.06.03`, `01.01.06.04`, `01.01.06.05`, `01.01.07.01` |
+| QIDI Plus 5 | `01.01.02.02` | `01.01.02.01` |
 | QIDI Smart 5 | `01.01.02.01` | nothing older yet |
 
 When you install or update Valve Oil on one of the older firmware versions, the installer updates the firmware without asking, so every printer runs the same QIDI firmware. It first says what it does:
 
 ```
-QIDI firmware 01.01.07.01 is available for this QIDI Max 4, which runs 01.01.06.05.
-Valve Oil downloads QIDI's package (265 MB) from this project's mirror, installs it, updates the board firmware that needs it (THR, Mainboard), and installs Valve Oil for firmware 01.01.07.01.
+QIDI firmware 01.01.07.02 is available for this QIDI Max 4, which runs 01.01.06.05.
+Valve Oil downloads QIDI's package (262 MB) from this project's mirror, installs it, updates the board firmware that needs it (THR, Mainboard), and installs Valve Oil for firmware 01.01.07.02.
 It updates the closed-loop X/Y motor drivers first, one at a time, if they run the firmware QIDI's older package installed; otherwise they keep their firmware. The X and Y motors turn off, so the printer homes again before its next print.
 The printer can't be used while it runs, usually 10 to 30 minutes. Don't turn the printer off. It continues on its own if this session disconnects, and after a power loss it continues when the printer starts.
 ```
@@ -230,7 +230,7 @@ While Valve Oil is installed, the touchscreen doesn't offer QIDI's online firmwa
 
 An update you start from a USB drive, or from a `QD_Mandatory_Update.zip` file, still installs QIDI's package. It's the way back onto a printer that can no longer be reached over the network. QIDI's package replaces the touchscreen app, Klipper, Moonraker, Fluidd, and the config folder, so it removes much of Valve Oil, and with the config folder Valve Oil's record of what it changed in the printer's system. Run the install command again afterwards. An [uninstall](#uninstall) after a USB update can't undo every system change Valve Oil made.
 
-This applies to the touchscreen apps Valve Oil has reviewed: Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01`. On the Max 4's older firmware, and on a touchscreen app that has been replaced or changed, the touchscreen offers QIDI's online updates as it does without Valve Oil. Uninstalling Valve Oil puts QIDI's touchscreen app back, and with it QIDI's online updates.
+This applies to the touchscreen apps Valve Oil has reviewed: Max 4 firmware `01.01.07.01` and `01.01.07.02`, Plus 5 firmware `01.01.02.01` and `01.01.02.02`, and Smart 5 firmware `01.01.02.01`. On the Max 4's older firmware, and on a touchscreen app that has been replaced or changed, the touchscreen offers QIDI's online updates as it does without Valve Oil. Uninstalling Valve Oil puts QIDI's touchscreen app back, and with it QIDI's online updates.
 
 ### Automatic updates
 

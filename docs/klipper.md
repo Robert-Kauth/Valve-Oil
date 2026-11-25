@@ -20,8 +20,8 @@ It runs on the firmware whose QIDI modules were checked against it:
 
 | Printer | QIDI firmware |
 |---|---|
-| QIDI Max 4 | `01.01.07.01` |
-| QIDI Plus 5 | `01.01.02.01` |
+| QIDI Max 4 | `01.01.07.01`, `01.01.07.02` |
+| QIDI Plus 5 | `01.01.02.01`, `01.01.02.02` |
 | QIDI Smart 5 | `01.01.02.01` |
 
 On other firmware it isn't installed, and QIDI's Klipper runs.

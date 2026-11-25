@@ -549,6 +549,13 @@ def newer_release(latest: str | None, installed: str | None) -> bool:
     return latest_key is not None and installed_key is not None and latest_key > installed_key
 
 
+def older_release(latest: str | None, installed: str | None) -> bool:
+    """Whether the latest release is known to be older than the installed one: a release withdrawn after printers
+    updated to it, or a build newer than any release. Its installer refuses the newer state, so it isn't installed."""
+    latest_key, installed_key = version_key(latest), version_key(installed)
+    return latest_key is not None and installed_key is not None and latest_key < installed_key
+
+
 # ---- installing a release ---------------------------------------------------------------------------------------------
 
 

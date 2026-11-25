@@ -87,7 +87,7 @@ With this project's [toolhead board](firmware.md#toolhead-accelerometer-fix) or 
 
 The pop-up now accepts a board version that starts with QIDI's. It still appears when QIDI ships a newer version than the board has.
 
-The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01`. The same change [hides QIDI's online firmware updates](install.md#qidis-own-firmware-updates) on the touchscreen. It keeps QIDI's original, and uninstall puts it back. A touchscreen app the installer doesn't recognize, such as one from another QIDI firmware, is left as it is.
+The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.07.01` and `01.01.07.02`, Plus 5 firmware `01.01.02.01` and `01.01.02.02`, and Smart 5 firmware `01.01.02.01`. The same change [hides QIDI's online firmware updates](install.md#qidis-own-firmware-updates) on the touchscreen. It keeps QIDI's original, and uninstall puts it back. A touchscreen app the installer doesn't recognize, such as one from another QIDI firmware, is left as it is.
 
 ## QIDI app connections disabled for security
 
@@ -95,13 +95,21 @@ On a printer linked to a QIDI account, QIDI's touchscreen app runs the peer-to-p
 
 QIDI's phone app still reaches the printer on the same network. Away from it, for example over a phone's cellular connection, the session goes through QIDI's own relay server, and on the Smart 5 test printer the camera showed a black picture there.
 
-The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back.
+The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back. QIDI's touchscreen app in Plus 5 firmware `01.01.02.02` uses the filament's type itself, so it isn't changed for this.
 
 ## Touchscreen greying out filament of the right type
 
 When you start a print on the touchscreen, the **Match filament** screen lets you pick only a Box slot or the external spool whose filament type is the file's. QIDI's touchscreen app took a slot's type from the first word of its filament's name instead of the filament's type. That works for QIDI's names, such as PLA Basic, but for a PLA file it greyed out Generic PLA+, Anycubic PLA+ read from a spool tag, Polymaker PLA-HT, and Elegoo Rapid PLA+, which Fluidd and QIDI Studio offered (issue #380).
 
 The touchscreen now uses the filament's type as Klipper reports it, for Match filament and for the type it shows over each slot. Those slots show **PLA** and can be picked for a PLA file, and a slot of another type, such as PLA-CF or ABS, is still greyed out. A slot's edit screen still shows the filament's full name.
+
+The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back. Max 4 firmware `01.01.07.02` and Plus 5 firmware `01.01.02.02` need no change: QIDI's app there takes the type from Klipper itself.
+
+## Touchscreen MQTT connection error
+
+QIDI's touchscreen app showed **MQTT connection error** (`QDC_400_004_010_001`) at every start. As the app starts, QIDI's Moonraker reports its connection to QIDI's cloud as down, and the app raises the error. It removes the error only once its first request to QIDI's cloud comes back, about 10 ms later in LAN only mode and 0.9 s later on the Max 4 test printer. On a printer that can't reach QIDI's servers, the request never comes back, and the error stayed on the touchscreen.
+
+The touchscreen app no longer raises this error, at start or when the connection drops later. Its other errors, its connection to QIDI's cloud, and LAN only mode work as before. Moonraker's own MQTT warnings in Fluidd are unchanged.
 
 The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back.
 

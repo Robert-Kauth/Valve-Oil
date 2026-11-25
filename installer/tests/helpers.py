@@ -26,9 +26,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 MOONRAKER_QUERY_URL = "http://moonraker.invalid/printer/objects/query?print_stats"
 _TEMP_ROOTS: list[Path] = []
 def homing_fixture_bytes(firmware: str) -> bytes:
-    if firmware not in {"01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"}:
+    if firmware not in {"01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"}:
         raise ValueError(f"Unsupported homing fixture firmware: {firmware}")
-    if firmware in {"01.01.06.05", "01.01.07.01"}:
+    if firmware in {"01.01.06.05", "01.01.07.01", "01.01.07.02"}:
         return homing_sync_reset_fixture_bytes()
     value = (FIXTURES_ROOT / "source-patches/01.01.06.04/homing.py").read_bytes()
     if firmware == "01.01.06.03":

@@ -56,10 +56,10 @@ class InstallerCompatibilityTests(unittest.TestCase):
         ).hexdigest()
         self.assertEqual(self.envelope.schema_version, 2)
         self.assertEqual(len(self.envelope.allowed_patch_targets), 37)
-        self.assertEqual(len(self.envelope.source_patches), 19)
+        self.assertEqual(len(self.envelope.source_patches), 21)
         self.assertEqual(
             digest,
-            "f3c18db7b1e7f7b3a3caec6dfe8c5d6f28bcc5bbd2854347991924f1baa514e2",
+            "5733e3f0e36912c5db63d0ad51c4ba3029dad8007c2378592a50eb44b71ebf3c",
         )
 
     def test_manifest_rejects_printers_that_share_an_identity(self) -> None:
@@ -131,8 +131,8 @@ class InstallerCompatibilityTests(unittest.TestCase):
             "a twice-published firmware without its date": {
                 **{k: v for k, v in sets.items() if k not in twice}, "01.01.06.04": next(iter(twice.values())),
                 **dict(list(twice.items())[1:])},
-            "target set from another archive": {**sets, "01.01.07.01": {
-                **sets["01.01.07.01"], "archive": "QD_MAX4_01.01.07.01_20261017_Release.zip"}},
+            "target set from another archive": {**sets, "01.01.07.02": {
+                **sets["01.01.07.02"], "archive": "QD_MAX4_01.01.07.02_20261124_Release.zip"}},
         }
         for case, change in invalid.items():
             with self.subTest(case=case):

@@ -183,12 +183,13 @@ The QIDI Box card in Fluidd has **In** and **Out** buttons that jog the selected
 
 ## Editing QIDI's filament list
 
-On Max 4 firmware `01.01.07.01`, the Vendor and Filament lists on the touchscreen and in Fluidd come from QIDI's filament files. Fluidd's **Filaments** page in the sidebar edits the list for the 0.4 mm nozzle, `filament-0.4.json`, the one Klipper and the touchscreen read:
+On Max 4 firmware `01.01.07.01` and later, the Vendor and Filament lists on the touchscreen and in Fluidd come from QIDI's filament files. Fluidd's **Filaments** page in the sidebar edits the list for the 0.4 mm nozzle, `filament-0.4.json`, the one Klipper and the touchscreen read:
 
 - **Add** or **Duplicate** a filament, then set its vendor, name, type, nozzle temperatures, Box heating limit, chamber temperature, and whether it's a support material. A new vendor name adds that vendor to the pickers. The new filament gets the next free ID and takes its drying and other settings from the filament you duplicated, or else from Generic's filament of the same type.
 - **Edit** changes the same fields of any filament. Its ID stays as it is, because Box slots refer to filaments by ID. **Remove** names any Box slot set to the filament before deleting it.
+- Nozzle temperatures are whole degrees from 0, with the minimum no higher than the maximum, and the maximum no higher than the printer's nozzle limit, the `max_temp` of its `[extruder]` (375 °C on the Max 4 and Plus 5), which the field shows. QIDI's Box loads and unloads heat the nozzle to the filament's maximum, and from Max 4 `01.01.07.02` and Plus 5 `01.01.02.02` so does the flush in QIDI's print start, with no limit of their own, so a higher maximum would stop them with an error. While Klipper isn't running the limit isn't known and isn't checked.
 - Each change is saved to the printer straight away. Klipper, the Box, and the touchscreen use it once Klipper and `qidi-client` restart: choose **Restart Klipper and touchscreen** on the page, or reboot the printer.
-- **Export** downloads the list, and **Import** puts filaments from an exported file back. Import selects the filaments missing from the list, and leaves unselected the ones that differ from it, as the difference may be QIDI's.
+- **Export** downloads the list, and **Import** puts filaments from an exported file back. Import selects the filaments missing from the list, and leaves unselected the ones that differ from it, as the difference may be QIDI's. It can't import a filament whose ID another filament uses or whose nozzle temperatures break the rules above.
 
 The installer makes this possible by adding a `qidi_filament_config` folder to Fluidd's configuration files, linked to QIDI's filament files. The other nozzle sizes' files are there too, and any of them can be edited by hand: right-click a file and choose **Edit**. Keep it valid JSON, as a missing comma or bracket can break the touchscreen's filament list.
 
@@ -218,6 +219,10 @@ Klipper adds 30 Anycubic, 32 Elegoo, 49 Bambu Lab, and 34 Creality filaments to 
 Bambu Lab's are listed under QIDI's **Bambu** vendor, next to QIDI's own Bambu PLA, PETG, and ABS. A Bambu Lab ABS tag sets QIDI's **Bambu ABS**, and Bambu's 2.85 mm TPU 75A is left out.
 
 Their IDs start with `QFX` (Anycubic), `QFY` (Elegoo), `QFZ` (Bambu Lab), and `QFW` (Creality), letters QIDI doesn't use. Uninstall leaves them in the list, since Box slots may use them.
+
+It also adds Polymaker ASA under QIDI's own ID for it, `QFL23`, which QIDI's spools and slicer use but QIDI's list on the printer leaves out, with QIDI ASA's settings (240–280 °C). Without it, a slot holding it shows as Unknown, and QIDI's print start flushes it at 240 °C. If QIDI's list ever has it, QIDI's entry is kept.
+
+When a Box slot or the external spool holds a filament whose ID isn't in the printer's list, a printer warning in Fluidd and Valve Oil UI names the slot and the ID, and the console repeats it at startup and after every home. Choose the slot's filament again to clear it.
 
 ### Writing spool tags
 
@@ -353,7 +358,7 @@ With Valve Oil, its Box monitor does this instead:
 - **Klipper restarts only while the printer is idle,** with no print running or paused and no heater on, and the heaters are never turned off for it. Otherwise a printer warning says `A USB Box was connected or disconnected.`, and Klipper restarts once the printer is idle.
 - **Installs and board firmware go first.** While the installer runs or a board's firmware is written or waits for its rescue, the monitor changes nothing, and catches up when that ends.
 
-The touchscreen still shows the Boxes, their firmware, and its Box notices. This applies to the touchscreen apps of Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01`; with any other app, the app keeps managing `box.cfg` as before. A `box.cfg` you've edited, so it's no longer in QIDI's layout, is left as it is. Uninstall puts QIDI's app back, which writes `box.cfg` again when it next starts. RS-485 Boxes aren't in `box.cfg`, and aren't affected.
+The touchscreen still shows the Boxes, their firmware, and its Box notices. This applies to the touchscreen apps of Max 4 firmware `01.01.07.01` and `01.01.07.02`, Plus 5 firmware `01.01.02.01` and `01.01.02.02`, and Smart 5 firmware `01.01.02.01`; with any other app, the app keeps managing `box.cfg` as before. A `box.cfg` you've edited, so it's no longer in QIDI's layout, is left as it is. Uninstall puts QIDI's app back, which writes `box.cfg` again when it next starts. RS-485 Boxes aren't in `box.cfg`, and aren't affected.
 
 ## Box disconnects
 
@@ -361,7 +366,7 @@ See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [T
 
 ## RS-485 Boxes
 
-QIDI's Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01` include support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
+QIDI's Max 4 firmware `01.01.07.01` and later, Plus 5 firmware `01.01.02.01` and later, and Smart 5 firmware `01.01.02.01` include support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
 
 - **If you have RS-485 hardware,** the console asks you to open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues) once per Klipper start. Attach `vo_box485_report.json` and `vo_box485.log` from the `logs` folder in Fluidd. The log records what QIDI's code sends to and receives from each device, and the report summarizes the setup. Chip ids and USB serial numbers are replaced with codes that can't be traced back to your hardware. Nothing about how the hardware works is changed.
 - **To write the report yourself,** run `VO_RS_BOX_REPORT`. It says whether RS-485 hardware was found, and if it was, starts the log right away.

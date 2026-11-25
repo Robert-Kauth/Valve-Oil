@@ -271,7 +271,9 @@
     "errors": {
       "already_listed": "Filament already listed: {{name}}",
       "id_used": "Filament ID {{id}} already used by {{name}}",
-      "not_found": "Filament not found: {{name}}"
+      "not_found": "Filament not found: {{name}}",
+      "nozzle": "{{name}}: the nozzle temperatures must be whole numbers from 0, with the minimum no higher than the maximum",
+      "nozzle_limit": "{{name}}: the nozzle maximum is above this printer's limit of {{max}} °C"
     },
     "edit": {
       "add_title": "Add filament",
@@ -279,7 +281,6 @@
       "already_listed": "{{name}} is already in the list",
       "id_format": "QF, a capital letter, and two digits, such as QFA94",
       "id_used": "Already used by {{name}}",
-      "must_be_positive": "Must be above 0",
       "at_least": "At least {{n}}",
       "vendor": "Vendor",
       "filament": "Filament",
@@ -292,7 +293,10 @@
       "chamber": "Chamber",
       "support": "Support material",
       "listed_as": "Listed as {{name}}.",
-      "listed_as_copied": "Listed as {{name}}. Drying and other settings are copied from {{base}}."
+      "listed_as_copied": "Listed as {{name}}. Drying and other settings are copied from {{base}}.",
+      "whole_degrees": "Whole degrees only",
+      "nozzle_limit": "At most {{max}}, this printer's nozzle limit",
+      "nozzle_limit_hint": "This printer's limit is {{max}} °C"
     },
     "import": {
       "title": "Import filaments",
@@ -300,7 +304,9 @@
       "new": "Not in the current list",
       "changed": "Differs from the current list",
       "conflict": "Its ID {{id}} is already used by {{name}}",
-      "none": "Every filament in this file is already in the list."
+      "none": "Every filament in this file is already in the list.",
+      "nozzle_limit": "Its nozzle maximum is above this printer's limit of {{max}} °C",
+      "nozzle_invalid": "Its nozzle temperatures aren't two whole numbers, the minimum then the maximum"
     },
     "library_title": "Filament library",
     "back_home": "Back to Home"

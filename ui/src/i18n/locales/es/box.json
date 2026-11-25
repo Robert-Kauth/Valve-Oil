@@ -271,7 +271,9 @@
     "errors": {
       "already_listed": "El filamento ya está en la lista: {{name}}",
       "id_used": "El ID de filamento {{id}} ya lo usa {{name}}",
-      "not_found": "Filamento no encontrado: {{name}}"
+      "not_found": "Filamento no encontrado: {{name}}",
+      "nozzle": "{{name}}: las temperaturas de la boquilla deben ser números enteros desde 0, con el mínimo no mayor que el máximo",
+      "nozzle_limit": "{{name}}: el máximo de la boquilla supera el límite de esta impresora, {{max}} °C"
     },
     "edit": {
       "add_title": "Añadir filamento",
@@ -279,7 +281,6 @@
       "already_listed": "{{name}} ya está en la lista",
       "id_format": "QF, una letra mayúscula y dos dígitos, como QFA94",
       "id_used": "Ya lo usa {{name}}",
-      "must_be_positive": "Debe ser mayor que 0",
       "at_least": "Mínimo {{n}}",
       "vendor": "Fabricante",
       "filament": "Filamento",
@@ -292,7 +293,10 @@
       "chamber": "Recinto",
       "support": "Material de soporte",
       "listed_as": "Aparece como {{name}}.",
-      "listed_as_copied": "Aparece como {{name}}. El secado y otros ajustes se copian de {{base}}."
+      "listed_as_copied": "Aparece como {{name}}. El secado y otros ajustes se copian de {{base}}.",
+      "whole_degrees": "Solo grados enteros",
+      "nozzle_limit": "Máximo {{max}}, el límite de la boquilla de esta impresora",
+      "nozzle_limit_hint": "El límite de esta impresora es {{max}} °C"
     },
     "import": {
       "title": "Importar filamentos",
@@ -300,7 +304,9 @@
       "new": "No está en la lista actual",
       "changed": "Difiere de la lista actual",
       "conflict": "Su ID {{id}} ya lo usa {{name}}",
-      "none": "Todos los filamentos de este archivo ya están en la lista."
+      "none": "Todos los filamentos de este archivo ya están en la lista.",
+      "nozzle_limit": "Su máximo de boquilla supera el límite de esta impresora, {{max}} °C",
+      "nozzle_invalid": "Sus temperaturas de boquilla no son dos números enteros, el mínimo y luego el máximo"
     },
     "library_title": "Biblioteca de filamentos",
     "back_home": "Volver a Inicio"

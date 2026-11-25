@@ -33,6 +33,8 @@ import re
 # plausible before it is changed. Other builds are left alone. The Plus 5's
 # build keeps the multi-step methods but never calls them.
 KNOWN_BUILDS = {
+    "aedb3ea85c40d51d888acf148beb904c7b3175b20591c33606c0ccf774c38d75":
+        ("01.01.07.02", "staged"),
     "58ee8c61bffc3d4e18edc9e56a326495b6a218348bbfb13f7a012a946039b0a5":
         ("01.01.07.01", "staged"),
     "1d726c7b341f7acca85d0770c8966da236d02ca4a635e8a0b72bd40c3ea7df01":
@@ -41,8 +43,11 @@ KNOWN_BUILDS = {
         ("01.01.06.01-01.01.06.04", "staged"),
     "fc20d82a58b740c0d5e23a4043c23f3d2b9dcb386e72cda4e4619292331f6589":
         ("Plus 5 01.01.02.01", "single"),
+    "c622d664d8e2cdecf01d4347b7fbf5c96ba3ba25ff83adabb4c1b3c760f65401":
+        ("Plus 5 01.01.02.02", "single"),
 }
-# Vendor arguments traced live on 01.01.07.01. They stand in for the vendor
+# Vendor arguments traced live on 01.01.07.01 (01.01.07.02 passes the same
+# ones: its load and unload methods are 01.01.07.01's). They stand in for the vendor
 # baseline in status and validation until a load or unload supplies the real
 # arguments; the wrappers always start from the arguments they receive.
 VENDOR_BASELINE = {

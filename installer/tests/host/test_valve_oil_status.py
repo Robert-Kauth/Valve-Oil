@@ -291,6 +291,35 @@ class StatusServiceTests(unittest.TestCase):
         status_file.remove_status(self.paths)
         self.assertIsNone(reported())
 
+    def test_an_install_that_hands_off_never_writes_over_the_firmware_updates_own_install(self) -> None:
+        # Over SSH, the install hands off to vo-firmware-update.service, whose install can start and finish before
+        # the SSH install's own publisher ends; the browser then shows that install's result, not "handed off".
+        steps = (progress.CHECK, progress.QIDI_FIRMWARE.format(target="01.01.07.02"), progress.FINISH)
+        path = status_file.progress_path(self.paths)
+        try:
+            with status_file.progress_published(self.paths) as publisher:
+                progress.begin(steps, origin=progress.ORIGIN_SSH, from_version="26.11.23.2", to_version="26.11.23.3")
+                progress.step(steps[1])
+                self.assertEqual(json.loads(path.read_text())["state"], "running")
+                child = {**json.loads(path.read_text()), "state": "succeeded", "pid": os.getpid() + 1,
+                         "finished_at": status_file.now()}
+                path.write_text(json.dumps(child))
+                progress.detail("waiting for the firmware update")
+                publisher.outcome = status_file.HANDED_OFF
+        finally:
+            progress.end()
+        self.assertEqual(json.loads(path.read_text()), child)
+
+        # Ended first, it says it handed off, until the firmware update's install writes its own progress.
+        path.unlink()
+        try:
+            with status_file.progress_published(self.paths) as publisher:
+                progress.begin(steps, origin=progress.ORIGIN_SSH, from_version="26.11.23.2", to_version="26.11.23.3")
+                publisher.outcome = status_file.HANDED_OFF
+        finally:
+            progress.end()
+        self.assertEqual(json.loads(path.read_text())["state"], "handed_off")
+
     def test_an_update_now_job_from_before_a_reboot_is_not_running(self) -> None:
         # The job file outlives a power cut; after it, the job's process ID can belong to something else that is running.
         root = self.paths.printer_data_root.parent

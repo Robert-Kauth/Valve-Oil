@@ -1443,6 +1443,24 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     json.loads(state_path(paths).read_text(encoding="utf-8"))["latest_checksum"], old_checksum
                 )
 
+    def test_a_latest_release_older_than_the_installed_one_is_never_installed(self):
+        # Found on the Max 4 (2026-11-25): with a build newer than GitHub's latest release installed, the hourly check
+        # saw a changed checksum, replaced the bundle folder with the older release and ran its installer, which
+        # refused the newer state, leaving a bundle folder whose uninstall can't run. A release withdrawn after
+        # printers updated to it would do the same to every enrolled printer, every hour.
+        from installer.runtime import update_check
+
+        bundle = self.manifest.package.version
+        for latest, waiting in (("26.11.20.1", False), (bundle, True), ("99.1.1.1", True), (None, True)):
+            with self.subTest(latest=latest):
+                printer_root, paths, urlopen, forbidden, state = self._waiting_printer(latest=latest)
+                for reconciliation_required in (False, True):
+                    found = update_check.discover(paths, enrolled=True, latest_version=latest,
+                                                  reconciliation_required=reconciliation_required,
+                                                  release_changed=True, urlopen=urlopen)
+                    self.assertEqual(found.release_waiting, waiting)
+                    self.assertEqual(found.release_item is not None, waiting)
+
     def _waiting_printer(self, latest="99.1.1.1"):
         """An installed Max 4 on QIDI firmware this release updates from, with a Box connected since the last install
         on QIDI's Box firmware, a newer release published, and a Klipper restart an earlier install left pending."""

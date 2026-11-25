@@ -20,7 +20,8 @@
 #   port for reads, so pointed at a Box's Klipper port it takes that MCU's
 #   replies and the Box drops;
 # - lets QIDI's "Can not find 485 device", logged every 2 s while no adapter
-#   is attached, into klippy.log once an hour with a repeat count;
+#   is attached, into klippy.log once an hour with a repeat count (01.01.07.02
+#   logs it once per outage, with a suffix, which this leaves alone);
 # - while no RS-485 hardware has been seen, makes QIDI look for its adapter
 #   every 30 s instead of every 2 s, and looks for RS-485 hardware itself
 #   every minute instead of every 10 s, to keep Klipper's main loop free.
