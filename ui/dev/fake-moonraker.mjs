@@ -193,7 +193,7 @@ function baseStatus() {
     },
     vo_printer_warnings: { warnings: [] },
     vo_klipper_health: { timers: 61, removed_timers: 0, main_thread_load: 0.22, timer_delay: 0.001 },
-    vo_box_rfid: { readers: {}, last_tag: {}, catalog_added: {}, last_report: null, job: { run: 0, running: false } },
+    vo_box_rfid: { readers: {}, last_tag: {}, catalog_added: {}, filaments_removed: {}, last_report: null, job: { run: 0, running: false } },
     mcu: { last_stats: { mcu_awake: 0.031, mcu_task_avg: 0.00002 } },
     'mcu THR': { last_stats: { mcu_awake: 0.012 } },
     'mcu mcu_box1': { last_stats: { mcu_awake: 0.004 } },

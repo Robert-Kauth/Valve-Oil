@@ -11,6 +11,7 @@ import pwd
 import shutil
 import socket
 import subprocess
+import sys
 import tarfile
 import time
 import types
@@ -75,6 +76,7 @@ from installer.tests.helpers import (
     stock_printer_data,
     temp_path,
 )
+from installer.tests.klipper_fakes import EXTRAS_ROOT, load_extra
 
 
 DESIRED_HOMING_SHA256 = "47e091f4cd1ec52c474e5b7bada1a12959a4dc3507dbdaa6e77e7b2f74ba656c"
@@ -117,6 +119,15 @@ def _section_hashes(data: bytes) -> dict[str, str]:
         name: klipper_cfg.normalized_section_sha256(klipper_cfg.resolve_unique_section(text, name).text)
         for name in names
     }
+
+
+def _box_rfid():
+    """Valve Oil's vo_box_rfid Klipper module, which imports its filament catalog from beside itself."""
+    sys.path.insert(0, str(EXTRAS_ROOT))
+    try:
+        return load_extra("box_rfid")
+    finally:
+        sys.path.remove(str(EXTRAS_ROOT))
 
 
 class SourcePatchLifecycleMatrixTests(unittest.TestCase):
@@ -348,6 +359,22 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             hashlib.sha256((paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes()).hexdigest(),
             "0419d86046b771bdb482a29f862e59518e03dcfa7b8af150b9003190ef474bf3",
         )
+        # Issue #414: Klipper moves QIDI's filaments above the Smart 5's 315 C out of QIDI's list, and uninstall puts
+        # them back where they were.
+        database = printer_root.parent / "filament_config"
+        database.mkdir()
+        qidi_list = json.dumps({"QIDI PLA Basic": {"filament_id": "QFA00", "nozzle_temperature": [190, 240]},
+                                "QIDI PPS-CF": {"filament_id": "QFP01", "nozzle_temperature": [300, 350]},
+                                "QIDI PET-CF": {"filament_id": "QFT01", "nozzle_temperature": [280, 320]},
+                                "Generic PLA": {"filament_id": "QFA90", "nozzle_temperature": [190, 240]}}, indent=2) + "\n"
+        for nozzle in ("0.2", "0.4", "0.6", "0.8"):
+            (database / f"filament-{nozzle}.json").write_text(qidi_list, encoding="utf-8")
+        box_rfid = _box_rfid()
+        box_rfid.FilamentDatabase(str(database), box_rfid.CATALOG, 315.,
+                                  str(printer_root / box_rfid.REMOVED_RECORD)).merge()
+        moved = json.loads((database / "filament-0.4.json").read_text(encoding="utf-8"))
+        self.assertNotIn("QIDI PPS-CF", moved)
+        self.assertNotIn("QIDI PET-CF", moved)
 
         run_uninstall(
             paths,
@@ -363,6 +390,10 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.assertEqual(restored.count(b"\n"), restored.count(b"\r\n"))
                 self.assertEqual(_section_hashes(restored), _section_hashes(data))
         self.assertFalse(installed.exists())
+        restored = json.loads((database / "filament-0.4.json").read_text(encoding="utf-8"))
+        # QIDI's filaments are back in their places; the catalog's stay, as uninstall leaves them.
+        self.assertEqual(list(restored)[:4], list(json.loads(qidi_list)))
+        self.assertFalse((printer_root / box_rfid.REMOVED_RECORD).exists())
         self.assertEqual((paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes(), stock_source)
 
     def test_plus5_install_uses_the_plus5_baseline_and_uninstall_restores_it(self):

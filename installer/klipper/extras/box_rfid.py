@@ -5,6 +5,16 @@
 # files lack are added to them. Existing entries, QIDI's or the operator's,
 # are never changed, and no entry is added whose name or ID is already used.
 #
+# The database holds only filaments the nozzle can heat to: QIDI's Box loads
+# and unloads, and from Max 4 01.01.07.02 and Plus 5 01.01.02.02 its print-start
+# flush, heat it to int(nozzle_temperature[1]) with no limit of their own, so a
+# maximum above the [extruder] max_temp (315 C on the Smart 5) stops them. Such
+# entries are moved out of every file at startup, and catalog entries above it
+# aren't added. Each moved entry that isn't the catalog's own goes into
+# REMOVED_RECORD, in printer_data, with the entry before it, so it goes back to
+# its place at the next start whose max_temp reaches it, or at uninstall
+# (installer/runtime/filament_database.py).
+#
 # QIDI's box_rfid polls each reader with fm17550_read_card_cb and parses a
 # 16-byte QIDI block. On a USB Box running the Valve Oil Box firmware
 # (fm17550_select and fm17550_transceive), each poll is answered here instead:
@@ -63,6 +73,8 @@ except ImportError:  # imported outside Klipper's extras package
     from filament_catalog import CATALOG
 
 DATABASE_DIR = "/home/qidi/QIDI_Client/resource/filament_config"
+DATABASE_NOZZLES = ("0.2", "0.4", "0.6", "0.8")
+REMOVED_RECORD = ".vo_removed_filaments.json"  # in printer_data
 SELECT = ("fm17550_select oid=%c", "fm17550_select_return oid=%c status=%c data=%*s")
 TRANSCEIVE = ("fm17550_transceive oid=%c data=%*s",
               "fm17550_transceive_return oid=%c status=%c data=%*s")
@@ -427,52 +439,180 @@ def decode_bambu(blocks, catalog):
     return Decoded("Bambu", material, colors, filament_type, "bambu")
 
 
-class FilamentDatabase:
-    """QIDI's filament-<nozzle>.json files: catalog merge and name lookup."""
+def nozzle_max(entry):
+    """The nozzle maximum QIDI's flows heat to, int(nozzle_temperature[1]), or
+    None when int() can't read it."""
+    try:
+        return int(entry["nozzle_temperature"][1])
+    except (KeyError, IndexError, TypeError, ValueError, OverflowError):
+        return None
 
-    def __init__(self, directory, catalog):
+
+def _items(record):
+    return {nozzle: items for nozzle, items in record.items() if items}
+
+
+def insert_after(entries, name, entry, after):
+    """ENTRIES with NAME added after AFTER, first when AFTER is None, and last
+    when AFTER is no longer there."""
+    items = list(entries.items())
+    if after is None:
+        index = 0
+    else:
+        index = next((i + 1 for i, (key, _) in enumerate(items) if key == after), len(items))
+    items.insert(index, (name, entry))
+    return collections.OrderedDict(items)
+
+
+class FilamentDatabase:
+    """QIDI's filament-<nozzle>.json files: catalog merge, the nozzle limit,
+    and name lookup."""
+
+    def __init__(self, directory, catalog, limit=None, record=None):
         self.directory = directory
         self.catalog = catalog
+        self.limit = limit  # the [extruder] max_temp, or None for no limit
+        self.record = record  # REMOVED_RECORD's path, or None
         self.cache = (None, {})
+        self.removed = {}
+        self.restored = {}
 
     def path(self, nozzle):
         return os.path.join(self.directory, "filament-%s.json" % (nozzle,))
 
-    def merge(self):
-        added = {}
-        for nozzle in ("0.2", "0.4", "0.6", "0.8"):
+    def fits(self, entry):
+        """Whether the nozzle can heat to ENTRY's maximum. An entry whose
+        maximum can't be read is left as it is."""
+        value = nozzle_max(entry)
+        return self.limit is None or value is None or value <= self.limit
+
+    @staticmethod
+    def _write_json(path, data):
+        temp = path + ".vo-tmp"
+        try:
+            with open(temp, "w") as handle:
+                json.dump(data, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            if os.path.exists(path):
+                os.chmod(temp, os.stat(path).st_mode & 0o777)
+            os.replace(temp, path)
+            return True
+        except OSError:
+            logging.exception("vo_box_rfid: cannot update %s", path)
+            if os.path.exists(temp):
+                os.unlink(temp)
+            return False
+
+    def _read_record(self):
+        if self.record is None or not os.path.exists(self.record):
+            return {}
+        try:
+            with open(self.record) as handle:
+                filaments = json.load(handle).get("filaments", {})
+            return {nozzle: [item for item in items if isinstance(item, dict) and isinstance(item.get("name"), str)
+                             and isinstance(item.get("entry"), dict)]
+                    for nozzle, items in filaments.items() if nozzle in DATABASE_NOZZLES and isinstance(items, list)}
+        except (OSError, ValueError, AttributeError):
+            logging.exception("vo_box_rfid: cannot read %s", self.record)
+            return None
+
+    def _write_record(self, filaments):
+        filaments = dict(sorted(_items(filaments).items()))
+        if not filaments:
+            if os.path.exists(self.record):
+                try:
+                    os.unlink(self.record)
+                except OSError:
+                    logging.exception("vo_box_rfid: cannot remove %s", self.record)
+                    return False
+            return True
+        return self._write_json(self.record, {"schema": 1, "database_dir": self.directory, "filaments": filaments})
+
+    def _plan(self, record, move_out):
+        """For each readable file: (path, its new entries, its record items,
+        catalog names added, names put back, names moved out)."""
+        plans = {}
+        for nozzle in DATABASE_NOZZLES:
             path = self.path(nozzle)
             try:
                 with open(path) as handle:
-                    entries = json.load(handle)
+                    entries = json.load(handle, object_pairs_hook=collections.OrderedDict)
             except (OSError, ValueError):
                 logging.exception("vo_box_rfid: cannot read %s", path)
                 continue
+            if not isinstance(entries, dict):
+                continue
+            kept, restored, removed = [], [], []
+            for item in record.get(nozzle, []):
+                if not self.fits(item["entry"]):
+                    kept.append(item)
+                    continue
+                used = {e.get("filament_id") for e in entries.values() if hasattr(e, "get")}
+                if item["name"] not in entries and item["entry"].get("filament_id") not in used:
+                    entries = insert_after(entries, item["name"], dict(item["entry"]), item.get("after"))
+                    restored.append(item["name"])
+            names = list(entries)
+            for index, name in enumerate(names if move_out else ()):
+                value = entries[name]
+                if not hasattr(value, "get") or self.fits(value):
+                    continue
+                if self.catalog["filaments"].get(name, {}).get("entry") != value:
+                    kept = [item for item in kept if item["name"] != name]
+                    kept.append({"name": name, "after": names[index - 1] if index else None, "entry": value})
+                del entries[name]
+                removed.append(name)
             used = {e.get("filament_id") for e in entries.values() if hasattr(e, "get")}
-            new = {name: dict(item["entry"]) for name, item in self.catalog["filaments"].items()
+            new = [name for name, item in self.catalog["filaments"].items()
                    if nozzle in item["nozzles"] and name not in entries
-                   and item["entry"]["filament_id"] not in used}
-            if not new:
+                   and item["entry"]["filament_id"] not in used and self.fits(item["entry"])]
+            for name in new:
+                entries[name] = dict(self.catalog["filaments"][name]["entry"])
+            plans[nozzle] = (path, entries, kept, new, restored, removed)
+        return plans
+
+    def merge(self):
+        """Put back recorded entries the nozzle reaches, move out entries it
+        doesn't, and add the catalog's missing entries that it does. Without
+        a readable record, nothing is moved out."""
+        record = self._read_record()
+        recorded = self.record is not None and record is not None
+        record = record or {}
+        move_out = recorded and self.limit is not None
+        plans = self._plan(record, move_out)
+        pending = dict(record)
+        if recorded:
+            # What leaves a file is in the record before the file is written.
+            for nozzle, (_, _, kept, _, _, _) in plans.items():
+                names = {item["name"] for item in kept}
+                pending[nozzle] = kept + [item for item in record.get(nozzle, []) if item["name"] not in names]
+            if _items(pending) != _items(record) and not self._write_record(pending):
+                logging.info("vo_box_rfid: filaments above the nozzle limit left in the filament list")
+                recorded = False
+                plans = self._plan(record, False)
+        final = dict(pending)
+        added = {}
+        for nozzle, (path, entries, kept, new, restored, removed) in plans.items():
+            if (new or restored or removed) and not self._write_json(path, entries):
                 continue
-            entries.update(new)
-            temp = path + ".vo-tmp"
-            try:
-                with open(temp, "w") as handle:
-                    json.dump(entries, handle, ensure_ascii=False, indent=2)
-                    handle.write("\n")
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                mode = os.stat(path).st_mode & 0o777
-                os.chmod(temp, mode)
-                os.replace(temp, path)
-            except OSError:
-                logging.exception("vo_box_rfid: cannot update %s", path)
-                if os.path.exists(temp):
-                    os.unlink(temp)
-                continue
-            added[nozzle] = len(new)
+            final[nozzle] = kept
+            if new:
+                added[nozzle] = len(new)
+            if restored:
+                self.restored[nozzle] = restored
+            if removed:
+                self.removed[nozzle] = removed
+        if recorded and _items(final) != _items(pending):
+            self._write_record(final)
         if added:
             logging.info("vo_box_rfid: added catalog filaments %s", added)
+        if self.removed:
+            logging.info("vo_box_rfid: filaments above the nozzle's %s C moved out of the filament list: %s",
+                         self.limit, self.removed)
+        if self.restored:
+            logging.info("vo_box_rfid: filaments the nozzle reaches put back in the filament list: %s",
+                         self.restored)
         return added
 
     def entries(self):
@@ -947,9 +1087,14 @@ class BoxRfid:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.catalog = CATALOG
-        self.database = FilamentDatabase(config.get("database_dir", DATABASE_DIR), self.catalog)
+        start_args = self.printer.get_start_args()
+        config_file = start_args.get("config_file")
+        record = config.get("removed_record", os.path.join(os.path.dirname(os.path.dirname(config_file)), REMOVED_RECORD)
+                            if config_file else None)
+        limit = config.getsection("extruder").getfloat("max_temp", None) if config.has_section("extruder") else None
+        self.database = FilamentDatabase(config.get("database_dir", DATABASE_DIR), self.catalog, limit, record)
         self.added = self.database.merge()
-        log_file = self.printer.get_start_args().get("log_file")
+        log_file = start_args.get("log_file")
         self.report_dir = config.get("report_dir", os.path.dirname(log_file) if log_file else "/tmp")
         self.readers = {}
         self.captured = set()
@@ -1286,7 +1431,8 @@ class BoxRfid:
     def get_status(self, eventtime):
         return {"readers": {name: reader.last for name, reader in self.readers.items()},
                 "last_tag": {name: reader.last_tag for name, reader in self.readers.items()},
-                "catalog_added": self.added, "last_report": self.last_report,
+                "catalog_added": self.added, "filaments_removed": self.database.removed,
+                "last_report": self.last_report,
                 "job": copy.deepcopy(self.job)}
 
 
