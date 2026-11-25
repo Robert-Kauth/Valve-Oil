@@ -43,7 +43,7 @@ sys.modules.setdefault("requests", types.ModuleType("requests"))
 import configfile  # noqa: E402  (Klipper's)
 import gcode as klipper_gcode  # noqa: E402  (Klipper's)
 
-FIRMWARE = {"max4": "01.01.07.01", "plus5": "01.01.02.01", "smart5": "smart5-01.01.02.01"}
+FIRMWARE = {"max4": "01.01.07.02", "plus5": "01.01.02.01", "smart5": "smart5-01.01.02.01"}
 
 # Klipper modules loaded from klipper/klippy/extras for their sections, or when another module loads them.
 KLIPPER_MODULES = {
@@ -91,6 +91,19 @@ VO_NOT_LOADED = {
     "vo_box_slot_jog": "moves Box slot motors itself through Klipper's C step queue; jogs and RFID spool turns",
     "vo_box_spool_roll": "turns spools on their rollers through Klipper's C step queue; off by default",
 }
+
+
+@lru_cache(maxsize=None)
+def qidi_module_builds(firmware: str) -> dict:
+    """{path under klippy/: sha256} of QIDI's compiled modules on a firmware, as installer/package.yaml pins them for
+    Valve Oil's Klipper; qidi.py's stand-ins pick their behaviour by these builds."""
+    from installer.runtime.manifest import load_manifest
+
+    manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+    for key, files in manifest.system_optimizations.klipper_tree.qidi_modules:
+        if key == firmware:
+            return {path: pin.sha256 for path, pin in files}
+    raise KeyError(f"installer/package.yaml pins no QIDI modules for {firmware}")
 
 
 @lru_cache(maxsize=None)
@@ -173,6 +186,9 @@ class FlowPrinter:
     def __init__(self, printer_id: str, *, box: qidi.BoxSetup, variables: dict | None = None,
                  filament_detected: bool = True, slow_ready: float = 0.):
         self.printer_id = printer_id
+        # The stock firmware installed into, and its QIDI module builds, which pick the stand-ins' behaviour.
+        self.firmware = FIRMWARE[printer_id]
+        self.qidi_builds = qidi_module_builds(self.firmware)
         hardware.GAPS.clear()
         self.root = temp_path(f"gcode-flow-{printer_id}-") / "printer_data"
         shutil.copytree(installed_printer_data(printer_id), self.root, symlinks=True)

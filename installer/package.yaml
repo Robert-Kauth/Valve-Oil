@@ -29,13 +29,14 @@ printers:
       - "01.01.06.04"
       - "01.01.06.05"
       - "01.01.07.01"
+      - "01.01.07.02"
     target_firmware:
-      version: "01.01.07.01"
+      version: "01.01.07.02"
       mirror: thelegendtubaguy/Qidi-Max4-Defaults
-      release: qidi-max4-firmware-01.01.07.01-0cc97445e77295116adaa665ff463e77608d4929520bd7cd46e732fbb0a6ecf2
-      archive: QD_MAX4_01.01.07.01_20261016_Release.zip
-      sha256: 0cc97445e77295116adaa665ff463e77608d4929520bd7cd46e732fbb0a6ecf2
-      size: 264568499
+      release: qidi-max4-firmware-01.01.07.02-8346fb7d6aaa729a5d4966f2ca8ef7affc194b31475ccd2b81633703ac6741fb
+      archive: QD_MAX4_01.01.07.02_20261123_Release.zip
+      sha256: 8346fb7d6aaa729a5d4966f2ca8ef7affc194b31475ccd2b81633703ac6741fb
+      size: 261600467
       boards: {mcu: "02.01.01.12", thr: "02.02.01.08", box: "02.03.01.21", closed_loop: "03.01.10.15"}
       # QD_MAX4_CLOSED_LOOP_03.01.10.15_20260907.bin in the package, which the update sends to each X/Y driver.
       closed_loop_image: {size: 116736, sha256: d670e9104f4844d38669312104355837d4a92a06b03ed8157d487e87286b1be4}
@@ -44,6 +45,7 @@ printers:
         # QIDI published 01.01.06.04 twice: on 2026-06-09 with mainboard 02.01.01.11, then on 2026-06-12 with 02.01.01.12.
         "01.01.06.04": {mcu: ["02.01.01.11", "02.01.01.12"], thr: "02.02.01.08", box: "02.03.01.21", closed_loop: "03.01.10.13"}
         "01.01.06.05": {mcu: "02.01.01.12", thr: "02.02.01.08", box: "02.03.01.21", closed_loop: "03.01.10.13"}
+        "01.01.07.01": {mcu: "02.01.01.12", thr: "02.02.01.08", box: "02.03.01.21", closed_loop: "03.01.10.15"}
     restore_sets:
       "01.01.06.03":
         release: qidi-max4-firmware-01.01.06.03
@@ -92,6 +94,17 @@ printers:
           QD_MAX4_BOX485_02.04.01.01_20261010.bin: {size: 49893, sha256: 53bf49f5250d95dd9dc0e4039feb43013502e3d3278b82c1c301b5d73e6db7f1}
           QD_MAX4_BOX_02.03.01.21_20260124.bin: {size: 39392, sha256: dcf6bb191d77fb2d70e2cdabce7b24f277d4eb143ed28fe55c9ce19f1531cd12}
           QD_MAX4_BUFFER_02.05.01.01_20261010.bin: {size: 8516, sha256: ef08f7450a14b91b21283eb8dcbb36aafa5fe94aa2ed4a7fa809dad3298e781f}
+          QD_MAX4_CLOSED_LOOP_03.01.10.15_20260907.bin: {size: 116736, sha256: d670e9104f4844d38669312104355837d4a92a06b03ed8157d487e87286b1be4}
+          QD_MAX4_MCU_02.01.01.12_20260609.bin: {size: 36824, sha256: 65405946b4b0c152d9115e06d082bc3818b13b5a878970c8a18388a641d510fd}
+          QD_MAX4_THR_02.02.01.08_20260303.bin: {size: 35056, sha256: 1d34b4b0142f2a2047f08c2fae59d827bcee0adbd1563b4bd1de311dff8b2d62}
+      "01.01.07.02":
+        release: qidi-max4-firmware-01.01.07.02-8346fb7d6aaa729a5d4966f2ca8ef7affc194b31475ccd2b81633703ac6741fb
+        archive: QD_MAX4_01.01.07.02_20261123_Release.zip
+        files:
+          firmware_manifest.json: {size: 743, sha256: 498b120b31a32902b34da9d3ac52b3b301c163fdfa15d7b6b0adf8223455b261}
+          QD_MAX4_BOX485_02.04.01.08_20261120.bin: {size: 51721, sha256: a83f90ff402e5c33957c231073c2470bd551b59e602a537663c8429f7c79c110}
+          QD_MAX4_BOX_02.03.01.21_20260124.bin: {size: 39392, sha256: dcf6bb191d77fb2d70e2cdabce7b24f277d4eb143ed28fe55c9ce19f1531cd12}
+          QD_MAX4_BUFFER_02.05.00.04_20261029.bin: {size: 8800, sha256: 76b52cffaeb330babe9cf7e0ba2d3f5dd44940fa6a1dd3904218b5acd4ee62f7}
           QD_MAX4_CLOSED_LOOP_03.01.10.15_20260907.bin: {size: 116736, sha256: d670e9104f4844d38669312104355837d4a92a06b03ed8157d487e87286b1be4}
           QD_MAX4_MCU_02.01.01.12_20260609.bin: {size: 36824, sha256: 65405946b4b0c152d9115e06d082bc3818b13b5a878970c8a18388a641d510fd}
           QD_MAX4_THR_02.02.01.08_20260303.bin: {size: 35056, sha256: 1d34b4b0142f2a2047f08c2fae59d827bcee0adbd1563b4bd1de311dff8b2d62}
@@ -378,6 +391,10 @@ install:
           source: "klipper/qidi/homing-sync-reset.py"
           expected_sha256: "0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761"
           desired_sha256: "24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565"
+        - firmware: "01.01.07.02"
+          source: "klipper/qidi/homing-sync-reset.py"
+          expected_sha256: "0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761"
+          desired_sha256: "24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565"
         - firmware: "01.01.02.01"
           source: "klipper/qidi/homing-sync-reset.py"
           expected_sha256: "0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761"
@@ -398,7 +415,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "50"
           desired: "65"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "50"
           desired: "65"
         # Plus 5 sensorless homing: at 60 and 65 mm/s some Y homes stalled about 0.6 mm early.
@@ -414,7 +431,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "50.0"
           desired: "55.0"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "50.0"
           desired: "55.0"
 
@@ -426,7 +443,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "50.0"
           desired: "20.0"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "50.0"
           desired: "20.0"
 
@@ -438,7 +455,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "200.0"
           desired: "500.0"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "200.0"
           desired: "500.0"
 
@@ -450,7 +467,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "50"
           desired: "65"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "50"
           desired: "65"
         # Plus 5 sensorless homing: at 60 and 65 mm/s some Y homes stalled about 0.6 mm early.
@@ -466,7 +483,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "50.0"
           desired: "55.0"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "50.0"
           desired: "55.0"
 
@@ -478,7 +495,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "50.0"
           desired: "20.0"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "50.0"
           desired: "20.0"
 
@@ -490,7 +507,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "200.0"
           desired: "500.0"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "200.0"
           desired: "500.0"
 
@@ -502,7 +519,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "10.0"
           desired: "5.0"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02", "01.01.02.01"]
           expected: "10.0"
           desired: "5.0"
 
@@ -514,7 +531,7 @@ patches:
       option: "max_velocity"
       maximum: "565"
       variants:
-        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "800"
           desired: "565"
         - firmwares: ["01.01.02.01"]
@@ -532,7 +549,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "150"
           desired: "565"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "150"
           desired: "565"
         - firmwares: ["01.01.02.01"]
@@ -549,7 +566,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "150"
           desired: "565"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "150"
           desired: "565"
         - firmwares: ["01.01.02.01"]
@@ -565,7 +582,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "CANCEL_PRINT"
           desired: "VO_CANCEL_PRINT_ON_ERROR"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02", "01.01.02.01", "smart5-01.01.02.01"]
           expected: "CANCEL_PRINT"
           desired: "VO_CANCEL_PRINT_ON_ERROR"
 
@@ -577,7 +594,7 @@ patches:
         - firmwares: ["01.01.06.03", "01.01.06.04"]
           expected: "0.0015"
           desired: "0.00075"
-        - firmwares: ["01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
+        - firmwares: ["01.01.06.05", "01.01.07.01", "01.01.07.02", "01.01.02.01", "smart5-01.01.02.01"]
           expected: "0.0005"
           desired: "0.00075"
 
@@ -599,7 +616,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "True"
           desired: "False"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02", "01.01.02.01", "smart5-01.01.02.01"]
           expected: "True"
           desired: "False"
 
@@ -608,7 +625,7 @@ patches:
       section: "closed_loop x"
       option: "query_cycle"
       variants:
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "5"
           desired: "10"
 
@@ -617,7 +634,7 @@ patches:
       section: "closed_loop y"
       option: "query_cycle"
       variants:
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "5"
           desired: "10"
 
@@ -626,7 +643,7 @@ patches:
       section: "closed_loop x"
       option: "trigger_current"
       variants:
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "400"
           desired: "400"
 
@@ -635,7 +652,7 @@ patches:
       section: "closed_loop x"
       option: "trigger_time"
       variants:
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "2"
           desired: "2"
 
@@ -644,7 +661,7 @@ patches:
       section: "closed_loop x"
       option: "trigger_speed"
       variants:
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "50"
           desired: "50"
 
@@ -653,7 +670,7 @@ patches:
       section: "closed_loop y"
       option: "trigger_current"
       variants:
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "400"
           desired: "400"
 
@@ -662,7 +679,7 @@ patches:
       section: "closed_loop y"
       option: "trigger_time"
       variants:
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "2"
           desired: "2"
 
@@ -671,7 +688,7 @@ patches:
       section: "closed_loop y"
       option: "trigger_speed"
       variants:
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "50"
           desired: "50"
 
@@ -680,7 +697,7 @@ patches:
       section: "temperature_sensor Chamber_Thermal_Protection_Sensor"
       option: "max_temp"
       variants:
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "150"
           desired: "170"
 
@@ -689,7 +706,7 @@ patches:
       section: "fila25"
       option: "filament"
       variants:
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "PA-CF"
           desired: "PA6-CF"
 
@@ -698,7 +715,7 @@ patches:
       section: "fila25"
       option: "type"
       variants:
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected: "PA-CF"
           desired: "PA6-CF"
 
@@ -711,7 +728,7 @@ patches:
           expected_normalized_sha256: "4466d08166d675b207e2256e4072b1b79ca5b3d83b07a272efc2bef4d41ab4cc"
         - firmwares: ["01.01.06.04", "01.01.06.05"]
           expected_normalized_sha256: "82ddb60dd79950a1b0e551295aca9c3c05cd3f4f0ed77ac2888d4faf18c724a8"
-        - firmwares: ["01.01.07.01"]
+        - firmwares: ["01.01.07.01", "01.01.07.02"]
           expected_normalized_sha256: "4466d08166d675b207e2256e4072b1b79ca5b3d83b07a272efc2bef4d41ab4cc"
         - firmwares: ["01.01.02.01", "smart5-01.01.02.01"]
           expected_normalized_sha256: "171e3cdbbb8f049a2c1aa43a7ad0176e8a5027ba0c51c8acbf95794a13877112"
@@ -724,7 +741,7 @@ patches:
           expected_normalized_sha256: "b11be3af49980c38029cfeaf9dcbd4db8bb2e5970f40b2bb7626fe7337a86017"
         - firmwares: ["01.01.06.04", "01.01.06.05"]
           expected_normalized_sha256: "b11be3af49980c38029cfeaf9dcbd4db8bb2e5970f40b2bb7626fe7337a86017"
-        - firmwares: ["01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
+        - firmwares: ["01.01.07.01", "01.01.07.02", "01.01.02.01", "smart5-01.01.02.01"]
           expected_normalized_sha256: "866bc3a0ab78901653e69116a13ad723f700622dd5df0d0541fcfac12099293b"
 
     - id: pause_resume_cancel_cancel_print
@@ -733,7 +750,7 @@ patches:
       variants:
         - firmwares: ["01.01.06.03"]
           expected_normalized_sha256: "95885860997dfc3a8dd324b63f4d2e2666ccce2a87e39a0d464965123a8fa032"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected_normalized_sha256: "56d8d42de82eb09919fbe01dea7bf5cf24938490cda4d23b61af14139aa76c67"
         - firmwares: ["01.01.02.01", "smart5-01.01.02.01"]
           expected_normalized_sha256: "210b1e0029cf2dcb03d6444b09f711f8548ff748f7260120fe850abebbbe4c0c"
@@ -744,7 +761,7 @@ patches:
       variants:
         - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05"]
           expected_normalized_sha256: "130d5ec6b0201c52b7abc4a54ef7095ae9397d5c0318fe12a2c477c2a94225d0"
-        - firmwares: ["01.01.07.01"]
+        - firmwares: ["01.01.07.01", "01.01.07.02"]
           expected_normalized_sha256: "79234acad35e02bf68724057dc355e2e85e29c5f001fce4566e2550f3d1d5c44"
         - firmwares: ["01.01.02.01"]
           expected_normalized_sha256: "ffae6fa66d2b77ef6be5f5ac8ba70537448e1e527edc9278acc5b2b497e74f1e"
@@ -755,7 +772,7 @@ patches:
       file: "config/klipper-macros-qd/qd_macro.cfg"
       section: "gcode_macro MOVE_TO_TRASH"
       variants:
-        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected_normalized_sha256: "3510755c71af7170afe61359d960844076027190f85d92e11b8c34b5c7c80f48"
         - firmwares: ["01.01.02.01"]
           expected_normalized_sha256: "92dd2dffbd15797ddd742a1638ba43ed56e17dd0f7531d384924ea325cb8dd18"
@@ -766,14 +783,14 @@ patches:
       file: "config/klipper-macros-qd/heaters.cfg"
       section: "gcode_macro m109.0"
       variants:
-        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02", "01.01.02.01", "smart5-01.01.02.01"]
           expected_normalized_sha256: "50260f1efe090bd27f49c61a34b960989cfa2cdff5656bc5193cbbfc6a387b77"
 
     - id: fans_m106
       file: "config/klipper-macros-qd/fans.cfg"
       section: "gcode_macro M106"
       variants:
-        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected_normalized_sha256: "07741866908f39c8c37ec70f47cc682aeb5c0d2e38396cd5ba64c6915b1d2bf0"
         - firmwares: ["01.01.02.01"]
           expected_normalized_sha256: "2d4964dccaf400fe1c6c25a47f80db0817eeae34e276688a0b3a448f5c272a84"
@@ -784,7 +801,7 @@ patches:
       file: "config/klipper-macros-qd/fans.cfg"
       section: "gcode_macro M107"
       variants:
-        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02", "01.01.02.01", "smart5-01.01.02.01"]
           expected_normalized_sha256: "ae9cded70775f7b20903d3d6b43d12bfb0c7d26a6241643a38243d8e64b74885"
 
     - id: kinematics_homing_override
@@ -793,7 +810,7 @@ patches:
       variants:
         - firmwares: ["01.01.06.03"]
           expected_normalized_sha256: "6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02"]
           expected_normalized_sha256: "6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4"
         - firmwares: ["01.01.02.01"]
           expected_normalized_sha256: "9606aaf2bae0cf123b5e73615aa45631e5f93b1a7704638a1c9bbe7de16e7a1b"
@@ -806,7 +823,7 @@ patches:
       variants:
         - firmwares: ["01.01.06.03"]
           expected_normalized_sha256: "ea8be4dae3bc5bbe881b8e3ca5c49e0b28a74b17cb9a4d8515d598bd006ce3a7"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.07.02", "01.01.02.01", "smart5-01.01.02.01"]
           expected_normalized_sha256: "ea8be4dae3bc5bbe881b8e3ca5c49e0b28a74b17cb9a4d8515d598bd006ce3a7"
 
 postflight:
@@ -939,6 +956,29 @@ system_optimizations:
         extras/hx711.cpython-39-aarch64-linux-gnu.so: {size: 737352, sha256: 8109cbbf207c0cca9707ae28d75444c8f9e4ef65bfa8e4d2bf7e7d4b12a37221}
         extras/motion_accuracy_calibration.so: {size: 2957496, sha256: e1d5a58e3495ed8e7eda543a5e9842a526e7dddcbb50a5fb4d5de1bc11295c96}
         extras/multi_color_controller.so: {size: 5393928, sha256: b7e3bc21156fb9df9f5eea07f2c596a17c7ea5db852a36139ba9773160e43592}
+        extras/upgrade_motor.so: {size: 211544, sha256: e7a958f7e94be289a4c5d76fdff05d67fb0503370c3ce695c345243b03e726fe}
+      # Max 4 01.01.07.02
+      "01.01.07.02":
+        extras/aht20_f.so: {size: 953032, sha256: 370e737caad9aee2af97cc90c5217da93d2fb91bef1370128140abfe6b75014b}
+        extras/air.cpython-39-aarch64-linux-gnu.so: {size: 335288, sha256: 6d7af36d1061216b7aa5f1cd0eb9ae1c25158f8df9926ec7e69be7e411c67d69}
+        extras/box2base.so: {size: 7548424, sha256: cc1988bd7370f6980b9176d321355dbec15e1d97c14a48711feb72a68174f99f}
+        extras/box485_buffer.so: {size: 292624, sha256: 59122be32cd1a4214cf4074ab5199e63ef499c8ffd96f6ced381876822f2e221}
+        extras/box485_multicolor.so: {size: 7846136, sha256: e5c297a63300a181898daad85934ee1f9bd25c7909b871f1674aaa88b326e78c}
+        extras/box485_rack.so: {size: 376616, sha256: eadce035974c9e6aac4d409eaaf9698b4439181eb916c111b5212bb51c66804f}
+        extras/box_autofeed.so: {size: 2042352, sha256: 03a38b456e1d95b3bd26fe5133f2a9714a2bd31bd0881d439040ea5a885b17da}
+        extras/box_detect.so: {size: 1732264, sha256: 8bae8af714b7ffccdafd56e17d7ba247ee6aadca65021a6449074d23dba835b4}
+        extras/box_device.so: {size: 5457904, sha256: 160926f2d87e9ac983fc06d11cf73515189c7bf1474048274415e7066edd3e07}
+        extras/box_extras.so: {size: 5303080, sha256: e055928801a6958f9b42bb0d4c8f24e9e490cf7761bcb07c6899fb95ef045b25}
+        extras/box_protocol.so: {size: 1070128, sha256: 9b5d18ac2b151317b2daed7abe79dc100d522c5fb16892ea41750172140efcf9}
+        extras/box_rfid.so: {size: 883064, sha256: 6a196c69b79a70fe97eabfaeec84be9fbbd061a6bb7618fe773853f9a890fe78}
+        extras/box_stepper.so: {size: 4394400, sha256: aedb3ea85c40d51d888acf148beb904c7b3175b20591c33606c0ccf774c38d75}
+        extras/cl_interface.so: {size: 275064, sha256: 6bb1aa52b15371f8122b9be3e1454b744e00c00990ab65b14bd05031ee23e378}
+        extras/closed_loop.so: {size: 430656, sha256: 57f0833de869805f68fcc4ffb38f7f5f788fc50e2d2530d5f310b959a8193392}
+        extras/cs1237.cpython-39-aarch64-linux-gnu.so: {size: 1029424, sha256: 7beb56413a902356d0aee2d0580e820342083b3b7f7194d1f5d7217f4b7ff4b5}
+        extras/heater_air_core.cpython-39-aarch64-linux-gnu.so: {size: 1494216, sha256: 729ddd7286321e34f220ec5b1a52baf7f227ad368a315d8ced4ba1fd30b859c4}
+        extras/hx711.cpython-39-aarch64-linux-gnu.so: {size: 737352, sha256: 8109cbbf207c0cca9707ae28d75444c8f9e4ef65bfa8e4d2bf7e7d4b12a37221}
+        extras/motion_accuracy_calibration.so: {size: 2957496, sha256: e1d5a58e3495ed8e7eda543a5e9842a526e7dddcbb50a5fb4d5de1bc11295c96}
+        extras/multi_color_controller.so: {size: 5538208, sha256: f87e3141e1d4a6cc393b3fd6bc09f185490dd2cc641ac385eac74d91426d40a0}
         extras/upgrade_motor.so: {size: 211544, sha256: e7a958f7e94be289a4c5d76fdff05d67fb0503370c3ce695c345243b03e726fe}
       # Plus 5 01.01.02.01
       "01.01.02.01":

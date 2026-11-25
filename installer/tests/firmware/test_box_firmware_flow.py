@@ -409,7 +409,7 @@ class MainboardFirmwareFlowTests(UsbBoardFlowCases, unittest.TestCase):
     rescue_command = "mainboard-firmware.sh rescue"
     stock_file = "QD_MAX4_MCU_02.01.01.12_20260609.bin"
 
-    def fixture(self, kind, *, firmware="01.01.07.01", soc_prefix="QD_MAX4_SOC_", **kwargs):
+    def fixture(self, kind, *, firmware="01.01.07.02", soc_prefix="QD_MAX4_SOC_", **kwargs):
         manifest, stock, boot = harness.synthetic_manifest("max4-mcu-valve-oil-v1.json")
         paths, reporter = harness.printer_home(
             "mainboard-firmware-flow-", config={"MCU_ID.cfg": "[mcu]\nserial: /dev/serial/by-id/mcu\n"},
@@ -649,7 +649,7 @@ class BoardAdmissionTests(unittest.TestCase):
     """Installs read every board before changing anything, refuse a new install with a board this release doesn't
     admit, and bring admitted boards to their pinned images without a question."""
 
-    def fixture(self, boards, *, firmware="01.01.07.01", soc_prefix="QD_MAX4_SOC_", existing=False, specs=None):
+    def fixture(self, boards, *, firmware="01.01.07.02", soc_prefix="QD_MAX4_SOC_", existing=False, specs=None):
         config = {"printer.cfg": (REPO_ROOT / "config/printer.cfg").read_bytes(),
                   "MCU_ID.cfg": "[mcu]\nserial: /dev/serial/by-id/mcu\n",
                   "box.cfg": "".join(f"[mcu mcu_{name}]\nserial: /dev/serial/by-id/{BOX_SERIAL}-{name}\n\n"
@@ -717,8 +717,8 @@ class BoardAdmissionTests(unittest.TestCase):
                 self.assertLessEqual(len(link), board_firmware.MAX_ISSUE_URL)
                 fields = parse_qs(urlsplit(link).query)
                 self.assertEqual((fields["template"], fields["printer"], fields["firmware"], fields["box"]),
-                                 (["printer-support.yml"], ["QIDI Max 4"], ["01.01.07.01"], ["One USB Box"]))
-                self.assertIn("SOC: 01.01.07.01", fields["printer_details"][0])
+                                 (["printer-support.yml"], ["QIDI Max 4"], ["01.01.07.02"], ["One USB Box"]))
+                self.assertIn("SOC: 01.01.07.02", fields["printer_details"][0])
                 self.assertEqual(json.loads(fields["board_report"][0])["bootloader_sha256"],
                                  printer.report(board)["bootloader_sha256"])
                 self.assertNotIn("hostname-secret", unquote(link))
@@ -759,7 +759,7 @@ class BoardAdmissionTests(unittest.TestCase):
         # Uninstall keeps the installer's backups but removes the state, the record, and enrollment.
         create_config_backup(printer_data_root=paths.printer_data_root, source_directory="config",
                              backup_label=build_install_backup_label(
-                                 label_prefix=MANIFEST.backup.label_prefix, firmware_version="01.01.07.01",
+                                 label_prefix=MANIFEST.backup.label_prefix, firmware_version="01.01.07.02",
                                  package_version=MANIFEST.package.version, moment=utc_now()))
         with self.assertRaises(board_firmware.BoardAdmissionError):
             self.preflight(paths, printer, reporter)
@@ -891,7 +891,7 @@ class BoardAdmissionTests(unittest.TestCase):
                 self.assertEqual((outcomes["thr"], outcomes["mcu"]), ("waiting", "waiting"))
                 # The firmware update installs QIDI's target package, then delivers the boards again.
                 (paths.printer_data_root / "firmware_manifest.json").write_text(json.dumps(
-                    {"SOC": {"file": "QD_MAX4_SOC_01.01.07.01_20261016_Release_NA", "version": "01.01.07.01"}}))
+                    {"SOC": {"file": "QD_MAX4_SOC_01.01.07.02_20261016_Release_NA", "version": "01.01.07.02"}}))
                 calls, _ = self.deliver(paths, printer, reporter, board_printer, delivery.admission)
                 self.assertEqual([call[0] for call in calls], ["thr", "mcu"])
         # A 02.01.01.11 image other than QIDI's is not admitted by its version.
@@ -918,12 +918,12 @@ class BoardAdmissionTests(unittest.TestCase):
         self.assertEqual(calls, [("box", (1,), None)])
         outcomes = {result.board: result.outcome for result in delivery.results}
         self.assertEqual((outcomes["thr"], outcomes["mcu"]), ("waiting", "waiting"))
-        self.assertIn("THR: will be updated after the QIDI firmware update to 01.01.07.01", reporter.stream.getvalue())
+        self.assertIn("THR: will be updated after the QIDI firmware update to 01.01.07.02", reporter.stream.getvalue())
         # The status the UIs show marks them, and only them, as waiting for that update.
         boards = {board.id: board for board in valve_oil_status.boards_from_admission(
             board_firmware.load_board_admission(paths))}
         self.assertEqual({board for board, status in boards.items() if status.waiting_for_firmware_update}, {"thr", "mcu"})
-        self.assertEqual(boards["mcu"].detail, "will be updated after the QIDI firmware update to 01.01.07.01")
+        self.assertEqual(boards["mcu"].detail, "will be updated after the QIDI firmware update to 01.01.07.02")
 
     def test_dry_run_touches_no_board_service_or_file(self):
         paths, printer, reporter = self.fixture({"thr": ("unknown", "stock"), "mcu": ("admitted", "stock")})
@@ -1157,7 +1157,7 @@ class BoardAdmissionTests(unittest.TestCase):
         self.assertLessEqual(len(link), board_firmware.MAX_ISSUE_URL)
         fields = parse_qs(urlsplit(link).query)
         self.assertEqual((fields["template"], fields["printer"], fields["firmware"], fields["box"]),
-                         (["printer-support.yml"], ["QIDI Max 4"], ["01.01.07.01"], ["One USB Box"]))
+                         (["printer-support.yml"], ["QIDI Max 4"], ["01.01.07.02"], ["One USB Box"]))
         self.assertEqual(json.loads(fields["board_report"][0])["application_sha256"], UNKNOWN)
         self.assertNotIn("hostname-secret", unquote(link))
         # Fluidd's and the Valve Oil UI's warning, and the Valve Oil UI's board list, carry the same link now, and the

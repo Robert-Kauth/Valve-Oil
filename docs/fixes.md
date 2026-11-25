@@ -87,7 +87,7 @@ With this project's [toolhead board](firmware.md#toolhead-accelerometer-fix) or 
 
 The pop-up now accepts a board version that starts with QIDI's. It still appears when QIDI ships a newer version than the board has.
 
-The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01`. The same change [hides QIDI's online firmware updates](install.md#qidis-own-firmware-updates) on the touchscreen. It keeps QIDI's original, and uninstall puts it back. A touchscreen app the installer doesn't recognize, such as one from another QIDI firmware, is left as it is.
+The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.07.01` and `01.01.07.02` and Plus 5 and Smart 5 firmware `01.01.02.01`. The same change [hides QIDI's online firmware updates](install.md#qidis-own-firmware-updates) on the touchscreen. It keeps QIDI's original, and uninstall puts it back. A touchscreen app the installer doesn't recognize, such as one from another QIDI firmware, is left as it is.
 
 ## QIDI app connections disabled for security
 
@@ -103,7 +103,7 @@ When you start a print on the touchscreen, the **Match filament** screen lets yo
 
 The touchscreen now uses the filament's type as Klipper reports it, for Match filament and for the type it shows over each slot. Those slots show **PLA** and can be picked for a PLA file, and a slot of another type, such as PLA-CF or ABS, is still greyed out. A slot's edit screen still shows the filament's full name.
 
-The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back.
+The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back. Max 4 firmware `01.01.07.02` needs no change: QIDI's app there takes the type from Klipper itself.
 
 ## Fixes from newer Klipper
 

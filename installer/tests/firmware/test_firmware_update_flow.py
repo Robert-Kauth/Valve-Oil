@@ -42,7 +42,7 @@ MANIFEST = load_manifest(REPO_ROOT / "installer/package.yaml")
 # The package's closed-loop driver image, and its pin.
 DRIVER_IMAGE = b"QIDI's closed-loop driver firmware 03.01.10.15" * 64
 DRIVER_PIN = ImagePin(size=len(DRIVER_IMAGE), sha256=hashlib.sha256(DRIVER_IMAGE).hexdigest())
-TARGET = "01.01.07.01"
+TARGET = "01.01.07.02"
 SOC = f"QD_MAX4_SOC_{TARGET}_20261016_Release_NA"
 CONFIG_KEPT = ("MCU_ID.cfg", "saved_variables.cfg", "saved_variables.cfg.bak")
 # The box.cfg QIDI's package installs, with no Box.
@@ -645,7 +645,7 @@ class FirmwareUpdateTests(unittest.TestCase):
         message = valve_oil_status.load_status(printer.paths).run.message
         self.assertIn("Restored the saved calibration from before the update: [extruder], [bed_mesh default], "
                       "[input_shaper]", message)
-        self.assertIn("[chamber_light] (QIDI firmware 01.01.07.01's config has no such section)", message)
+        self.assertIn("[chamber_light] (QIDI firmware 01.01.07.02's config has no such section)", message)
         self.assertIn("[bed_mesh] speed (Valve Oil's install sets it)", message)
         self.assertIn(MANIFEST.backup.label_prefix, message)  # where the config from before the update is
         self.assertEqual(printer.update_firmware(), TARGET)

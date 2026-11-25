@@ -20,7 +20,7 @@ It runs on the firmware whose QIDI modules were checked against it:
 
 | Printer | QIDI firmware |
 |---|---|
-| QIDI Max 4 | `01.01.07.01` |
+| QIDI Max 4 | `01.01.07.01`, `01.01.07.02` |
 | QIDI Plus 5 | `01.01.02.01` |
 | QIDI Smart 5 | `01.01.02.01` |
 

@@ -21,6 +21,11 @@ RESTART_SERVICE = "qidi-client.service"
 # version's length, test that the reported version starts with the manifest version.
 BRANCH_IF_EQUAL = bytes.fromhex("40020054")
 BRANCH_IF_NOT_LONGER = bytes.fromhex("49020054")
+# Plus 5 01.01.02.02 and Max 4 01.01.07.02 give each popup its own copy of the show check. The closed-loop board's copy first leaves out a
+# board that reports nothing or 00.00.00.00, then branches past memcmp to show the popup when the lengths differ.
+# Branching there only when the manifest version is longer makes memcmp the same test.
+SHOW_IF_LENGTHS_DIFFER = bytes.fromhex("81fcff54")  # b.ne -0x70
+SHOW_IF_LONGER = bytes.fromhex("88fcff54")  # b.hi -0x70
 # With QIDI's package updates blocked, one more change applies.
 #
 # The app announces QIDI's online update from one byte, where its check of /backend/v1/fireware/upgrade-info stores
@@ -33,6 +38,9 @@ STORE_ZERO = bytes.fromhex("5fc00139")  # strb wzr, [x2, #0x70]
 # The Smart 5 build keeps the byte 0x50 earlier in the same structure.
 STORE_NEED_UPDATE_SMART5 = bytes.fromhex("43800039")  # strb w3, [x2, #0x20]
 STORE_ZERO_SMART5 = bytes.fromhex("5f800039")  # strb wzr, [x2, #0x20]
+# Plus 5 01.01.02.02 and Max 4 01.01.07.02 keep it 0x140 later.
+STORE_NEED_UPDATE_PLUS5_0202 = bytes.fromhex("43c00639")  # strb w3, [x2, #0x1b0]
+STORE_ZERO_PLUS5_0202 = bytes.fromhex("5fc00639")  # strb wzr, [x2, #0x1b0]
 # The online, USB, and mandatory-file updates all unpack the package through one function, which deletes
 # ~/update, recreates it, and runs unzip. Development builds made it return false on entry, so every QIDI package
 # update stopped at "Extract failed". That also took away the USB update, the one way back onto a printer that has
@@ -86,6 +94,8 @@ DISPATCH_EXIT = bytes.fromhex("1a00")
 # code sits in the zero padding between .plt and .text, in the executable segment. It has no unwind entry, so an
 # exception through it would end the app: it checks that the key is present and holds a string itself, rather than
 # through the parser's dereference, which throws, and the calls it makes throw only when memory runs out.
+# Plus 5 01.01.02.02's and Max 4 01.01.07.02's apps read filament_type into the label themselves, so their builds have
+# none of these sites.
 #
 # Offsets are file offsets. The executable is mapped at 0x400000, a whole number of pages, so branches and ADRP
 # computed between file offsets are the ones the loaded code needs.
@@ -143,11 +153,12 @@ class Build:
         return next(site for site in self.sites if site.original == DETECTOR_CHANGED)
 
 
-def _sites(show_branch: int, clear_branch: int, need_update_store: int, extract: int, detector: int,
+def _sites(show_branch: int | tuple[int, ...], clear_branch: int, need_update_store: int, extract: int, detector: int,
            p2p: tuple[Site, ...], *,
            store: tuple[bytes, bytes] = (STORE_NEED_UPDATE, STORE_ZERO)) -> tuple[Site, ...]:
+    show_branches = show_branch if isinstance(show_branch, tuple) else (show_branch,)
     return (
-        Site(show_branch, BRANCH_IF_EQUAL, BRANCH_IF_NOT_LONGER),
+        *(Site(branch, BRANCH_IF_EQUAL, BRANCH_IF_NOT_LONGER) for branch in show_branches),
         Site(clear_branch, BRANCH_IF_EQUAL, BRANCH_IF_NOT_LONGER),
         Site(need_update_store, *store, blocking=True),
         Site(extract, EXTRACT_PROLOGUE, RETURN_FALSE, retired=True),
@@ -322,6 +333,17 @@ BUILDS = {
                               "5630d1f9405de7a6599c48a6758287dd25ce8bc23c80643bc3e66654daa0058a",
                               "b0e9a4a6ce399ea4feaa096851ae022d410caaa47eb2f60227c3483f46b5e138"),
     ),
+    # QIDI Max 4 firmware 01.01.07.02
+    "9287c89267f997c8a20d3f7d2f372a4d2cb96203c2ee461e6cf90bc69741e1d7": Build(
+        size=91659672,
+        # The show checks of the buffer, online update, and MCU and THR popups, then the closed-loop board's.
+        sites=_sites((0x2292D0, 0x2297A0, 0x229904), 0x229130, 0x2CAF10, 0x320510, 0x2665C8,
+                     _p2p_sites(0x47A8BC, 0x47A754, 0x43565C, 0x55992FC),
+                     store=(STORE_NEED_UPDATE_PLUS5_0202, STORE_ZERO_PLUS5_0202))
+        + (Site(0x22900C, SHOW_IF_LENGTHS_DIFFER, SHOW_IF_LONGER),),
+        patched_sha256="0fd1da489c2808c226248436a5eb4f65b8dc63a7f57f741e2f84a933cb5c9372",
+        blocked_sha256="eab1e0cbed6d6b54ae805a043ab12236f9731d91364fb41c543ba7bd2a7bc602",
+    ),
     # QIDI Plus 5 firmware 01.01.02.01
     "6c09a58a636427d468b77b78149e5305f0b1182e785a0abff67aec53b3aeb855": Build(
         size=91626272,
@@ -341,6 +363,17 @@ BUILDS = {
                               "7d836a445197a2d5cd1c4b056380f6c12868d42fd66c5ca4a4bafa3fcd618791",
                               "8db64463e4a8eb24b233c6d8878e5948532a8fce8545575ed7d45423acc146ea",
                               "58fe6ed91c5f609777d8b4226dae59219563b1c900d0b4ad7edfe1a2fb4a8cdc"),
+    ),
+    # QIDI Plus 5 firmware 01.01.02.02
+    "51e8f485089febd97a0ba27874710c1e95c96d367700ed15d0c6b44a960c0e2a": Build(
+        size=91659688,
+        # The show checks of the buffer, online update, and MCU and THR popups, then the closed-loop board's.
+        sites=_sites((0x2294A0, 0x229970, 0x229AD4), 0x229300, 0x2CB0E0, 0x31F6E0, 0x266798,
+                     _p2p_sites(0x47976C, 0x479604, 0x43450C, 0x559934C),
+                     store=(STORE_NEED_UPDATE_PLUS5_0202, STORE_ZERO_PLUS5_0202))
+        + (Site(0x2291DC, SHOW_IF_LENGTHS_DIFFER, SHOW_IF_LONGER),),
+        patched_sha256="4d1c859d9d387e4b44aa1dd6109d2824b6518718d25cd6daa4e4ec107d952d00",
+        blocked_sha256="7c38e799a51ce811382c5bcc5debd248a3194ffcf672644509837000710306ec",
     ),
     # QIDI Smart 5 firmware 01.01.02.01
     "6beea0a13cc7448c7f6ab8c345915f22e6d5c04c917a66478d6e43b1ceecd6bf": Build(

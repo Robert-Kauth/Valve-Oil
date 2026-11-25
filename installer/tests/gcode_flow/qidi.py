@@ -9,6 +9,14 @@ A command or step QIDI has that no flow here has needed yet, or whose behaviour 
 
 Builds: Max 4 01.01.07.01 box_extras.so sha256 0878b5b9..., multi_color_controller.so b7e3bc21... (also the Plus 5
 01.01.02.01's), box2base.so d1cd52e4...; the Smart 5's multi_color_controller.so caee552f....
+
+The Max 4's flows run firmware 01.01.07.02 (box_extras.so e0559288..., multi_color_controller.so f87e3141...,
+box_stepper.so aedb3ea8..., box485_multicolor.so e5c297a6...). Its differences from 01.01.07.01 are
+static-recovered (2026-11-24): the modules' string tables, symbols, and disassembly were compared, without running
+them in the harness or tracing them on a printer. Each stand-in gates them on the module build that has them, as
+installer/package.yaml pins it for the printer's firmware (Vendor.controller_0702, box_extras_0702, box485_0702),
+and labels them; builds without them, the Plus 5's and Smart 5's 01.01.02.01, keep the recorded behaviour.
+box_stepper.so's load and unload are unchanged.
 """
 from __future__ import annotations
 
@@ -42,20 +50,33 @@ FLOW_MAP = {
 # LOAD_FILAMENT_CONTROL, EJECT_FILAMENT_CONTROL, TRY_RESUME_PRINT, INIT_RFID_READ, CLEAR_FLUSH, CLEAR_OOZE,
 # BOX_PRINT_START, TOOL_CHANGE_START, TOOL_CHANGE_END, AUTO_RELOAD_FILAMENT, DISABLE_BOX_HEATER, FLOW_RETRY,
 # FLOW_STOP, INTERNAL_BOX_UNLOAD, and QUERY_CURRENT_BOX_CHANNEL_FILAMENT, and not CUT_FILAMENT or UNLOAD_T<n>,
-# which the slicer packs still send and Klipper drops. Those whose behaviour isn't recorded:
+# which the slicer packs still send and Klipper drops. 01.01.07.02 adds, static-recovered from the constructors'
+# register_command calls: EXTRUSION_AND_FLUSH and SET_BOX_BELONG_WITH_ATTR (MultiColorController), and BOX_DIAG and
+# BOX_DIAG_RESET (box485's Box485Manager, loaded by [box485] whatever is attached); stock 01.01.07.02 filament.cfg
+# renames its EXTRUSION_AND_FLUSH macro to CHECK_HOTEND_AND_FLUSH to make room. A macro of one of these names stops
+# Klipper at start with "already registered", as on the printer. Those whose behaviour isn't recorded:
 UNMODELLED_COMMANDS = (
     "EXTRUDER_LOAD", "EXTRUDER_UNLOAD", "SLOT_UNLOAD", "UNLOAD_FILAMENT", "CLEAR_FLUSH",
     "CLEAR_OOZE", "AUTO_RELOAD_FILAMENT", "INTERNAL_BOX_UNLOAD", "QUERY_CURRENT_BOX_CHANNEL_FILAMENT", "READ_RFID",
     "UPDATE_FILAMENT_INFORMATION",
 )
+UNMODELLED_COMMANDS_0702 = ("SET_BOX_BELONG_WITH_ATTR",)
+BOX485_COMMANDS_0702 = ("BOX_DIAG", "BOX_DIAG_RESET")
 # What QIDI's print_sensor_state_to_log says for each code; it sends `!! <message>` (harness, 2026-10-31).
 CODES = {
     "QDE_004_005": "",
     "QDE_004_006": "Extruder loading failure.",
     "QDE_004_008": "Extruder unloading failure.",
     "QDE_004_017": "",
+    # 01.01.07.02 sends it where 01.01.07.01 responded `can not recognize the loaded filament` (static-recovered).
+    "QDE_004_021": "Unable to recognize loaded filament.",
     "QDE_004_027": "",
 }
+# The module builds whose stand-in behaviour differs from the recorded one (the Max 4 01.01.07.02's), by path under
+# klippy/; Vendor reads which the printer has from its firmware's pins in installer/package.yaml.
+CONTROLLER_0702 = "f87e3141e1d4a6cc393b3fd6bc09f185490dd2cc641ac385eac74d91426d40a0"
+BOX_EXTRAS_0702 = "e055928801a6958f9b42bb0d4c8f24e9e490cf7761bcb07c6899fb95ef045b25"
+BOX485_0702 = "e5c297a63300a181898daad85934ee1f9bd25c7909b871f1674aaa88b326e78c"
 UNKNOWN_FILAMENT_TOP = 240.
 
 
@@ -158,7 +179,10 @@ class TaskQueueManager:
     - A step that raises propagates out of start_flow and retry, leaving the task on that step with is_paused false.
     - After the last step it runs the completion callback, then clears current_flow_temp and the task.
     - retry sends M109 S<current_flow_temp> with run_script_from_command (nothing without a temperature), then reruns
-      the paused step, or skips it when can_next is set, and carries on.
+      the paused step, or skips it when can_next is set, and carries on. On 01.01.07.02 (static-recovered,
+      multi_color_controller.so f87e3141...) it first sends MOVE_TO_TRASH, whatever the temperature, and after the
+      M109, with the task gone (a flow stop while it heated), responds `Flow stopped during retry, abort.` and
+      returns without running a step.
     - stop clears the task, sends M104 S0 through its own gcode attribute with run_script(), which takes the G-code
       lock, when current_flow_temp is set, whatever the print state, and responds `Flow stop requested.`; with no
       flow it does nothing and says nothing. It runs no completion script.
@@ -166,8 +190,9 @@ class TaskQueueManager:
 
     FLOW_MAP = FLOW_MAP
 
-    def __init__(self, gcode):
+    def __init__(self, gcode, controller_0702=False):
         self.gcode = gcode
+        self.controller_0702 = controller_0702
         self.current_task = None
         self.current_flow_temp = None
         self.method_map = {}
@@ -186,8 +211,13 @@ class TaskQueueManager:
         if task is None or not task.is_paused:
             self.gcode.respond_info("No failed step to retry.")
             return False
+        if self.controller_0702:
+            self.gcode.run_script_from_command("MOVE_TO_TRASH")
         if self.current_flow_temp is not None:
             self.gcode.run_script_from_command("M109 S%s" % (self.current_flow_temp,))
+        if self.controller_0702 and not self.current_task:
+            self.gcode.respond_info("Flow stopped during retry, abort.")
+            return False
         task.is_paused = False
         if can_next:
             task.index += 1
@@ -346,7 +376,8 @@ class BoxExtras:
           with no heating, unload, or load;
         - the hub clear: MOVE_TO_TRASH, M109 to RESUME_PRINT's saved_extruder_temp (250 without one), load;
         - filament at the hub and last_load_slot missing or slot16: "can not recognize the loaded filament" and no
-          resume;
+          resume; on 01.01.07.02 `!! Code:QDE_004_021; Message:Unable to recognize loaded filament.` through
+          print_sensor_state_to_log instead (static-recovered, box_extras.so e0559288..., the only change in it);
         - filament at the hub and the toolhead: CUT_FILAMENT_1 and MOVE_TO_TRASH, then as below;
         - filament at the hub: M109, unload last_load_slot, load the target.
         A load or unload that fails sends M104 S0 and `M118 Printer resume failed` and doesn't resume. Otherwise it
@@ -372,7 +403,7 @@ class BoxExtras:
             if vendor.hub_slot is None:
                 vendor.script("MOVE_TO_TRASH\nM109 S%s" % (temperature,))
             elif loaded == EMPTY_SLOT:
-                vendor.gcode.respond_info("can not recognize the loaded filament")
+                vendor.unrecognized_loaded_filament()
                 return
             else:
                 if detected:
@@ -567,7 +598,10 @@ class BoxAdapterV1:
         """Which flow a Load, Unload, or Eject of `slot` runs, from the toolhead sensor, the hub sensor, and
         last_load_slot (harness, 2026-10-30 and 2026-10-28). It also sets current_flow_temp: for UNLOAD the top of
         the slot filament's nozzle range (240 for an ID QIDI doesn't list), for EJECT the higher of the slot's
-        filament and the last loaded filament; flows 0 and 4 leave it None."""
+        filament and the last loaded filament; flows 0 and 4 leave it None. On 01.01.07.02 an EJECT with filament at
+        the hub and last_load_slot slot16 still gets flow 0, after `!! Code:QDE_004_021; Message:Unable to recognize
+        loaded filament.` through box1base.print_sensor_state_to_log (static-recovered, multi_color_controller.so
+        f87e3141...: the one new call in the function, on that branch)."""
         vendor = self.vendor
         manager = vendor.controller.task_queue_manager
         manager.clear_flow_parameters()
@@ -586,6 +620,8 @@ class BoxAdapterV1:
             if not hub:
                 flow = 4
             elif loaded == EMPTY_SLOT:
+                if vendor.controller_0702:
+                    vendor.report("QDE_004_021")
                 flow = 0
             elif loaded == slot:
                 flow = 5 if toolhead else 11
@@ -677,7 +713,9 @@ class ExternalAdapter:
     The external-spool load's own steps (flow 6) have no stand-in, since no flow here runs them; recorded on that
     harness run:
     - EXT_BITE saves last_load_slot slot16 (SAVE_VARIABLE) unless it already is, and returns True with filament at
-      the toolhead; without, it responds `No filament detected. Please insert filament and try again.`, returns
+      the toolhead. The 01.01.07.01 build writes the value with repr(), `VALUE='slot16'`, which QIDI's G-code parser
+      (shlex) hands save_variables' literal_eval as bare slot16; 01.01.07.02 writes `VALUE='"slot16"'`, which parses
+      to the string (static-recovered). Whether the 01.01.07.01 save failed on a printer is unresolved; without, it responds `No filament detected. Please insert filament and try again.`, returns
       False, and has a reactor callback send FLOW_RETRY, so the step repeats until filament comes.
     - EXT_LOAD sends G92 E0, G1 E80 F400, M400 and returns True.
     - EXT_WIPE sends MOVE_TO_TRASH, M109 S<flow temperature>, G92 E0, G1 E120 F300, M400, M106 S255, G92 E0,
@@ -744,7 +782,7 @@ class MultiColorController:
 
     def __init__(self, vendor):
         self.vendor = vendor
-        self.task_queue_manager = TaskQueueManager(vendor.gcode)
+        self.task_queue_manager = TaskQueueManager(vendor.gcode, vendor.controller_0702)
         self.box_adapter = None
         self.save_vars = None
         self._initialized = False
@@ -780,10 +818,13 @@ class MultiColorController:
     def normal_complete_script(self, task):
         """The completion script of a Load, Unload, or Eject (harness, 2026-10-28): MOVE_TO_TRASH, M104 S0, and the
         extruder disabled, with G4 P5000 and WIPE_NOZZLE_DROP when current_flow_temp is set, including 0, then a
-        wait for moves; `Flow completed successfully.`"""
+        wait for moves; `Flow completed successfully.` 01.01.07.02 drops the G4 P5000 (static-recovered,
+        multi_color_controller.so f87e3141...: its script is `WIPE_NOZZLE_DROP\n`). Its stock WIPE_NOZZLE_DROP no
+        longer starts with MOVE_TO_TRASH, and ends with MOVE_TO_TRASH instead of G4 P2000 and G1 Y403 F3000
+        (config-confirmed, stock filament.cfg); the MOVE_TO_TRASH before it here puts the nozzle at the chute."""
         script = "MOVE_TO_TRASH\nM104 S0\nSET_STEPPER_ENABLE STEPPER=extruder enable=0"
         if self.task_queue_manager.current_flow_temp is not None:
-            script += "\nG4 P5000\nWIPE_NOZZLE_DROP"
+            script += "\nWIPE_NOZZLE_DROP" if self.vendor.controller_0702 else "\nG4 P5000\nWIPE_NOZZLE_DROP"
         self.vendor.script(script + "\nM400")
         self.vendor.gcode.respond_info("Flow completed successfully.")
 
@@ -817,14 +858,36 @@ class MultiColorController:
         # The multi_color_controller/flow_stop endpoint makes the same call; Valve Oil's code only sends FLOW_STOP.
         self.task_queue_manager.stop()
 
+    def _box_count(self):
+        """box_adapter.box_count: saved box_count for USB Boxes; the RS-485 adapter takes it from box2base, 0 with no
+        RS-485 device (harness, 2026-11-23)."""
+        return self.vendor.variables().get("box_count", 0) if isinstance(self.box_adapter, BoxAdapterV1) else 0
+
     def cmd_T_MANAGER(self, gcmd):
-        # T_MANAGER returns without a flow when saved enable_box is not 1 (harness, 2026-10-29). On printers without
-        # a Box, and in issue #397's klippy.log (Max 4, no Box, 2026-11-23), no Box activity was logged either.
-        if self.vendor.variables().get("enable_box", 0) != 1:
+        """T_MANAGER returns without a flow when saved enable_box is not 1 (harness, 2026-10-29). On printers without
+        a Box, and in issue #397's klippy.log (Max 4, no Box, 2026-11-23), no Box activity was logged either.
+
+        On 01.01.07.02 (static-recovered, multi_color_controller.so f87e3141...) it then looks the toolhead sensor
+        up with a None default and, when its status reads enabled, sends DISABLE_ALL_SENSOR before the tool change
+        and ENABLE_ALL_SENSOR after it, also when the change raises. With the sensor already off, as both slicer
+        packs' filament change leaves it, it sends neither."""
+        vendor = self.vendor
+        if vendor.variables().get("enable_box", 0) != 1:
             return
-        if not isinstance(self.box_adapter, BoxAdapterV1):
-            raise HarnessGap("QIDI's RS-485 tool change has no stand-in")
-        self.vendor.box_extras.filament_printing_manager_box1(gcmd.get_int("T"))
+        disabled = False
+        if vendor.controller_0702:
+            sensor = vendor.printer.lookup_object("filament_switch_sensor filament_switch_sensor", None)
+            reactor = vendor.printer.get_reactor()
+            if sensor is not None and sensor.get_status(reactor.monotonic()).get("enabled", False):
+                vendor.script("DISABLE_ALL_SENSOR")
+                disabled = True
+        try:
+            if not isinstance(self.box_adapter, BoxAdapterV1):
+                raise HarnessGap("QIDI's RS-485 tool change has no stand-in")
+            vendor.box_extras.filament_printing_manager_box1(gcmd.get_int("T"))
+        finally:
+            if disabled:
+                vendor.script("ENABLE_ALL_SENSOR")
 
     def cmd_BOX_PRINT_START(self, gcmd):
         """BOX_PRINT_START EXTRUDER=<tool> HOTENDTEMP=<temperature>, from print start (harness, 2026-11-17 and
@@ -844,11 +907,18 @@ class MultiColorController:
         - last_load_slot the target with the toolhead empty: load only;
         - another slot, filament at the toolhead: MOVE_TO_TRASH, CUT_FILAMENT_1, MOVE_TO_TRASH, unload, load;
         - another slot, toolhead empty: unload, load;
-        - last_load_slot slot16: `can not recognize the loaded filament` and PAUSE.
-        A failed unload or load sends PAUSE."""
+        - last_load_slot slot16: `can not recognize the loaded filament` and PAUSE; on 01.01.07.02
+          `!! Code:QDE_004_021; Message:Unable to recognize loaded filament.` and PAUSE (static-recovered,
+          box_extras.so e0559288...).
+        A failed unload or load sends PAUSE.
+
+        On 01.01.07.02 the controller calls the adapter's print start, and with it all of the above, only while
+        box_adapter.box_count is above 0 (static-recovered, multi_color_controller.so f87e3141...)."""
         vendor = self.vendor
         tool = gcmd.get_int("EXTRUDER", 0)
         temperature = gcmd.get_float("HOTENDTEMP")
+        if vendor.controller_0702 and not self._box_count() > 0:
+            return
         vendor.save("load_retry_num", 0)
         vendor.script("SAVE_VARIABLE VARIABLE=retry_step VALUE=None")
         vendor.script("CLEAR_TOOLCHANGE_STATE")
@@ -868,7 +938,7 @@ class MultiColorController:
         detected = vendor.toolhead_detects()
         if vendor.hub_slot is not None:
             if loaded == EMPTY_SLOT:
-                vendor.gcode.respond_info("can not recognize the loaded filament")
+                vendor.unrecognized_loaded_filament()
                 vendor.script("PAUSE")
                 return
             if loaded == target:
@@ -884,6 +954,29 @@ class MultiColorController:
         if not stepper.extruder_load_single_func():
             vendor.script("PAUSE")
 
+    def cmd_EXTRUSION_AND_FLUSH(self, gcmd):
+        """EXTRUSION_AND_FLUSH HOTEND=<temperature>, compiled on 01.01.07.02, which stock print_start sends after
+        BOX_PRINT_START (config-confirmed, start_end.cfg); before it, a stock macro of that name did the flush. Its
+        help reads 起始打印的冲刷，根据热端中耗材设置冲刷温度 (the print-start flush, at a temperature set from the filament
+        in the hotend).
+
+        Static-recovered (2026-11-24, multi_color_controller.so f87e3141...; not run in the harness or traced): it
+        returns without a word when saved enable_box (default 0) is 0 or box_adapter.box_count is below 1. Without
+        HOTEND (default -1) it responds `Error: Missing parameters.`. Otherwise it reads last_load_filament_id
+        through the adapter, looks up that filament's top nozzle temperature (fila_json.get_max_temp_by_single_id),
+        and sends `CHECK_HOTEND_AND_FLUSH HOTEND=<the higher of the two>`, the stock macro that heats at the chute,
+        flushes, and wipes. Filament IDs aren't modelled here: as the flow decisions do for an ID QIDI doesn't list,
+        the top temperature is taken as 240, which for get_max_temp_by_single_id is assumed, not recorded."""
+        vendor = self.vendor
+        if vendor.variables().get("enable_box", 0) == 0 or self._box_count() < 1:
+            return
+        hotend = gcmd.get_int("HOTEND", -1)
+        if hotend == -1:
+            vendor.gcode.respond_info("Error: Missing parameters.")
+            return
+        top = int(UNKNOWN_FILAMENT_TOP)
+        vendor.script("CHECK_HOTEND_AND_FLUSH HOTEND=%s" % (top if top > hotend else hotend,))
+
     def cmd_CLEAR_TOOLCHANGE_STATE(self, gcmd):
         # Saves is_tool_change; exclude_tool stays as it is (harness, 2026-11-23).
         self.vendor.is_tool_change = False
@@ -895,8 +988,7 @@ class MultiColorController:
         box_count from box2base, 0 with no RS-485 device, so no-Box printers always take the sensor branch (harness,
         Max 4, Plus 5 and Smart 5 multi_color_controller.so, 2026-11-23)."""
         variables = self.vendor.variables()
-        box_count = variables.get("box_count", 0) if isinstance(self.box_adapter, BoxAdapterV1) else 0
-        if variables.get("enable_box", 0) == 0 or not box_count > 0:
+        if variables.get("enable_box", 0) == 0 or not self._box_count() > 0:
             self.vendor.script("RESUME_PRINT" if self.vendor.toolhead_detects() else "M118 Please load filament")
             return
         if not isinstance(self.box_adapter, BoxAdapterV1):
@@ -923,6 +1015,11 @@ class Vendor:
         self.inlets = self.setup.inlet_slots()
         self.caught = self.setup.caught
         self.unload_error = self.setup.unload_error
+        # Which of QIDI's modules are the builds with the 01.01.07.02 changes (see the module docstring).
+        builds = printer.qidi_builds
+        self.controller_0702 = builds.get("extras/multi_color_controller.so") == CONTROLLER_0702
+        self.box_extras_0702 = builds.get("extras/box_extras.so") == BOX_EXTRAS_0702
+        self.box485_0702 = builds.get("extras/box485_multicolor.so") == BOX485_0702
 
     def variables(self):
         save_variables = self.printer.lookup_object("save_variables", None)
@@ -951,6 +1048,14 @@ class Vendor:
         message = CODES.get(code, "")
         self.gcode.respond_raw("!! Code:%s; Message:%s" % (code, message) if message else "!! Code:%s" % (code,))
 
+    def unrecognized_loaded_filament(self):
+        """box_extras' answer when filament is at the hub and last_load_slot is slot16: `can not recognize the
+        loaded filament` (respond_info), or on box_extras.so e0559288... QDE_004_021 (static-recovered)."""
+        if self.box_extras_0702:
+            self.report("QDE_004_021")
+        else:
+            self.gcode.respond_info("can not recognize the loaded filament")
+
     def load(self, config, section) -> bool:
         module = section.split()[0]
         printer = self.printer
@@ -958,11 +1063,11 @@ class Vendor:
         if module == "multi_color_controller":
             self.controller = controller = MultiColorController(self)
             printer.add_object(section, controller)
-            for command in UNMODELLED_COMMANDS:
+            for command in UNMODELLED_COMMANDS + (UNMODELLED_COMMANDS_0702 if self.controller_0702 else ()):
                 gcode.register_command(command, _unmodelled(command))
             for command in ("T_MANAGER", "TRY_RESUME_PRINT", "UNLOAD_FILAMENT_CONTROL", "EJECT_FILAMENT_CONTROL",
                             "LOAD_FILAMENT_CONTROL", "FLOW_RETRY", "FLOW_STOP", "INIT_RFID_READ", "BOX_PRINT_START",
-                            "CLEAR_TOOLCHANGE_STATE"):
+                            "CLEAR_TOOLCHANGE_STATE") + (("EXTRUSION_AND_FLUSH",) if self.controller_0702 else ()):
                 gcode.register_command(command, getattr(controller, "cmd_" + command))
             gcode.register_command("TOOL_CHANGE_START", self.cmd_TOOL_CHANGE_START)
             gcode.register_command("TOOL_CHANGE_END", self.cmd_TOOL_CHANGE_END)
@@ -988,6 +1093,9 @@ class Vendor:
             printer.add_object(section, object())
         elif module == "box485":
             printer.add_object(section, _Status({"box_count": 0, "boxes": {}}))
+            if self.box485_0702:
+                for command in BOX485_COMMANDS_0702:
+                    gcode.register_command(command, _unmodelled(command))
         elif module == "box_autofeed":
             # QIDI's box_autofeed with each Box's auto-feed as Box firmware 02.03.01.21 runs it (klipper_fakes).
             self.autofeed = BoxAutoFeed(printer.get_reactor(), self.steppers)

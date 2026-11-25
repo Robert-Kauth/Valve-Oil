@@ -11,7 +11,7 @@ Evidence qualifiers are defined in `openspec/observations/README.md`. Runtime ca
 | `slot0` through `slot15` | Physical-slot `BoxState` values. |
 | `last_load_slot` | Last loaded slot according to vendor state. |
 | `slot_sync` | Slot currently trusted/bound to the extruder. |
-| `extrude_state` | The tool the last `T_MANAGER` or `BOX_PRINT_START` was for; `TRY_RESUME_PRINT` loads its `value_t` (harness, 2026-11-23). |
+| `extrude_state` | The tool the last `T_MANAGER` or `BOX_PRINT_START` was for; `TRY_RESUME_PRINT` loads its `value_t` (harness, 2026-11-23). `.07.02` no longer saves it after a runout auto-reload (see [`01.01.07.02`](#firmware-01010702-compiled-module-differences)). |
 | `filament_slotN`, `color_slotN`, `vendor_slotN` | IDs resolved through `officiall_filas_list.cfg`; slot metadata extends through `slot16`. |
 | `runout_0` through `runout_15` | Per-slot runout counters. |
 | `load_retry_num`, `retry_step` | Vendor retry state. |
@@ -80,6 +80,8 @@ box_drying_state.boxN.{dry_state,end_time}
 is_tool_change
 ```
 
+On `.07.02` the saved `box_drying_state.boxN` also holds `end_timestamp`, and `boxes[N].end_time` counts down (see [`01.01.07.02`](#firmware-01010702-compiled-module-differences)).
+
 ### `box_stepper slotN`
 
 ```text
@@ -146,6 +148,26 @@ The observed `mcu_box1` reported firmware `02.03.01.21`, MCU `stm32f401xc`, cloc
 - **Runtime-confirmed (2026-10-19, stock `.07.01` config, QIDI Studio stock filament-change G-code, two USB Boxes):** during a print, `T[n]` → `T_MANAGER` cut once (the extruder stepper was disabled at the start of the change, matching `CUT_FILAMENT_1`), unloaded the previous filament, and attempted the new load; the ignored `CUT_FILAMENT T=` and `UNLOAD_T[n]` lines caused no second cut. A load that never reached the toolhead sensor reported `QDE_004_006` (`Extruder loading failure.`) with `b_endstop_state = 1` and `e_endstop_state = 0` and paused the print; the same code paused print-start loading. The operator attributed both failures to filament quality. Operator `RESUME` retried the load and printing continued.
 - **Runtime-confirmed (same print):** each of five further tool changes showed exactly one extruder-stepper disable, consistent with one flow cut per change. Stock end G-code `UNLOAD_FILAMENT T=` cut once (extruder disable one second after `print_end`), unloaded to the Box, and the print reached `ready` about 65 seconds after `print_end`; afterward `loaded_slot` and `last_load_slot` were `slot16`, the toolhead sensor reported no filament, and the extruder target was `0`. Whether the vendor unload wipes the nozzle was not observed.
 - **Unresolved:** whether vendor `UNLOAD_FILAMENT` wipes the nozzle or changes the hotend target itself, and RS-485 `BoxAdapterV2` status and behavior on hardware.
+
+## Firmware `01.01.07.02` compiled-module differences
+
+Max 4 `01.01.07.02` (`QD_MAX4_01.01.07.02_20261123_Release.zip`) changes `box2base.so` (`cc1988bd…`), `box485_multicolor.so` (`e5c297a6…`), `box_device.so` (`160926f2…`), `box_extras.so` (`e0559288…`), `box_protocol.so` (`9b5d18ac…`), `box_stepper.so` (`aedb3ea8…`), and `multi_color_controller.so` (`f87e3141…`); every other compiled module and every `klippy` Python file is byte-identical to `.07.01`. Everything below is **static-recovered (2026-11-24)** from the modules' decompressed string tables, symbols, and disassembly, compared with `.07.01`'s; none of it was run in the harness or traced on a printer. The changes the USB Box flows reach are stand-ins in `installer/tests/gcode_flow/qidi.py`: `EXTRUSION_AND_FLUSH`, `T_MANAGER`'s sensor handling, `BOX_PRINT_START`'s `box_count` gate, `FLOW_RETRY`'s chute move and abort, the completion script without its dwell, and `QDE_004_021` in print start, resume, and eject.
+
+- `box_stepper.so`: `do_home_three_steps` and `do_home_double_steps` disassemble identically, the load and unload functions differ only in line numbers, and the string, integer, and float constants are unchanged (550, 380, 240 at 85, 65, 10 mm/s; -350, -1150). The only code change is in `cmd_detect_auto_reload_func`: after a successful runout auto-reload (`SET_PRINT_SUB_STATUS SUB_STATUS=auto_reloading_successful`) it no longer calls `box_extras.save_variable('extrude_state', …)`.
+- `box_extras.so`: besides the `QDE_004_021` message above, only drying changes. `enable_box_drying` saves `end_timestamp` (epoch end) in `box_drying_state.boxN`, and `_build_boxes_status` publishes `end_time` as `ceil(end_timestamp - time.time())` when it is present, so the status changes every second while a Box dries. `.07.01` kept `end_time` where the dry started (the Plus 5, `ui/src/state/box-dry.ts`).
+- `multi_color_controller.so`:
+  - New `SET_BOX_BELONG_WITH_ATTR BOX=<n> ATTR=<0|1|2>` (help `设置BOX左右归属`, set a Box's left/right ownership): `BOX` below 1 or another `ATTR` responds `Error: BOX>=1 and ATTR must be 0, 1 or 2.`; otherwise it goes through `BoxAdapterV2.set_box_belong_with_attr` to `box2base` and `box_device`, which sends the RS-485 `SET_BOX_BELONG_WITH_ATTR` frame and publishes `belong_with` (`left`, `right`, `unknow`).
+  - RS-485 `BoxAdapterV2`: `cut` sends `CUT_FILAMENT_1\nMOVE_TO_TRASH\n` (was `CUT_FILAMENT_1`); `load_filament` and `unload_filament` no longer start with `MOVE_TO_TRASH`; `wipe` sends `G1 E100 F600\nG1 E-2 F1800\nM400\nM104 S0\nM106 S255\nM400\nG4 P5000\nWIPE_NOZZLE_DROP\nM106 S0\n` without the `MOVE_TO_TRASH` before and after it. `flow_decision_func` now sets `current_flow_temp` from the target slot's filament.
+  - `ExternalAdapter.bite` writes `SAVE_VARIABLE VARIABLE=last_load_slot VALUE='"<slot>"'`, joined, where `.07.01` appended `repr(<slot>)`.
+  - Its string table gains `Code:QDE_004_021; Message:Unable to recognize loaded filament.` and `Code:QDE_004_029; Message:Unable to recognize the loaded filament.\n`; no code that loads them was found (only `box_extras`' `QDE_004_021` is sent, above).
+  - `get_status` before Klipper is ready now also returns `extruder_limit_state`, `auto_init_detect`, `auto_read_rfid`, `auto_reload_detect`, `enable_box`, `load_retry_num`, and `box_count`; the ready status keys are unchanged. `FLOW_MAP`, the USB adapter's step methods, `ExternalAdapter`'s other steps, and `TaskQueueManager.start_flow` and `stop` have the same strings and calls.
+- RS-485 `box2base.so`:
+  - `detect_filament_loaded` sends `M83\nFILAMENT_IN_OUT_HOTEND T=0` to `T=4` where `.07.01` sent `M83\nG1 E25 F300`, `E15 F600`, `E10 F300`, `E25 F900`, and `E15 F300`; its unload's `M83\nG1 E-35 F600` became `M83\nFILAMENT_IN_OUT_HOTEND T=5`, which stock `.07.02` `filament.cfg` makes `G1 E-20 F600`.
+  - A new auto-reload monitor (`_auto_reload_monitor`, `_execute_auto_reload_box2`, decorator `suspend_auto_reload`) watches the extruder position against `auto_reload_extruder_length` and sends `MOVE_TO_TRASH`, `M109 S`, `PAUSE\nM400`, `RESUME`, and `SET_PRINT_SUB_STATUS SUB_STATUS=auto_reloading_failed`; the old reload's `G1 E100 F300\nG1 E-1 F1800\nDROP_TRASH\nRESUME_PRINT` ends with `RESUME` instead. `try_resume_print_box2` adds `M104 S0` and `进料失败，恢复打印失败` / `退料失败，恢复打印失败` (load or unload failed, resume failed).
+  - It still sends `M83\nMOVE_ANOTHER_POINT_CHANGE_FILAMENT\n`, `MOVE_ANOTHER_POINT_CHANGE_FILAMENT\nM400\n`, and `TRY_INTO_EXTRUDER\n` with no `MOVE_TO_TRASH` before them, while stock `.07.02` `filament.cfg` drops the `MOVE_TO_TRASH` those macros, and `WIPE_NOZZLE_DROP`, started with (config-confirmed).
+- RS-485 `box_device.so`: a wrapping (`缠料`) handler disables auto-feed, sends `PAUSE`, and up to a counted number of times recovers on its own: heats to `RESUME_PRINT`'s `saved_extruder_temp`, unloads and reloads the slot, checks the filament moves (`\nM83\nG1 E<n> F300\nM400\n` against the buffer's Hall readings), sends `\nCUT_FILAMENT_1\nMOVE_TO_TRASH\n` and `RESUME_PRINT`, or turns the nozzle off (`M104 S0`) and stays paused. A Box error pauses with `QDE_004_069` or `QDE_004_070` and `PAUSE\nM400`, and a Box going offline pauses too. New commands per RS-485 Box: `GET_BOX_LINK_BUFFER_TIMEOUT_NUM`, `SET_BLDC_SPEED_MIN_PWM MIN_PWM=`, and `SET_UNLOAD_PWM BLDC_PWM= DC_PWM=` (0–100).
+- RS-485 `box485_multicolor.so`: adds `BOX_DIAG` and `BOX_DIAG_RESET` (registered whenever `[box485]` loads), the `BOX_LINK_BUFFER_TIMEOUT_NUM_ACK` and `BOX_DIAG_REPORT` replies, and RFID-enable broadcasts that follow the print state. With no adapter it logs `Can not find 485 device: <reason>` once per outage (`_reconnect_missing_logged`) where `.07.01` logged `Can not find 485 device` every 2 s.
+- **Unresolved:** what `extrude_state` holds after a `.07.02` runout auto-reload, and so which slot a later `TRY_RESUME_PRINT` loads and which tool the Valve Oil UI shows; whether `ExternalAdapter.wipe` still returns `False` (its strings and calls are unchanged, so Valve Oil's `vo_box_flow_recovery` treats it as before); the filament temperature `EXTRUSION_AND_FLUSH` uses for an ID `get_max_temp_by_single_id` doesn't list; and, on RS-485 hardware, whether a `BoxAdapterV2` load can leave the nozzle off the chute before its wipe, whose `WIPE_NOZZLE_DROP` starts with `G1 Y403` wherever the nozzle is.
 
 ## Task queue
 
@@ -329,6 +351,7 @@ MULTI_COLOR_DRY MULTI_COLOR_DISABLE_HEATER MULTI_COLOR_SET_TEMP
 ```text
 CLEAR_FLUSH CLEAR_OOZE CUT_FILAMENT MOVE_TO_TRASH
 MULTI_COLOR_CLEAR_FLUSH MULTI_COLOR_CLEAR_OOZE MULTI_COLOR_CUT_FILAMENT
+EXTRUSION_AND_FLUSH (.07.02, compiled)
 ```
 
 ### Box motion or motion-capable
@@ -393,10 +416,12 @@ Owner and message strings are static-recovered. `QDE_004_006` was seen live on 2
 | `QDE_004_018` | `box_stepper.so` | `No filament specified, %s cannot be automatically replaced.` |
 | `QDE_004_019` | `box_stepper.so` | `Please check if your PTFE Tube is bent` |
 | `QDE_004_020` | `box_stepper.so` | `Detected that the filament has been unloaded, please reload.` |
-| `QDE_004_021` | `box_extras.so` | `Unable to recognize loaded filament.` |
+| `QDE_004_021` | `box_extras.so` | `Unable to recognize loaded filament.` (`.07.02` also sends it from print start, resume, and eject; see [`01.01.07.02`](#firmware-01010702-compiled-module-differences)) |
 | `QDE_004_022` | `box_stepper.so` | `No replaceable slot found.` |
 | `QDE_004_023` | `box_extras.so` | `Auto reload failed.` |
 | `QDE_004_024` | `box_stepper.so` | `The filament failed to enter the extruder.` |
 | `QDE_004_025` | `box_stepper.so` | `Extruder unloading failure.` |
+| `QDE_004_069` | `box_device.so` (`.07.02`) | `Excessive resistance of the power assisted motor.` |
+| `QDE_004_070` | `box_device.so` (`.07.02`) | `BOX and BUFFER link errors.` |
 
 `QDE_004_012` and `QDE_004_015` were absent from captured module strings. Exact live predicates for all codes remain unresolved.

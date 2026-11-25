@@ -68,15 +68,16 @@ NOT_02 = re.compile(r"CF|GF|Wood|Metal|Marble|Galaxy|Sparkle|Glow|Luminous|Silk|
                     re.I)
 NOT_08 = re.compile(r"Silk|PEBA|Aero", re.I)
 
-# QIDI entry whose Box, chamber, and drying fields fit each material (first match wins).
+# QIDI entry whose Box, chamber, and drying fields fit each material (first match wins). A tuple lists the
+# names QIDI's databases have given one entry, newest first: 01.01.07.02 renamed QFA16 and QFB50.
 TEMPLATES = [
     (r"Support (For PA|G\b)", "QIDI Support For PET/PA"), (r"Support.*ABS", "Generic ABS"),
     (r"Support", "Generic PLA"),
-    (r"PLA-CF", "QIDI PLA-CF"), (r"PLA.*Wood", "QIDI WOOD Rapido"), (r"PLA.*Silk", "Generic PLA Silk"),
+    (r"PLA-CF", "QIDI PLA-CF"), (r"PLA.*Wood", ("QIDI PLA Wood Rapido", "QIDI WOOD Rapido")), (r"PLA.*Silk", "Generic PLA Silk"),
     (r"PLA", "Generic PLA"), (r"PVA", "Generic PLA"),
     (r"PETG-CF", "QIDI PETG-CF"), (r"PETG-GF", "QIDI PETG-GF"), (r"PET-CF", "QIDI PET-CF"), (r"PETG", "Generic PETG"),
     (r"ASA-Aero", "QIDI ASA-Aero"), (r"ASA-CF", "QIDI ASA-CF20 Core"), (r"ASA", "QIDI ASA"),
-    (r"ABS-GF", "QIDI ABS-GF"), (r"ABS", "Generic ABS"),
+    (r"ABS-GF", ("QIDI ABS-GF25", "QIDI ABS-GF")), (r"ABS", "Generic ABS"),
     (r"PC[- ]?FR", "QIDI PC/ABS-FR"), (r"PC", "Generic PC"), (r"PPS-CF", "QIDI PPS-CF"),
     (r"PA6-CF|PA-CF", "QIDI PA6-CF"), (r"PAHT-CF", "QIDI PAHT-CF"), (r"PA6?-GF", "QIDI PAHT-GF"),
     (r"PAHT|PA\b", "QIDI UltraPA"),
@@ -242,7 +243,9 @@ def build(args) -> dict:
             if brand in BY_VENDOR:
                 material = f"{first(profile.get('filament_type'), '')} {material}"  # CR-Nylon is a PA
             low, high = temperatures(profile)
-            entry = copy.deepcopy(qidi[match(TEMPLATES, material)])
+            template = match(TEMPLATES, material)
+            template = next(n for n in template if n in qidi) if isinstance(template, tuple) else template
+            entry = copy.deepcopy(qidi[template])
             entry.update(type=match(TYPES, material), filament_vendor=brand, nozzle_temperature=[low, high])
             if re.search("PVA|Support", material):
                 entry["filament_is_support"] = "1"

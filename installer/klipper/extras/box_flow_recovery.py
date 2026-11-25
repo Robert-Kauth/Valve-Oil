@@ -55,7 +55,7 @@
 # inside vo_cold_cut's cold_retracts(), which lets those pull-backs through
 # and still refuses extrusion, with every M109 skipped and the flow's
 # temperature cleared, so its completion turns the nozzle off without QIDI's
-# 5 s dwell and wipe. FLOW_RETRY of a paused cold flow retries it cold. Only
+# wipe (and, before 01.01.07.02, its 5 s dwell). FLOW_RETRY of a paused cold flow retries it cold. Only
 # flows made of Box heat, cut, unload, and eject steps run cold; any other,
 # such as an unload of the external spool, heats as usual and says so.
 #
@@ -188,6 +188,9 @@ COLD_STEPS = ("BOX_HEAT", "BOX_CUT", "BOX_UNLOAD", "BOX_EJECT")
 EXTERNAL_WIPE_FALSE_BUILDS = frozenset((
     # Max 4 01.01.07.01, Plus 5 01.01.02.01
     "b7e3bc21156fb9df9f5eea07f2c596a17c7ea5db852a36139ba9773160e43592",
+    # Max 4 01.01.07.02: ExternalAdapter.wipe's strings and calls are
+    # 01.01.07.01's
+    "f87e3141e1d4a6cc393b3fd6bc09f185490dd2cc641ac385eac74d91426d40a0",
     # Smart 5 01.01.02.01
     "caee552ffb7734e7ef3fd3b861ef5bad6f22e2bdacdf34a586de21fdaf316370",
 ))

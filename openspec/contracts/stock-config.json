@@ -1,6 +1,6 @@
 {
   "description": "config/ is QIDI's stock Max 4 config. scripts/check_stock_config.py compares it with `stock`: comments, whitespace, and blank lines may differ; `translated_strings` lists each message string translated from QIDI's Chinese (stock line, config/ line); `added_lines` is the include wiring Valve Oil needs; `unchanged` files are read-only on the printer and pinned by SHA-256; `printer_written` files are written by QIDI's software on each printer, so only scripts/check_identifiers.py reads them.",
-  "stock": "installer/stock/qidi-max4-defaults/firmwares/01.01.07.01/config",
+  "stock": "installer/stock/qidi-max4-defaults/firmwares/01.01.07.02/config",
   "unchanged": {
     "fluidd.cfg": "bf3c4884e0422a0f180fa0d72dde68f0de658a391773ddd79ec9233bb951cf3a"
   },
