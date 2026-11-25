@@ -179,7 +179,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         def install_urlopen(request, timeout=0):
             nonlocal install_idle_checks
             url = getattr(request, "full_url", str(request))
-            if url == paths.moonraker_url:
+            if urllib.parse.urlsplit(url).query == "print_stats&virtual_sdcard":
                 install_idle_checks += 1
             if url.endswith("/server/info"):
                 service_events.append("moonraker answered")

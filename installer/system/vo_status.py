@@ -557,7 +557,8 @@ def status_body(jobs: Jobs) -> dict:
     settings = update_settings()
     outside = not in_window(settings)
     live = live_printer()
-    busy = jobs.busy() or _run_active(_record(data.get("run")))
+    run_busy = jobs.busy() or _run_active(_record(data.get("run")))
+    busy = run_busy or installer_lock_held()
     pending = [item for item in map(_pending, _records(data.get("pending"))) if _still_waiting(item, installed)]
     for item in pending:
         item["blocked_by"] = _live_blockers(item["blocked_by"], live, enabled,
@@ -588,9 +589,9 @@ def status_body(jobs: Jobs) -> dict:
         "job": jobs.current(data.get("run")),
         "busy": busy,
         "printer_busy": live is not None and "printing" in live,
-        "update_now": _update_now(busy, live),
-        "uninstall": _uninstall(busy, live),
-        "klipper": klipper_body(live, busy),
+        "update_now": _update_now(run_busy, live),
+        "uninstall": _uninstall(run_busy, live),
+        "klipper": klipper_body(live, run_busy),
     }
     body["support"] = {"issue_url": support_issue_url(body)}
     return body
@@ -996,14 +997,17 @@ def live_printer() -> tuple[str, ...] | None:
     printing (or paused), heaters_on, klipper_not_ready, or printer_state_unknown; None when Moonraker can't be
     read."""
     try:
-        status = _moonraker_objects(("print_stats", "webhooks", "heaters"))
+        status = _moonraker_objects(("print_stats", "virtual_sdcard", "webhooks", "heaters"))
     except (OSError, ValueError, KeyError, TypeError):
         return None
     state = _record(status.get("print_stats")).get("state")
     if not isinstance(state, str) or not state:
         # A Klipper halted on an error has no print state; nothing is updated onto it.
         return ("klipper_not_ready",) if _klipper_state() == "error" else ("printer_state_unknown",)
-    if state in ("printing", "paused"):
+    active = _record(status.get("virtual_sdcard")).get("is_active")
+    if not isinstance(active, bool):
+        return ("printer_state_unknown",)
+    if active or state in ("printing", "paused", "extracting"):
         return ("printing",)
     if _record(status.get("webhooks")).get("state") != "ready":
         return ("klipper_not_ready",)
@@ -1099,7 +1103,8 @@ def _uninstall(busy: bool, live: tuple[str, ...] | None) -> dict:
 
 
 def installer_lock_held() -> bool:
-    """Whether an installer run holds its lock, from the kernel's lock table, without taking the lock."""
+    """Whether an installer run holds its lock, from the kernel's lock table, without taking the lock. Shared holds (a print
+    start in Klipper, an update check that only reads, the Box monitor's probe) don't count."""
     try:
         info = INSTALLER_LOCK.stat()
         table = PROC_LOCKS.read_text(encoding="utf-8")
@@ -1108,7 +1113,7 @@ def installer_lock_held() -> bool:
     device = f"{os.major(info.st_dev):02x}:{os.minor(info.st_dev):02x}:{info.st_ino}"
     for line in table.splitlines():
         fields = line.split()
-        if len(fields) > 5 and fields[1] == "FLOCK" and device in fields:
+        if len(fields) > 5 and fields[1] == "FLOCK" and fields[3] == "WRITE" and fields[5] == device:
             return True
     return False
 

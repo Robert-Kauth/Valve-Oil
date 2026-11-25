@@ -88,8 +88,11 @@ class BoxDryGuard:
     def _dry_guarded(self, name, original):
         def handler(gcmd):
             # QIDI's print_stats is "extracting" while a 3MF print unpacks,
-            # after the print start was let through.
-            if self._print_state() in ("extracting", "printing", "paused"):
+            # after the print start was let through, and a started print is
+            # scheduled on virtual_sdcard a moment before print_stats says so.
+            sd = self.printer.lookup_object("virtual_sdcard", None)
+            if (self._print_state() in ("extracting", "printing", "paused")
+                    or (sd is not None and sd.is_active())):
                 logging.info("vo_box_dry_guard: %s refused during a print",
                              name)
                 raise gcmd.error(

@@ -346,8 +346,12 @@ def printer_busy(moonraker=MOONRAKER):
         return "Klipper is starting"
     if state != "ready":
         return None
-    status = _get(moonraker + "/printer/objects/query?print_stats=state&heaters=available_heaters")["status"]
-    if status.get("print_stats", {}).get("state") in ("printing", "paused"):
+    status = _get(moonraker + "/printer/objects/query?print_stats=state&virtual_sdcard=is_active&heaters=available_heaters")["status"]
+    state = status.get("print_stats", {}).get("state")
+    active = status.get("virtual_sdcard", {}).get("is_active")
+    if not isinstance(active, bool):
+        return "the print state is unknown"
+    if state in ("printing", "paused", "extracting") or active:
         return "a print is running"
     heaters = status.get("heaters", {}).get("available_heaters") or []
     if heaters:

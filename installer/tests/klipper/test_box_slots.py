@@ -947,7 +947,7 @@ class BoxDryGuardTests(QuietTestCase):
              "power-loss resume": "SDCARD_POWER_OFF_CONTINUES_PINT_FILE STATE=e30=",
              "M24": "M24"}
 
-    def printer(self, drying, state="standby"):
+    def printer(self, drying, state="standby", sd_active=False):
         gcode = GCode()
         started = []
         for line in list(self.START.values()) + ["BOX_START_DRYING BOX=2 TEMP=65 TIME=3"]:
@@ -956,7 +956,8 @@ class BoxDryGuardTests(QuietTestCase):
         boxes = [{"dry_state": 1 if number in drying else 0, "end_time": 120} for number in (1, 2)]
         status = lambda eventtime, value: types.SimpleNamespace(get_status=lambda _eventtime: value)
         printer = Printer({"gcode": gcode, "box_extras": status(0, {"boxes": boxes}),
-                           "print_stats": status(0, {"state": state})})
+                           "print_stats": status(0, {"state": state}),
+                           "virtual_sdcard": types.SimpleNamespace(is_active=lambda: sd_active)})
         load_extra("box_dry_guard").load_config(Config(printer))
         printer.send_event("klippy:ready")
         return gcode, started
@@ -991,6 +992,11 @@ class BoxDryGuardTests(QuietTestCase):
                 else:
                     gcode.run_script("BOX_START_DRYING BOX=2 TEMP=65 TIME=3")
                 self.assertEqual(started, [] if refused else ["BOX_START_DRYING"])
+        # A print start has returned and its SD work is scheduled, but print_stats still says standby.
+        gcode, started = self.printer((), sd_active=True)
+        with self.assertRaisesRegex(CommandError, "Box drying can't start during a print."):
+            gcode.run_script("BOX_START_DRYING BOX=2 TEMP=65 TIME=3")
+        self.assertEqual(started, [])
 
 
 class WithoutBoxCodeTests(QuietTestCase):
