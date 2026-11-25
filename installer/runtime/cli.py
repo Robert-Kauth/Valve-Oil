@@ -20,6 +20,7 @@ from .auto_update import (
     current_auto_update_checksum,
     disable_auto_updates,
     enable_auto_updates,
+    prefetch_latest_release,
     newer_release,
     run_auto_update_check,
 )
@@ -308,6 +309,8 @@ def _dispatch(args, *, env, bundle_root, reporter, paths, input_stream, front_en
             return 0
 
         if args.mode == "auto-update-check":
+            # Fetched before the lock: an exclusive hold stops print starts, and the network may be slow.
+            latest = prefetch_latest_release(env)
             with ExitStack() as held:
                 try:
                     held.enter_context(acquire_shared(paths.lock_path) if checking_only else acquire(paths.lock_path))
@@ -326,7 +329,8 @@ def _dispatch(args, *, env, bundle_root, reporter, paths, input_stream, front_en
                 if not enrolled:
                     # Only check and publish: no recovery, reconciliation, install, board flash, service change, or
                     # reboot on a printer whose operator hasn't turned automatic updates on.
-                    result = run_auto_update_check(paths=paths, reporter=reporter, environ=env, enrolled=False)
+                    result = run_auto_update_check(paths=paths, reporter=reporter, environ=env, enrolled=False,
+                                                   latest=latest)
                     reporter.debug(event="cli.complete", mode=args.mode, return_code=0, action=result.action)
                     return 0
                 try:
@@ -335,7 +339,7 @@ def _dispatch(args, *, env, bundle_root, reporter, paths, input_stream, front_en
                     # What is waiting is still shown, with recovery as the reason it doesn't run.
                     try:
                         run_auto_update_check(paths=paths, reporter=reporter, environ=env, enrolled=True,
-                                              recovery_required=True)
+                                              recovery_required=True, latest=latest)
                     except InstallerError:
                         pass
                     raise
@@ -383,7 +387,7 @@ def _dispatch(args, *, env, bundle_root, reporter, paths, input_stream, front_en
                         action="pending-host-reboot",
                     )
                     return 0
-                result = run_auto_update_check(paths=paths, reporter=reporter, environ=env, enrolled=True)
+                result = run_auto_update_check(paths=paths, reporter=reporter, environ=env, enrolled=True, latest=latest)
                 if result.action == "firmware-update-started":
                     # The firmware update runs on its own and stops the services; nothing else runs beside it.
                     reporter.debug(event="cli.complete", mode=args.mode, return_code=0, action=result.action)

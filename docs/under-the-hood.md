@@ -14,7 +14,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 ## Prints during an installer run
 
-An installer run holds `~/printer_data/.vo_installer.lock` exclusively, checks that the printer is idle, and then changes files and restarts Klipper. `vo_print_guard.py`, loaded by `vo-macros/print_guard.cfg`, keeps prints out of that window: `SDCARD_PRINT_FILE`, `M24`, QIDI's power-loss resume and Box drying take the same lock shared, without waiting, and keep it until the print is scheduled, so either the start stops with an error or the installer finds the printer printing. While `~/printer_data/.vo_firmware_update_pending.json` exists, they stop too. A resume, or anything else inside a print that has started, isn't held up. The hourly check on a printer without automatic updates takes the lock shared, so it doesn't stop a print.
+An installer run holds `~/printer_data/.vo_installer.lock` exclusively, checks that the printer is idle, and then changes files and restarts Klipper. `vo_print_guard.py`, loaded by `vo-macros/print_guard.cfg`, keeps prints out of that window: `SDCARD_PRINT_FILE`, `M24`, QIDI's power-loss resume and Box drying take the same lock shared, without waiting, and keep it until the print is scheduled, so either the start stops with an error or the installer finds the printer printing. While `~/printer_data/.vo_firmware_update_pending.json` exists, they stop too. A resume, or anything else inside a print that has started, isn't held up. The hourly check reads the latest release's checksum before it takes the lock, so the network wait doesn't stop a print, and on a printer without automatic updates it takes the lock only shared.
 
 ## Klipper configuration
 

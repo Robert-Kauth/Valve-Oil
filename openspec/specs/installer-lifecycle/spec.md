@@ -88,7 +88,7 @@ Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-pri
 - **AND** a missing or malformed virtual SD state stops an installer run rather than reading as idle
 - **AND** a pending QIDI firmware update record stops a start across service restarts and reboots until the update finishes or is recovered
 - **AND** commands inside a print that has started, including resumes, are not held up
-- **AND** an update check on a printer not enrolled in automatic updates holds the lock only shared, so it does not stop a start
+- **AND** an update check fetches the latest release before it takes the lock, so the network wait does not stop a start, and on a printer not enrolled in automatic updates it holds the lock only shared
 
 #### Scenario: A competing update cannot replace active progress
 - **WHEN** Update now races another installer or automatic update for the installer lock
