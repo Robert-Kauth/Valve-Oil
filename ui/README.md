@@ -80,6 +80,8 @@ Valve Oil UI is in English, Spanish, and Russian. The browser chooses: the langu
 
 Every message the UI writes is in `src/i18n/locales/<language>/<area>.json`, one file per area of the UI, as nested objects in i18next's JSON format. English is the source; the other languages have the same keys.
 
+`src/i18n/preference.ts` owns language selection for both the app and the initial document. Vite inlines `document-language.ts` as a classic head script so browsers see the selected language before downloading the app or translation chunks. A deferred module or updating `lang` only after translations load is too late: Chromium can classify the empty shell as English and retain that decision. Browser translation stays enabled; switching languages and falling back after a failed translation download update `lang` to match the displayed UI.
+
 ```tsx
 import { t } from '../i18n'
 import { tr } from '../i18n/rich'
@@ -120,7 +122,7 @@ Numbers go into a command through the `gcode` template tag from `src/components/
 - `src/moonraker/client.ts`: websocket JSON-RPC client with reconnect.
 - `src/App.tsx`: the shell: the left rail (a bottom bar with **More** on phones), the top bar (state, temperatures, Save config, notifications, theme, emergency stop), warnings, and Klipper's stop screen. Screens other than Home, the Box, and Updates are loaded when first opened.
 - `src/lib/router.ts`: hash routes, `#/<screen>/<sub>/<path>`; tabs are sub-paths, such as `#/control/macros` and `#/files/config/printer.cfg`.
-- `src/styles.css`: Valve Oil's brand tokens (from the USB installer and touchscreen screens) and the shared classes: `card`, `btn`, `choice`, `seg`, `pm`, `pill`, `tile`, `link-row`, `table`, `menu`. Dark is the default.
+- `src/styles.css`: Valve Oil's brand tokens (from the USB installer and touchscreen screens) and the shared classes: `card`, `btn`, `choice`, `seg`, `pm`, `pill`, `tile`, `link-row`, `table`, `menu`. The theme follows the device by default; Settings can pin dark or light per browser. The top-bar toggle selects the opposite of the current colors as a manual choice.
 - `src/components/ui.tsx`: shared controls: dialogs, `confirm()` and `prompt()`, segmented tabs, pill choices, − value + steppers, menus, hold-to-confirm buttons.
 - `src/state/`: printer status (subscribed objects, batched updates, temperature history, console, all of `configfile.settings`), jobs, files and history, QIDI Box, warnings, add-ons, and `database.ts` for Moonraker's database. Anything Fluidd also stores goes in its `fluidd` namespace under Fluidd's own key and shape, so the two UIs agree; what only Valve Oil UI keeps goes in `valve_oil_ui`.
 - `src/qidi/`: QIDI Box, printer-warning, Valve Oil status and add-ons, LAN only mode, bed soak, probe report, and Klipper health logic ported from the Fluidd fork (`src/util/` there), with its tests. Keep it in step with the fork.

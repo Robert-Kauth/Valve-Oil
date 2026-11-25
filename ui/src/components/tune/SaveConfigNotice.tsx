@@ -1,10 +1,9 @@
 import { Save } from 'lucide-react'
-import { confirm } from '../ui'
 import { useObject } from '../../state/printer'
 import { useJobActive } from '../../state/job'
-import { send } from '../control/common'
 import { prettyName } from '../../lib/format'
 import { t } from '../../i18n'
+import { confirmAndSaveConfig } from '../save-config'
 
 /** What a pending SAVE_CONFIG section holds, in plain words. */
 export function pendingLabel(section: string) {
@@ -26,16 +25,7 @@ export function SaveConfigNotice({ only }: { only?: (section: string) => boolean
   const items = Object.keys((cf.save_config_pending_items as Record<string, unknown> | undefined) ?? {})
   const shown = only ? items.filter(only) : items
   if (!cf.save_config_pending || (only && items.length > 0 && shown.length === 0)) return null
-  const save = async () => {
-    if (
-      await confirm({
-        title: t('tune.save_config.button'),
-        body: t('tune.save_config.confirm_body'),
-        confirm: t('tune.save_config.confirm_button'),
-      })
-    )
-      send('SAVE_CONFIG')
-  }
+  const save = () => confirmAndSaveConfig({ title: t('tune.save_config.button'), body: t('tune.save_config.confirm_body'), confirm: t('tune.save_config.confirm_button') })
   return (
     <div className="tone-warn flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-3.5 py-2.5">
       <Save size={16} className="flex-none" />

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { BoxToolsCard } from '../box/BoxTools'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Gauge, House, Move as MoveIcon, Pipette, Snowflake, Wrench } from 'lucide-react'
-import { Card, Choices, MenuButton, Segmented, Stepper, confirm } from '../ui'
+import { Card, Choices, MenuButton, Segmented, Stepper } from '../ui'
 import { Columns, NumberInput, Note, jog as jogAxis, send, useHomedAxes, usePercent, useZOffset } from './common'
 import { usePrinting } from '../../state/job'
 import { extrudeGcode, gcode, moveGcode } from './gcode'
@@ -9,6 +9,7 @@ import { registerObjects, useHasCommand, usePrinter } from '../../state/printer'
 import { createStore, useStore } from '../../lib/store'
 import { t } from '../../i18n'
 import { tr } from '../../i18n/rich'
+import { confirmAndSaveConfig } from '../save-config'
 
 // Klipper's BED_SCREWS_ADJUST helper and the client move macro aren't in the app's default subscription.
 registerObjects((n) => n === 'bed_screws' || n === 'gcode_macro _CLIENT_LINEAR_MOVE')
@@ -81,7 +82,7 @@ export function ToolheadCard() {
             {move('Y', 1, ArrowUp, 'Y+')}
             <span />
             {move('X', -1, ArrowLeft, 'X−')}
-            {home(t('control.toolhead.home_xy'), 'XY', 'G28 X Y')}
+            {home(`${t('control.toolhead.home_xy')} · XY`, 'XY', 'G28 X Y')}
             {move('X', 1, ArrowRight, 'X+')}
             <span />
             {move('Y', -1, ArrowDown, 'Y−')}
@@ -190,7 +191,7 @@ function Position() {
           </label>
         ))}
       </div>
-      <Note>{t('control.toolhead.position_note')}</Note>
+      <Note tone={printing ? 'warn' : undefined}>{t(printing ? 'control.toolhead.locked_printing' : 'control.toolhead.position_note')}</Note>
     </div>
   )
 }
@@ -406,9 +407,9 @@ export function ZOffsetCard() {
             <button
               className="btn btn-sm btn-primary"
               disabled={printing}
-              onClick={async () => {
-                if (await confirm({ title: t('control.z_offset.save_config_title'), body: t('control.z_offset.save_config_body'), confirm: t('control.z_offset.save_config_confirm') })) send('SAVE_CONFIG')
-              }}
+              onClick={() =>
+                confirmAndSaveConfig({ title: t('control.z_offset.save_config_title'), body: t('control.z_offset.save_config_body'), confirm: t('control.z_offset.save_config_confirm') })
+              }
             >
               {t('control.z_offset.save_config')}
             </button>

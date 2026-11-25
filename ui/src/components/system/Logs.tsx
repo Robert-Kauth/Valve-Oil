@@ -175,9 +175,11 @@ export function LogViewer({ file, onClose }: { file: LogFile; onClose: () => voi
             <input className="field pl-8" placeholder={t('system.logs.search')} value={query} onChange={(e) => setQuery(e.target.value)} aria-label={t('system.logs.search_log')} />
           </label>
           {q && <span className="num text-[12.5px] text-ink-3">{t('system.logs.matching', { count: matches })}</span>}
-          <label className="flex items-center gap-2 text-[13px] text-ink-2">
-            <Toggle checked={onlyMatches} onChange={setOnlyMatches} label={t('system.logs.only_matching')} /> {t('system.logs.only_matching')}
-          </label>
+          {q && (
+            <label className="flex items-center gap-2 text-[13px] text-ink-2">
+              <Toggle checked={onlyMatches} onChange={setOnlyMatches} label={t('system.logs.only_matching')} /> {t('system.logs.only_matching')}
+            </label>
+          )}
           <label className="flex items-center gap-2 text-[13px] text-ink-2" title={t('system.logs.follow_hint')}>
             <Toggle checked={follow} onChange={setFollow} label={t('system.logs.follow')} /> {t('system.logs.follow')}
           </label>

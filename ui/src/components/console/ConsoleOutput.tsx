@@ -17,21 +17,21 @@ const time = (t: number) => new Date(t * 1000).toLocaleTimeString(locale(), { ho
 export const ConsoleLineView = memo(function ConsoleLineView({ entry, known, search, showTime }: { entry: ConsoleEntry; known: Set<string>; search?: string; showTime?: boolean }) {
   const error = entry.type === 'response' && entry.message.startsWith('!!')
   return (
-    <div className={`flex gap-3 rounded px-1 ${error ? 'bg-bad-tint' : ''}`}>
+    <div className={`flex min-h-6 items-center gap-3 rounded px-1 ${error ? 'bg-bad-tint' : ''}`}>
       {showTime && entry.time > 0 && <span className="hidden flex-none text-ink-3 select-none sm:inline">{time(entry.time)}</span>}
       <div className="min-w-0 flex-1 break-words whitespace-pre-wrap">
         {entry.type === 'command' ? (
-          <button type="button" className="console-cmd cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] text-accent-ink" onClick={() => fillCommand(entry.message)} title={t('console.put_in_line')}>
+          <button type="button" className="console-cmd inline-flex min-h-6 min-w-6 cursor-pointer items-center border-0 bg-transparent text-left font-[inherit] text-accent-ink" onClick={() => fillCommand(entry.message)} title={t('console.put_in_line')}>
             <span className="select-none">$ </span>
             {segments(entry.message, EMPTY, search).map((s, i) => (s.mark ? <mark key={i}>{s.text}</mark> : s.text))}
           </button>
         ) : (
           entry.message.split('\n').map((line, i) => (
-            <div key={i} className={TONE[lineTone(entry, line)]}>
+            <div key={i} className={`min-h-6 ${TONE[lineTone(entry, line)]}`}>
               {segments(line, known, search).map((s, j) => {
                 const text = s.mark ? <mark>{s.text}</mark> : s.text
                 return s.command ? (
-                  <button key={j} type="button" className="console-cmd cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-accent-ink underline decoration-dotted underline-offset-2" onClick={() => fillCommand(s.command!)} title={t('console.put_in_line')}>
+                  <button key={j} type="button" className="console-cmd inline-flex min-h-6 min-w-6 cursor-pointer items-center border-0 bg-transparent px-1 font-[inherit] text-accent-ink underline decoration-dotted underline-offset-2" onClick={() => fillCommand(s.command!)} title={t('console.put_in_line')}>
                     {text}
                   </button>
                 ) : (

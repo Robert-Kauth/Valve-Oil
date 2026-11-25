@@ -1,9 +1,8 @@
 // The Home control deck: the jog wheel, step sizes, temperature actions, outputs, and macros for the Home mockup.
 import { useState } from 'react'
 import { ChevronDown, Fan, House, Settings2, Snowflake, Zap } from 'lucide-react'
-import { MenuButton, Segmented, confirm } from '../ui'
-import { objectLabel, send } from '../control/common'
-import { useJobActive } from '../../state/job'
+import { MenuButton, Segmented } from '../ui'
+import { objectLabel } from '../control/common'
 import { FAN_TYPES, FanRow, LED_TYPES, LedRow, PIN_TYPES, PinRow, QIDI_FAN_ORDER, nameOf, typeOf, useOutputs } from '../control/Outputs'
 import { MacroButton, MacrosActions, useMacros, useMacrosDb } from '../control/Macros'
 import { macroGroups } from '../control/macro-settings'
@@ -14,6 +13,7 @@ import { navigate } from '../../lib/router'
 import { useStored } from '../../lib/browser'
 import { t, type MessageKey } from '../../i18n'
 import { tr } from '../../i18n/rich'
+import { useCoolDownAction } from '../control/use-cool-down'
 import { FoldTitle, useFold } from './fold'
 import './deck.css'
 
@@ -95,7 +95,8 @@ export function JogWheel({ small, big, canX, canY, canHome, onJog, onHome, hotX,
     <svg className="jw" viewBox={`0 0 ${S} ${S}`} role="group" aria-label={t('control.toolhead.move_xy')}>
       {DIRS.map((d) => seg(d, 'outer'))}
       {DIRS.map((d) => seg(d, 'inner'))}
-      <g className={`jw-home ${canHome ? '' : 'off'}`} role="button" tabIndex={canHome ? 0 : -1} aria-label={t('control.toolhead.home_xy')} onClick={() => canHome && onHome()} onKeyDown={(e) => e.key === 'Enter' && canHome && onHome()}>
+      {/* i18n-ignore: axis names */}
+      <g className={`jw-home ${canHome ? '' : 'off'}`} role="button" tabIndex={canHome ? 0 : -1} aria-label={`${t('control.toolhead.home_xy')} · XY`} onClick={() => canHome && onHome()} onKeyDown={(e) => e.key === 'Enter' && canHome && onHome()}>
         <title>{t('control.toolhead.home_xy')}</title>
         <circle cx={C} cy={C} r={R0 - 5} />
         <House x={C - 11} y={C - 14} width={22} height={22} />
@@ -110,25 +111,29 @@ export function JogWheel({ small, big, canX, canY, canHome, onJog, onHome, hotX,
 
 export function TempActions() {
   const [presets] = usePresets()
-  const active = useJobActive()
+  const coolDown = useCoolDownAction()
   return (
     <>
-      <MenuButton
-        className="btn btn-sm px-2! py-0.5! text-[11.5px]"
-        label={t('control.temps.presets')}
-        button={
-          <>
-            {t('control.temps.presets')} <ChevronDown size={12} />
-          </>
-        }
-        items={presets.length ? presets.map((p) => ({ label: p.name, onSelect: () => void attempt(() => applyPreset(p)) })) : [{ label: t('control.temps.no_presets'), onSelect: () => navigate('settings') }]}
-      />
+      {presets.length ? (
+        <MenuButton
+          className="btn btn-sm px-2! py-0.5! text-[11.5px]"
+          label={t('control.temps.presets')}
+          button={
+            <>
+              {t('control.temps.presets')} <ChevronDown size={12} />
+            </>
+          }
+          items={presets.map((p) => ({ label: p.name, onSelect: () => void attempt(() => applyPreset(p)) }))}
+        />
+      ) : (
+        <button type="button" className="btn btn-sm px-2! py-0.5! text-[11.5px]" aria-label={`${t('control.temps.presets')}: ${t('control.temps.no_presets')}`} onClick={() => navigate('settings', 'presets')}>
+          {t('control.temps.presets')}
+        </button>
+      )}
       <button
+        type="button"
         className="btn btn-sm px-2! py-0.5! text-[11.5px]"
-        onClick={async () => {
-          if (active && !(await confirm({ title: t('control.temps.cool_down_title'), body: t('control.temps.cool_down_body'), confirm: t('control.temps.cool_down'), danger: true }))) return
-          send('TURN_OFF_HEATERS')
-        }}
+        onClick={coolDown}
       >
         <Snowflake size={12} /> {t('control.temps.cool_down')}
       </button>

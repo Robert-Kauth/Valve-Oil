@@ -1,7 +1,7 @@
-import { Moon, RotateCcw, SlidersHorizontal, Sun, TriangleAlert } from 'lucide-react'
+import { Monitor, Moon, RotateCcw, SlidersHorizontal, Sun, TriangleAlert } from 'lucide-react'
 import { confirm, Segmented } from '../ui'
 import { attempt } from '../toast'
-import { setTheme, useTheme } from '../../lib/theme'
+import { setTheme, useThemePreference } from '../../lib/theme'
 import { deleteItem, getItem, VALVE_OIL_UI } from '../../state/database'
 import { Row, SettingsCard, TextField, UiToggleRow } from './common'
 import { useUiSetting } from './fluidd'
@@ -9,7 +9,7 @@ import { browserLanguage, LANGUAGES, languageStore, setLanguage, t, type LangCho
 import { useStore } from '../../lib/store'
 
 export function GeneralSettings() {
-  const [theme] = useTheme()
+  const theme = useThemePreference()
   const [name, setName] = useUiSetting('general.instanceName')
 
   return (
@@ -26,6 +26,7 @@ export function GeneralSettings() {
             value={theme}
             onChange={setTheme}
             options={[
+              { value: 'system', label: <><Monitor size={14} /> {t('app.nav.system')}</> },
               { value: 'dark', label: <><Moon size={14} /> {t('settings.general.theme_dark')}</> },
               { value: 'light', label: <><Sun size={14} /> {t('settings.general.theme_light')}</> },
             ]}
