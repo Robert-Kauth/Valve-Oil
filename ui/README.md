@@ -24,7 +24,7 @@ The fake Moonraker (`dev/fake-moonraker.mjs`) models a Max 4 on firmware 01.01.0
 | `box-busy` | A Box load running |
 | `box-failed` | A Box unload paused on `QDE_004_008` |
 | `stranded` | Filament stuck between the hub and the toolhead |
-| `no-box` | No QIDI Box |
+| `no-box` | No QIDI Box, the external spool loaded; a load waits 8 seconds for filament at the toolhead |
 
 `VO_BOX_RFID_WRITE` and `VO_BOX_RFID_TEST` write and scan made-up spool tags: 1A holds a QIDI tag, 1D (an empty slot, so the Box turns its spool) and 2C blank tags, 2A Elegoo data, and 2D a locked tag; 1B and 1C have none.
 

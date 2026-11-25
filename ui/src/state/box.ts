@@ -9,7 +9,7 @@ import { deriveBox, type BoxState, type Lists } from './box-model'
 
 export { QIDI_BOX_EXTERNAL_SLOT, qidiBoxSlotLabel }
 export type { QidiBoxSlot, QidiFilament, QidiBoxToolButton }
-export { boxCommands, boxHeaterMax, boxHeatLimiters, deriveBox, dryBlocker, reloadText, slotActions, slotByIndex, slotOverline, slotStatus } from './box-model'
+export { boxCommands, boxHeaterMax, boxHeatLimiters, deriveBox, dryBlocker, externalSpoolLoads, reloadText, slotActions, slotByIndex, slotOverline, slotStatus } from './box-model'
 export type { BoxClimate, BoxSetting, BoxState, SlotActions, SpoolRoll } from './box-model'
 
 // ---- QIDI's filament lists, read through Moonraker's file API ----

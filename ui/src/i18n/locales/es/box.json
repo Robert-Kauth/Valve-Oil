@@ -13,7 +13,10 @@
   "operation": {
     "retry_hint": "Reintentar repite el paso; Detener termina la operación del Box.",
     "stop": "Detener",
-    "working": "El Box está trabajando"
+    "working": "El Box está trabajando",
+    "retry_hint_no_box": "Reintentar repite el paso; Detener termina la operación.",
+    "waiting_filament": "Esperando el filamento en el cabezal",
+    "waiting_filament_hint": "Empuja el filamento de la bobina externa dentro del cabezal hasta que el extrusor lo agarre. La carga continúa sola en cuanto el sensor del cabezal lo detecta."
   },
   "step": {
     "heat": "Calentando la boquilla",
@@ -207,7 +210,10 @@
     "stranded_elsewhere": "El filamento de {{slot}} está detenido entre el hub y el cabezal. Primero descarga o expulsa {{slot}}.",
     "nozzle_temps": "Boquilla {{min}}–{{max}} °C",
     "heat_up_to": "Calentar hasta {{temp}} °C",
-    "change_filament": "Cambiar el material, la marca o el color"
+    "change_filament": "Cambiar el material, la marca o el color",
+    "no_toolhead_sensor": "Cargar y descargar necesitan el sensor de filamento del cabezal, que Klipper no está informando.",
+    "at_toolhead": "Cargada en el cabezal",
+    "not_at_toolhead": "Sin cargar"
   },
   "tool_map": {
     "default": "Predeterminada",

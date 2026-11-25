@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp, Flame, Nfc, Pencil, RefreshCw, Tag } from 'lucide-r
 import { Spool } from '../Spool'
 import { send } from '../control/common'
 import { TagWriteDialog, WriteTagIcon } from '../TagWriteDialog'
-import { boxCommands, reloadText, slotActions, slotOverline, QIDI_BOX_EXTERNAL_SLOT, type BoxState, type QidiBoxSlot } from '../../state/box'
+import { boxCommands, externalSpoolLoads, reloadText, slotActions, slotOverline, QIDI_BOX_EXTERNAL_SLOT, type BoxState, type QidiBoxSlot } from '../../state/box'
 import { FilamentDialog } from './FilamentDialog'
 import { t } from '../../i18n'
 
@@ -36,7 +36,9 @@ function SlotActions({ box, slot }: { box: BoxState; slot: QidiBoxSlot }) {
   const a = slotActions(box, slot)
   const [cutting, setCutting] = useState(false)
   const isBox = slot.index !== QIDI_BOX_EXTERNAL_SLOT
-  // The external spool has only Cut, and only while it's the filament loaded to the toolhead.
+  // With a Box, the external spool has only Cut, and only while it's the filament loaded to the toolhead. With no Box,
+  // it loads and unloads too.
+  const loads = isBox || externalSpoolLoads(box)
   const showCut = box.canCut && (isBox || box.loadedSlot === slot.index)
   const cut = async () => {
     setCutting(true)
@@ -44,10 +46,10 @@ function SlotActions({ box, slot }: { box: BoxState; slot: QidiBoxSlot }) {
     setCutting(false)
   }
   return (
-    <div className={isBox || showCut ? 'mt-3.5' : ''}>
-      {(isBox || showCut) && (
+    <div className={loads || showCut ? 'mt-3.5' : ''}>
+      {(loads || showCut) && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {isBox && (
+          {loads && (
             <>
               <button className={`btn btn-sm ${a.load ? 'btn-primary' : ''}`} disabled={!a.load} onClick={() => send(boxCommands.load(box, slot.index))}>
                 {t('box.slot.load')}
@@ -55,10 +57,12 @@ function SlotActions({ box, slot }: { box: BoxState; slot: QidiBoxSlot }) {
               <button className="btn btn-sm" disabled={!a.unload} onClick={() => send(boxCommands.unload(box, slot.index))}>
                 {t('box.slot.unload')}
               </button>
-              <button className="btn btn-sm" disabled={!a.eject} onClick={() => send(boxCommands.eject(box, slot.index))}>
-                {t('box.slot.eject')}
-              </button>
             </>
+          )}
+          {isBox && (
+            <button className="btn btn-sm" disabled={!a.eject} onClick={() => send(boxCommands.eject(box, slot.index))}>
+              {t('box.slot.eject')}
+            </button>
           )}
           {showCut && (
             <button className="btn btn-sm" disabled={!a.cut || cutting} onClick={cut} title={t('box.slot.cut_title')}>
@@ -78,7 +82,8 @@ function SlotActions({ box, slot }: { box: BoxState; slot: QidiBoxSlot }) {
         </div>
       )}
       {a.hint && <div className="tone-warn mt-2.5 rounded-lg px-3 py-2 text-[12.5px] text-ink">{a.hint}</div>}
-      {box.printState === 'printing' && isBox && <div className="mt-2 text-[12.5px] text-ink-3">{t('box.slot.printing_hint')}</div>}
+      {!isBox && loads && !box.busy && box.toolheadFilament == null && <div className="mt-2 text-[12.5px] text-ink-3">{t('box.slot.no_toolhead_sensor')}</div>}
+      {box.printState === 'printing' && loads && <div className="mt-2 text-[12.5px] text-ink-3">{t('box.slot.printing_hint')}</div>}
       {!box.canEditFilament && box.filamentDatabaseInvalid && <div className="mt-2 text-[12.5px] text-bad">{t('box.slot.database_invalid')}</div>}
     </div>
   )

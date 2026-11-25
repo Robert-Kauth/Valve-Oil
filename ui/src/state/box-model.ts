@@ -68,6 +68,11 @@ export type BoxState = {
   /** 01.01.07.01's filament database was read but lists no filaments. */
   filamentDatabaseInvalid: boolean
   flowPaused: boolean
+  /**
+   * An external-spool load waits for the operator to push filament into the toolhead. QIDI's grip and load steps fail
+   * until the toolhead sensor detects filament and retry by themselves, so this isn't a failure.
+   */
+  waitingForFilament: boolean
   /** The failed step's console error, then QIDI's Box warnings. */
   problems: string[]
   spoolRoll: SpoolRoll | null
@@ -85,12 +90,14 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
   const task = qidiBoxTask(st)
   const ready = s.klippy === 'ready'
   const busy = !ready || printState === 'printing' || !!st.box_extras?.box_button_state || task != null
-  const loadedSlot = qidiBoxLoadedSlot(st, slots)
-  const hubSensor = qidiBoxHubSensor(st)
   const toolheadFilament = st['filament_switch_sensor filament_switch_sensor']?.filament_detected ?? null
+  // With no Box, whatever is at the toolhead came from the external spool.
+  const loadedSlot = boxCount === 0 ? (toolheadFilament === true ? QIDI_BOX_EXTERNAL_SLOT : null) : qidiBoxLoadedSlot(st, slots)
+  const hubSensor = qidiBoxHubSensor(st)
   const hubPick = qidiBoxHubSlot(st, slots)
   const hubSlot = hubSensor !== 0 ? null : loadedSlot != null && loadedSlot !== QIDI_BOX_EXTERNAL_SLOT ? loadedSlot : hubPick
-  const strandedRecovery = ready && hasController && qidiBoxStrandedRecovery(st)
+  // Filament stopped between the hub and the toolhead needs a Box's hub; with none, a hub reading means nothing.
+  const strandedRecovery = ready && hasController && boxCount > 0 && qidiBoxStrandedRecovery(st)
 
   const toolMap: Record<number, number> = {}
   for (let t = 0; t < 16; t++) {
@@ -171,6 +178,7 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
     canEditFilament: hasController ? !!lists.database?.length : lists.legacy != null,
     filamentDatabaseInvalid: hasController && lists.databaseError,
     flowPaused,
+    waitingForFilament: (task?.step === 'EXT_BITE' || task?.step === 'EXT_LOAD') && toolheadFilament === false,
     problems: [...new Set([...(lastError ? [lastError.code ? `${lastError.message} (${lastError.code})` : lastError.message] : []), ...warnings])],
     spoolRoll: roll ? { enabled: roll.enabled === true, rolling: typeof roll.rolling === 'string' ? roll.rolling : null } : null,
   }
@@ -190,12 +198,21 @@ function stepText(s: QidiBoxStepText, failed: boolean): string {
 
 export type SlotActions = { load: boolean; unload: boolean; eject: boolean; rfid: boolean; edit: boolean; writeTag: boolean; jog: boolean; cut: boolean; hint: string | null }
 
+/**
+ * With no Box connected, the external spool loads and unloads through QIDI's controller, as from the touchscreen:
+ * LOAD_FILAMENT_CONTROL and UNLOAD_FILAMENT_CONTROL with slot 16. With a Box, the Box card leaves it to the Box's
+ * own flows.
+ */
+export const externalSpoolLoads = (box: BoxState) => box.boxCount === 0 && box.hasController
+
 /** Which actions the selected slot allows right now, matching the Fluidd fork's QIDI Box card. */
 export function slotActions(box: BoxState, slot: QidiBoxSlot): SlotActions {
   const isBox = slot.index !== QIDI_BOX_EXTERNAL_SLOT
   const base = !box.busy && isBox && slot.present
   const atHubLoaded = box.hubSensor === 0 && box.lastLoadSlot === slot.index
-  let unload = base && atHubLoaded
+  // The external spool loads into an empty toolhead and unloads what the toolhead sensor detects.
+  const external = !isBox && !box.busy && externalSpoolLoads(box)
+  let unload = (base && atHubLoaded) || (external && box.toolheadFilament === true)
   let eject = base
   // Filament stranded between the hub and the toolhead can be unloaded or ejected even while a failed flow is paused,
   // from the slot at the hub when that's known, as Valve Oil refuses any other.
@@ -205,7 +222,7 @@ export function slotActions(box: BoxState, slot: QidiBoxSlot): SlotActions {
     eject = ok
   }
   return {
-    load: base && !atHubLoaded,
+    load: (base && !atHubLoaded) || (external && box.toolheadFilament === false),
     unload,
     eject,
     rfid: base,
@@ -227,6 +244,8 @@ function strandedHint(box: BoxState, slot: QidiBoxSlot) {
 
 /** What a slot holds, as the Box card's overline: the slot, its tools, and whether it's loaded. */
 export function slotOverline(box: BoxState, slot: QidiBoxSlot) {
+  // With no Box, the external spool has a card of its own, and prints use it whatever the tool map says.
+  if (box.boxCount === 0) return box.loadedSlot === slot.index ? t('box.slot.at_toolhead') : t('box.slot.not_at_toolhead')
   const tools = box.toolsBySlot[slot.index] ?? []
   const where = slot.index === QIDI_BOX_EXTERNAL_SLOT ? [t('box.external_spool')] : [t('box.box_n', { n: Math.floor(slot.index / 4) + 1 }), slot.label]
   return [...where, ...tools, box.loadedSlot === slot.index ? t('box.slot.loaded') : null].filter(Boolean).join(' · ')
@@ -251,12 +270,13 @@ export function slotStatus(box: BoxState, slot: QidiBoxSlot): 'loaded' | 'hub' |
 // QIDI's Box settings are saved variables its Box modules read; vo_box_spool_roll is Valve Oil's turn spools while heating.
 export type BoxSetting = 'auto_read_rfid' | 'auto_init_detect' | 'auto_reload_detect' | 'enable_box' | 'vo_box_spool_roll'
 
-const cold = (box: BoxState) => (box.canCold && box.printState !== 'paused' ? ' COLD=1' : '')
+// The external spool's unload always heats: Valve Oil's cold flows run Box steps only.
+const cold = (box: BoxState, slot: number) => (box.canCold && box.printState !== 'paused' && slot !== QIDI_BOX_EXTERNAL_SLOT ? ' COLD=1' : '')
 
 export const boxCommands = {
   load: (box: BoxState, slot: number) => (box.hasController ? gcode`LOAD_FILAMENT_CONTROL SLOT=${slot}` : gcode`E_LOAD slot=${slot}`),
-  unload: (box: BoxState, slot: number) => (box.hasController ? gcode`UNLOAD_FILAMENT_CONTROL SLOT=${slot}${cold(box)}` : gcode`E_UNLOAD slot=${slot}`),
-  eject: (box: BoxState, slot: number) => (box.hasController ? gcode`EJECT_FILAMENT_CONTROL SLOT=${slot}${cold(box)}` : gcode`E_BOX slot=${slot}`),
+  unload: (box: BoxState, slot: number) => (box.hasController ? gcode`UNLOAD_FILAMENT_CONTROL SLOT=${slot}${cold(box, slot)}` : gcode`E_UNLOAD slot=${slot}`),
+  eject: (box: BoxState, slot: number) => (box.hasController ? gcode`EJECT_FILAMENT_CONTROL SLOT=${slot}${cold(box, slot)}` : gcode`E_BOX slot=${slot}`),
   rfid: (box: BoxState, slot: number) => (box.hasController ? gcode`READ_RFID SLOT=${slot}` : gcode`RFID_READ SLOT=slot${slot}`),
   writeTag: (slot: number, filamentId: string, colors: string[]) => gcode`VO_BOX_RFID_WRITE SLOT=${slot} FILAMENT=${filamentId} COLORS=${colors.map((c) => c.replace('#', '').toUpperCase()).join(',')}`,
   cut: () => 'VO_CUT_FILAMENT',

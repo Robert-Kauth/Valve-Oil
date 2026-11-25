@@ -13,6 +13,7 @@ import { PauseAtLayerButton } from '../components/printing/PauseAtLayer'
 import { CameraDeck } from '../components/home-deck/CameraDeck'
 import { MacrosDeck, OutputsDeck } from '../components/home-deck/Deck'
 import { BoxDeck } from '../components/home-deck/BoxDeck'
+import { ExternalSpoolDeck } from '../components/home-deck/ExternalSpoolDeck'
 import { ToolheadCard } from '../components/home-deck/ToolheadCard'
 import { TempsCard } from '../components/home-deck/TempsCard'
 import { attempt } from '../components/toast'
@@ -28,9 +29,9 @@ import { t } from '../i18n'
 import { tr } from '../i18n/rich'
 
 /**
- * Home, in four columns on a desktop. The camera spans the left two, in its own shape, with the Box and the fans and
- * lights under it; then the toolhead over the temperatures; then the print, recent files, and the macros and console,
- * folded until opened. The last card in each column stretches, so the columns end together. A tablet has two columns
+ * Home, in four columns on a desktop. The camera spans the left two, in its own shape, with the Box (or, with no Box,
+ * the external spool) and the fans and lights under it; then the toolhead over the temperatures; then the print,
+ * recent files, and the macros and console, folded until opened. The last card in each column stretches, so the columns end together. A tablet has two columns
  * under the camera, each stacking its cards straight under one another, and a phone one.
  */
 export function HomeScreen() {
@@ -50,7 +51,7 @@ export function HomeScreen() {
         <CameraDeck />
         <div className="half-cols">
           <div className="col">
-            {boxPresent && <BoxDeck />}
+            {boxPresent ? <BoxDeck /> : <ExternalSpoolDeck />}
             <SpoolmanCard />
             {twoColumns && (
               <>

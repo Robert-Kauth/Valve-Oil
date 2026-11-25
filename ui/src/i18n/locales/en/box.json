@@ -13,7 +13,10 @@
   "operation": {
     "retry_hint": "Retry runs the step again; Stop ends the Box operation.",
     "stop": "Stop",
-    "working": "Box is working"
+    "working": "Box is working",
+    "retry_hint_no_box": "Retry runs the step again; Stop ends the operation.",
+    "waiting_filament": "Waiting for filament at the toolhead",
+    "waiting_filament_hint": "Push the external spool's filament into the toolhead until the extruder grips it. Loading carries on by itself once the toolhead sensor detects it."
   },
   "step": {
     "heat": "Heating nozzle",
@@ -207,7 +210,10 @@
     "stranded_elsewhere": "{{slot}}'s filament is stopped between the hub and the toolhead. Unload or eject {{slot}} first.",
     "nozzle_temps": "Nozzle {{min}}–{{max}} °C",
     "heat_up_to": "Heat up to {{temp}} °C",
-    "change_filament": "Change the material, brand, or color"
+    "change_filament": "Change the material, brand, or color",
+    "no_toolhead_sensor": "Loading and unloading need the toolhead filament sensor, which Klipper isn’t reporting.",
+    "at_toolhead": "Loaded to the toolhead",
+    "not_at_toolhead": "Not loaded"
   },
   "tool_map": {
     "default": "Default",
