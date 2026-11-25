@@ -9,6 +9,9 @@
 # - 10 Hz samples of each Box slot motor, the extruder, and the toolhead,
 #   written only while something moves
 # - changes in filament switches and in each box_extras status field
+# - calls on the helper objects multi_color_controller holds (SUB_OBJECTS),
+#   such as the Box adapter and the filament database on 01.01.07.02
+# - changes in the saved variables QIDI's flows read (WATCHED_VARIABLES)
 
 import json
 import logging
@@ -27,6 +30,13 @@ MUTED_METHODS = ("_safe_int", "_get_saved_slot_filament_data",
                  "_build_auto_refill", "callback",
                  "_sync_limit_to_active_dev", "_normalize_limit_state",
                  "_get_json_filament_info_item")
+# Helper objects of a Box object to wrap too, by attribute name. QIDI's
+# EXTRUSION_AND_FLUSH (01.01.07.02) takes its flush temperature from
+# box_adapter.get_save_vars_filament_id and fila_json.get_max_temp_by_single_id.
+SUB_OBJECTS = {"multi_color_controller": ("box_adapter", "fila_json",
+                                          "operation_adapter")}
+WATCHED_VARIABLES = ("enable_box", "box_count", "last_load_slot",
+                     "last_load_filament_id", "extrude_state")
 RATE_LIMIT = 10  # logged calls per method per second
 SAMPLE_INTERVAL = 0.1
 STATUS_INTERVAL = 0.5
@@ -202,6 +212,14 @@ class BoxTrace:
             self._write("object %s attrs %s" % (name, json.dumps(attrs)))
             wrapped = self._wrap_object(short, obj)
             self._write("object %s wrapped %s" % (name, wrapped))
+            for attr in SUB_OBJECTS.get(name, ()):
+                sub = getattr(obj, attr, None)
+                if sub is None:
+                    self._write("object %s has no %s" % (name, attr))
+                    continue
+                wrapped = self._wrap_object("%s.%s" % (short, attr), sub)
+                self._write("object %s.%s (%s) wrapped %s" % (
+                    name, attr, type(sub).__name__, wrapped))
         self._write("motors sampled: %s" % ([m for m, _ in self.motors],))
         self.reactor.register_timer(self._sample, self.reactor.NOW)
         self.reactor.register_timer(self._status, self.reactor.NOW)
@@ -250,6 +268,11 @@ class BoxTrace:
             if extras is not None:
                 for key, value in extras.get_status(eventtime).items():
                     current["box_extras." + key] = value
+            saved = self.printer.lookup_object("save_variables", None)
+            if saved is not None:
+                variables = saved.get_status(eventtime).get("variables", {})
+                for key in WATCHED_VARIABLES:
+                    current["save_variables." + key] = variables.get(key)
             for key, value in current.items():
                 text = json.dumps(value, default=str, sort_keys=True)
                 if self.last_status.get(key) != text:
