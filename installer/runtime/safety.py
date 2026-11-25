@@ -14,6 +14,8 @@ from typing import Callable
 from .errors import (ActivePrintError, FreeSpaceError, HeaterOnError, InstallerError, KlipperBusyError, KlipperNotReadyError,
                      PrinterStateError, RecoveryRequiredError)
 
+BUSY_PRINT_STATES = frozenset({"printing", "paused", "extracting"})
+
 DiskUsageFn = Callable[[Path], object]
 UrlOpenFn = Callable[..., object]
 
@@ -92,18 +94,24 @@ def query_printer_state(
     timeout: int = 5,
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> str:
+    return print_state(_query_objects(url, ("print_stats", "virtual_sdcard"), timeout=timeout, urlopen=urlopen))
+
+
+def print_state(status: dict) -> str:
+    """print_stats' state, or "printing" once virtual_sdcard has work scheduled: a print start returns before
+    print_stats changes."""
     try:
-        with urlopen(url, timeout=timeout) as response:
-            payload = json.load(response)
-    except (OSError, urllib.error.URLError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        raise PrinterStateError() from exc
-    try:
-        state = payload["result"]["status"]["print_stats"]["state"]
+        state = status["print_stats"]["state"]
+        active = status["virtual_sdcard"]["is_active"]
     except (KeyError, TypeError) as exc:
         raise PrinterStateError() from exc
-    if not isinstance(state, str) or not state:
+    if not isinstance(state, str) or not state or not isinstance(active, bool):
         raise PrinterStateError()
-    return state
+    return "printing" if active else state
+
+
+def print_in_progress(status: dict) -> bool:
+    return print_state(status) in BUSY_PRINT_STATES
 
 
 def ensure_printer_idle(
@@ -129,7 +137,7 @@ def ensure_printer_idle(
     while True:
         try:
             state = query_printer_state(url, timeout=timeout, urlopen=urlopen)
-            if state in {"printing", "paused"}:
+            if state in BUSY_PRINT_STATES:
                 raise ActivePrintError()
             # Klipper can go away between the two reads; the heaters are then read again with the state.
             if _heater_on(url, timeout=timeout, urlopen=urlopen):
@@ -193,11 +201,11 @@ def ensure_klipper_idle(
             raise PrinterStateError()
         status = _query_objects(
             url,
-            ("print_stats", "webhooks", "idle_timeout", "toolhead", *heaters),
+            ("print_stats", "virtual_sdcard", "webhooks", "idle_timeout", "toolhead", *heaters),
             timeout=timeout,
             urlopen=urlopen,
         )
-        if status["print_stats"]["state"] in {"printing", "paused"}:
+        if print_in_progress(status):
             raise ActivePrintError()
         if status["webhooks"]["state"] != "ready":
             raise PrinterStateError()

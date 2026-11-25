@@ -1441,6 +1441,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.fail(f"Unexpected URL: {url}")
             names = [urllib.parse.unquote(part.split("=")[0]) for part in urllib.parse.urlsplit(url).query.split("&")]
             status = {"print_stats": {"state": state["print"]}, "webhooks": {"state": "ready"},
+                      "virtual_sdcard": {"is_active": False},
                       "heaters": {"available_heaters": []},
                       **{name: {"mcu_version": version} for name, version in versions.items()}}
             return _JsonResponse({"result": {"status": {name: status[name] for name in names if name in status}}})
@@ -1450,6 +1451,21 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
 
         return printer_root, paths, urlopen, forbidden, state
 
+    def test_a_release_fetched_before_the_lock_is_not_fetched_again(self):
+        printer_root, paths, urlopen, forbidden, state = self._waiting_printer()
+        env = {"VO_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"}
+        failed = auto_update.prefetch_latest_release(env, urlopen=lambda *args, **kwargs: (_ for _ in ()).throw(OSError()))
+        self.assertIsInstance(failed, auto_update.AutoUpdateError)
+        result = run_auto_update_check(paths=paths, reporter=PlainReporter(io.StringIO()), environ=env, enrolled=False,
+                                       latest=failed, urlopen=urlopen, run=forbidden)
+        self.assertEqual(result.action, "skipped-checksum-unavailable")
+        self.assertEqual(valve_oil_status.load_status(paths).check.message, messages.AUTO_UPDATE_CHECKSUM_FETCH_FAILED)
+        result = run_auto_update_check(paths=paths, reporter=PlainReporter(io.StringIO()), environ=env, enrolled=False,
+                                       latest=auto_update.prefetch_latest_release(env, urlopen=urlopen),
+                                       urlopen=urlopen, run=forbidden)
+        self.assertEqual((result.action, result.checksum), ("checked", "2" * 64))
+        self.assertEqual(sum(url.endswith(".sha256") for url in state["opened"]), 1)
+
     def test_unenrolled_check_only_publishes_what_is_waiting(self):
         # The safety boundary: without enrollment the check never installs, starts a firmware update, reconciles,
         # reads or flashes a board, stops or restarts a service, or reboots. It records the latest checksum.
@@ -1457,9 +1473,26 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid/printer/objects/query?print_stats")
         env["VO_AUTO_UPDATE_CHECKSUM_URL"] = "https://example.invalid/latest.sha256"
         before = snapshot_tree(printer_root)
-        check = functools.partial(run_auto_update_check, urlopen=urlopen, run=forbidden, start_firmware=forbidden,
-                                  deliver=forbidden, read_session=forbidden)
-        with mock.patch("installer.runtime.cli.run_auto_update_check", side_effect=check), \
+        lock_free_while_fetching = []
+
+        def prefetch(environ):
+            # The release is fetched before the check takes the lock, so a slow network never holds up a print start.
+            try:
+                with acquire(paths.lock_path):
+                    lock_free_while_fetching.append(True)
+            except errors.LockAcquisitionError:
+                lock_free_while_fetching.append(False)
+            return auto_update.prefetch_latest_release(environ, urlopen=urlopen)
+
+        def check(**kwargs):
+            from installer.runtime.locking import acquire_shared
+
+            with acquire_shared(paths.lock_path):
+                # Print admission can proceed throughout an unenrolled check.
+                return run_auto_update_check(**kwargs, urlopen=urlopen, run=forbidden, start_firmware=forbidden,
+                                             deliver=forbidden, read_session=forbidden)
+        with mock.patch("installer.runtime.cli.prefetch_latest_release", side_effect=prefetch), \
+                mock.patch("installer.runtime.cli.run_auto_update_check", side_effect=check), \
                 mock.patch("installer.runtime.cli.repair_installer_ownership", side_effect=forbidden), \
                 mock.patch("installer.runtime.cli.recover_pending_system_optimization", side_effect=forbidden), \
                 mock.patch("installer.runtime.cli.maybe_reconcile_system_optimizations", side_effect=forbidden), \
@@ -1467,12 +1500,14 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 mock.patch("installer.runtime.cli.maybe_schedule_recommended_reboot", side_effect=forbidden):
             self.assertEqual(main(["auto-update", "--run", "--plain"], bundle_root=REPO_ROOT, environ=env,
                                   stream=io.StringIO()), 0)
+            self.assertEqual(lock_free_while_fetching, [True])
             # A check that finds an install, uninstall, or update running skips without failing its service.
             skipped = io.StringIO()
             with acquire(paths.lock_path), mock.patch("installer.runtime.cli.run_auto_update_check", side_effect=forbidden):
                 self.assertEqual(main(["auto-update", "--run", "--plain"], bundle_root=REPO_ROOT, environ=env,
                                       stream=skipped), 0)
             self.assertIn(messages.AUTO_UPDATE_SKIPPED_ANOTHER_RUN, skipped.getvalue())
+            self.assertEqual(lock_free_while_fetching, [True, False])  # the second time, this test held it
 
         self.assertFalse(any(url.endswith(".tar.gz") for url in state["opened"]))
         self.assertEqual(json.loads(state_path(paths).read_text(encoding="utf-8"))["latest_checksum"], "2" * 64)

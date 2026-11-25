@@ -4,6 +4,7 @@ import fcntl
 import json
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from installer.runtime import box_config
 from installer.tests.helpers import REPO_ROOT, temp_path
@@ -62,6 +63,34 @@ class Printer:
 
 
 class BoxConfigTests(unittest.TestCase):
+    def test_monitor_and_driver_updates_wait_for_all_active_or_unknown_print_states(self):
+        from installer.runtime import closed_loop_firmware
+
+        cases = (("printing", False, "printing"), ("paused", False, "printing"),
+                 ("extracting", False, "printing"), ("standby", True, "printing"),
+                 ("standby", None, "printer_state_unknown"),
+                 ("standby", False, None), ("complete", False, None))
+        for state, active, expected in cases:
+            with self.subTest(state=state, active=active):
+                status = {"print_stats": {"state": state}, "virtual_sdcard": {"is_active": active},
+                          "heaters": {"available_heaters": []}, "idle_timeout": {"state": "Idle"}}
+                def get(url):
+                    if url.endswith("/server/info"):
+                        return {"klippy_state": "ready"}
+                    self.assertIn("virtual_sdcard", url)
+                    return {"status": status}
+
+                with mock.patch.object(MONITOR, "_get", side_effect=get):
+                    reason = MONITOR.printer_busy()
+                self.assertEqual(reason, {"printing": "a print is running",
+                                          "printer_state_unknown": "the print state is unknown", None: None}[expected])
+                api = closed_loop_firmware.KlipperAPI(Path("unused-test-socket"))
+                with mock.patch.object(api, "state", return_value="ready"), \
+                        mock.patch.object(api, "query", side_effect=lambda *names: {
+                            name: status[name] for name in names if name in status}):
+                    self.assertEqual(closed_loop_firmware.idle_blocker(api), expected)
+
+
     def test_box_cfg_follows_the_boxes_in_qidis_layout_and_each_box_keeps_its_number(self):
         # QIDI's touchscreen app's box.cfg for two Boxes, with their serials redacted, is exactly what Valve Oil writes.
         qidi = (REPO_ROOT / "config/box.cfg").read_text(encoding="utf-8")

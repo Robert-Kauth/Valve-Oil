@@ -12,6 +12,10 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 - **Earlier names move.** Releases before 26.11.22.3 named Valve Oil's files, folders, services, and Klipper modules `tltg` (`tltg_`, `.tltg_`, `tltg-optimized-`). The first run of 26.11.22.3 or later, an update or any other command, moves them to the `vo` names below and points `printer.cfg` at `vo-macros/`; an install or uninstall removes the earlier services and files once their replacements are in place. Configuration backups keep their names (`tltg-optimized-macros-before-*.zip`).
 - **Each service restarts once.** Changes are made first, then each changed service restarts once at the end. After Moonraker restarts, the installer waits for it to answer, then restarts the touchscreen app, `qidi-client`, so it reconnects.
 
+## Prints during an installer run
+
+An installer run holds `~/printer_data/.vo_installer.lock` exclusively, checks that the printer is idle, and then changes files and restarts Klipper. `vo_print_guard.py`, loaded by `vo-macros/print_guard.cfg`, keeps prints out of that window: `SDCARD_PRINT_FILE`, `M24`, QIDI's power-loss resume and Box drying take the same lock shared, without waiting, and keep it until the print is scheduled, so either the start stops with an error or the installer finds the printer printing. While `~/printer_data/.vo_firmware_update_pending.json` exists, they stop too. A resume, or anything else inside a print that has started, isn't held up. The hourly check reads the latest release's checksum before it takes the lock, so the network wait doesn't stop a print, and on a printer without automatic updates it takes the lock only shared.
+
 ## Klipper configuration
 
 | What | Change |

@@ -80,6 +80,22 @@ Every installer launcher, including the release download, automatic updates, res
 ### Requirement: Recoverable configuration lifecycle
 Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-printer transactions with validated inputs, recoverable preimages, atomic committed state, and drift-safe reversal.
 
+#### Scenario: Print admission and updating cannot race
+- **WHEN** an installed Valve Oil printer receives a print or Box drying start (`SDCARD_PRINT_FILE`, `M24` outside a paused print, QIDI's power-loss resume, `BOX_START_DRYING`, `ENABLE_BOX_DRY`)
+- **THEN** Klipper takes the installer lock shared without waiting and holds it until the start command returns
+- **AND** a start while an installer run holds the lock exclusively stops with an error before any print side effect
+- **AND** an installer run that starts during the command fails to take the lock, and one that starts after it sees printing, paused, extracting, or active virtual SD work and changes nothing
+- **AND** a missing or malformed virtual SD state stops an installer run rather than reading as idle
+- **AND** a pending QIDI firmware update record stops a start across service restarts and reboots until the update finishes or is recovered
+- **AND** commands inside a print that has started, including resumes, are not held up
+- **AND** an update check fetches the latest release before it takes the lock, so the network wait does not stop a start, and on a printer not enrolled in automatic updates it holds the lock only shared
+
+#### Scenario: A competing update cannot replace active progress
+- **WHEN** Update now races another installer or automatic update for the installer lock
+- **THEN** only the lock owner creates or finishes its update run and clears its pending release
+- **AND** the losing request reports the lock conflict without replacing the active run
+- **AND** the status API blocks mutations while an exclusive kernel lock is held, even before a run record exists, without claiming a shared print-admission lock or an unenrolled hourly check is an update
+
 #### Scenario: Mutation begins only after complete preflight
 - **WHEN** a mutating operation starts
 - **THEN** it validates printer state, prior state, targets, paths, bundle contents, and required storage before backup or writes
