@@ -60,7 +60,6 @@ from installer.runtime.models import (
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.restore_helper import RestoreHelperError, run_restore_helper
 from installer.runtime.runner import run_install
-from installer.runtime.source_patches import SourcePatchError
 from installer.runtime.state_file import load_installed_state, write_installed_state
 from installer.runtime.uninstall import run_uninstall
 from installer.tests.helpers import (
@@ -80,13 +79,6 @@ from installer.tests.helpers import (
 
 DESIRED_HOMING_SHA256 = "47e091f4cd1ec52c474e5b7bada1a12959a4dc3507dbdaa6e77e7b2f74ba656c"
 SYNC_RESET_DESIRED_HOMING_SHA256 = "24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565"
-STOCK_BOX_HEATER_FAN_SHA256 = "8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755"
-DESIRED_BOX_HEATER_FAN_SHA256 = "5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206"
-STOCK_BOX_HEATER_FAN = (
-    REPO_ROOT
-    / "installer/klipper/qidi/stock"
-    / f"box_heater_fan-{STOCK_BOX_HEATER_FAN_SHA256}.py"
-).read_bytes()
 SOURCE_CASES = (
     ("01.01.06.03", "standard", DESIRED_HOMING_SHA256),
     ("01.01.06.04", "standard", DESIRED_HOMING_SHA256),
@@ -225,16 +217,11 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 state = load_installed_state(
                     printer_root / "config/vo_state.yaml"
                 )
-                self.assertEqual(len(state.source_patches), 2)
-                entries = {entry.id: entry for entry in state.source_patches}
-                entry = entries["qidi_homing"]
+                self.assertEqual(len(state.source_patches), 1)
+                entry = state.source_patches[0]
                 self.assertEqual(entry.firmware, firmware)
                 self.assertEqual(entry.original_bytes, stock_source)
                 self.assertEqual(entry.original_sha256, hashlib.sha256(stock_source).hexdigest())
-                box_entry = entries["qidi_box_heater_fan"]
-                self.assertEqual(box_entry.firmware, firmware)
-                self.assertEqual(box_entry.original_bytes, STOCK_BOX_HEATER_FAN)
-                self.assertEqual(box_entry.original_sha256, STOCK_BOX_HEATER_FAN_SHA256)
 
     def test_install_takes_over_a_patched_source_an_unfinished_install_never_recorded(self):
         # A power cut can stop an install after it patched homing.py and before it wrote its state.
@@ -250,11 +237,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(homing_path.read_bytes()).hexdigest(),
                                  SYNC_RESET_DESIRED_HOMING_SHA256)
                 state = load_installed_state(printer_root / "config/vo_state.yaml")
-                self.assertEqual(
-                    {entry.id: entry.original_bytes for entry in state.source_patches},
-                    {"qidi_homing": stock_source,
-                     "qidi_box_heater_fan": STOCK_BOX_HEATER_FAN},
-                )
+                self.assertEqual([entry.original_bytes for entry in state.source_patches], [stock_source])
                 run_uninstall(
                     paths,
                     self.manifest,
@@ -264,66 +247,6 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     urlopen=self._fixture_urlopen(printer_root),
                 )
                 self.assertEqual(homing_path.read_bytes(), stock_source)
-
-    def test_box_heater_fan_patch_reinstall_and_uninstall_for_every_supported_firmware(self):
-        self.assertEqual(hashlib.sha256(STOCK_BOX_HEATER_FAN).hexdigest(), STOCK_BOX_HEATER_FAN_SHA256)
-        self.assertIn(b"\r\n", STOCK_BOX_HEATER_FAN)
-        for firmware in (
-                "01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01",
-                "01.01.02.01", "smart5-01.01.02.01"):
-            with self.subTest(firmware=firmware):
-                source_variant = "standard" if firmware == "01.01.06.03" else "sync-reset"
-                printer_root, paths, _ = self._fixture(
-                    firmware, source_variant=source_variant
-                )
-                box_source = paths.managed_klipper_root / "klippy/extras/box_heater_fan.py"
-
-                self._run_install(paths)
-                self.assertEqual(
-                    hashlib.sha256(box_source.read_bytes()).hexdigest(),
-                    DESIRED_BOX_HEATER_FAN_SHA256,
-                )
-                first_state = load_installed_state(printer_root / "config/vo_state.yaml")
-                first_entry = next(
-                    entry for entry in first_state.source_patches
-                    if entry.id == "qidi_box_heater_fan"
-                )
-                self.assertEqual(first_entry.original_bytes, STOCK_BOX_HEATER_FAN)
-
-                self._run_install(paths)
-                second_state = load_installed_state(printer_root / "config/vo_state.yaml")
-                second_entry = next(
-                    entry for entry in second_state.source_patches
-                    if entry.id == "qidi_box_heater_fan"
-                )
-                self.assertEqual(second_entry.original_bytes, STOCK_BOX_HEATER_FAN)
-
-                run_uninstall(
-                    paths,
-                    self.manifest,
-                    self.compatibility,
-                    PlainReporter(io.StringIO()),
-                    input_stream=io.StringIO("Y\n"),
-                    urlopen=self._fixture_urlopen(printer_root),
-                )
-                self.assertEqual(box_source.read_bytes(), STOCK_BOX_HEATER_FAN)
-
-    def test_box_heater_fan_patch_rejects_an_unknown_source_before_install(self):
-        printer_root, paths, _ = self._fixture("01.01.06.03")
-        box_source = paths.managed_klipper_root / "klippy/extras/box_heater_fan.py"
-        unknown_source = b"# unknown QIDI box heater fan source\n"
-        box_source.write_bytes(unknown_source)
-        printer_config = printer_root / "config/printer.cfg"
-        config_before = printer_config.read_bytes()
-
-        with self.assertRaisesRegex(
-                SourcePatchError,
-                r"Unsupported drift at managed source destination: klippy/extras/box_heater_fan.py"):
-            self._run_install(paths)
-
-        self.assertEqual(box_source.read_bytes(), unknown_source)
-        self.assertEqual(printer_config.read_bytes(), config_before)
-        self.assertFalse((printer_root / "config/vo_state.yaml").exists())
 
     def test_uninstall_restores_a_section_an_unfinished_install_deleted_before_any_record(self):
         # An install that deletes QIDI's sections and then dies leaves no record of them; earlier releases then
@@ -1886,10 +1809,6 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     (paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes(),
                     stock_source,
                 )
-                self.assertEqual(
-                    (paths.managed_klipper_root / "klippy/extras/box_heater_fan.py").read_bytes(),
-                    STOCK_BOX_HEATER_FAN,
-                )
                 self.assertFalse(paths.restart_marker_path.exists())
                 self.assertFalse(
                     (printer_root / "config/vo_state.yaml").exists()
@@ -2029,10 +1948,6 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     (paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes(),
                     stock_source,
                 )
-                self.assertEqual(
-                    (paths.managed_klipper_root / "klippy/extras/box_heater_fan.py").read_bytes(),
-                    STOCK_BOX_HEATER_FAN,
-                )
                 self.assertFalse(paths.restart_marker_path.exists())
 
     def test_uninstall_restores_stock_config_and_source(self):
@@ -2113,10 +2028,6 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.assertEqual(
                     (paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes(),
                     stock_source,
-                )
-                self.assertEqual(
-                    (paths.managed_klipper_root / "klippy/extras/box_heater_fan.py").read_bytes(),
-                    STOCK_BOX_HEATER_FAN,
                 )
                 self.assertFalse(
                     (printer_root / "config/vo_state.yaml").exists()

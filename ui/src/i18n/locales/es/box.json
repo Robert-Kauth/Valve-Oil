@@ -92,42 +92,6 @@
     "vo_box_spool_roll_help": "Mientras el calentador del Box está encendido, también durante una impresión, cada ranura vacía gira su bobina cada 5 minutos. Las ranuras con filamento introducido nunca giran.",
     "no_reload_groups": "Ninguna ranura cargada comparte filamento, fabricante y color, así que ninguna puede sustituir a otra."
   },
-  "circulation": {
-    "title": "Circulación de aire",
-    "advanced": "Avanzado",
-    "commanded_speed": "Velocidad ordenada del ventilador",
-    "fans": "A {{a}} · B {{b}}",
-    "reason": "Motivo: {{reason}}",
-    "outlets": "Salidas {{a}} · {{b}}",
-    "run_on_remaining": "quedan {{seconds}} s",
-    "sensor_fault": "Fallo del sensor: {{error}}",
-    "unknown_reason": "Desconocido",
-    "faults": {
-      "invalid_or_stale_temperature": "temperatura fuera de rango o sin actualizarse",
-      "temperature_unavailable": "no se puede leer la temperatura",
-      "motor_unavailable": "no se puede leer el estado de los motores del Box"
-    },
-    "reasons": {
-      "off": "Apagada",
-      "heating": "Calentando",
-      "temperature": "Temperatura",
-      "run_on": "Postfuncionamiento",
-      "sensor_fault": "Fallo del sensor",
-      "motor": "Motor"
-    },
-    "dialog_title": "Circulación del Box {{n}}",
-    "threshold": "Umbral de inicio · °C",
-    "hysteresis": "Histéresis · °C",
-    "threshold_risk": "Un umbral mayor aumenta el riesgo de que el filamento se ablande.",
-    "range": "Umbral 35–45 °C; histéresis 0,2–2 °C.",
-    "unavailable": "Los ajustes de circulación no están disponibles.",
-    "blocked_printing": "Los ajustes de circulación no están disponibles durante una impresión o pausa.",
-    "blocked_heating": "Primero apaga todos los calentadores o secados del Box.",
-    "blocked_sensor_fault": "Primero corrige el fallo del sensor.",
-    "blocked_circulating": "Espera a que se enfríen las salidas del calentador y se detengan los motores de la Box.",
-    "settings_error": "Error de ajustes: {{error}}",
-    "refresh_failed": "No se pudieron actualizar los ajustes de circulación."
-  },
   "motion": {
     "title": "Movimiento de carga/descarga",
     "labels": {

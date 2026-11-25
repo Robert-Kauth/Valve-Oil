@@ -207,33 +207,3 @@ source_patches:
   firmware: 01.01.02.01
   original_sha256: 0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761
   desired_sha256: 24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565
-- id: qidi_box_heater_fan
-  destination: klippy/extras/box_heater_fan.py
-  firmware: 01.01.06.03
-  original_sha256: 8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755
-  desired_sha256: 5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206
-- id: qidi_box_heater_fan
-  destination: klippy/extras/box_heater_fan.py
-  firmware: 01.01.06.04
-  original_sha256: 8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755
-  desired_sha256: 5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206
-- id: qidi_box_heater_fan
-  destination: klippy/extras/box_heater_fan.py
-  firmware: 01.01.06.05
-  original_sha256: 8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755
-  desired_sha256: 5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206
-- id: qidi_box_heater_fan
-  destination: klippy/extras/box_heater_fan.py
-  firmware: 01.01.07.01
-  original_sha256: 8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755
-  desired_sha256: 5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206
-- id: qidi_box_heater_fan
-  destination: klippy/extras/box_heater_fan.py
-  firmware: 01.01.02.01
-  original_sha256: 8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755
-  desired_sha256: 5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206
-- id: qidi_box_heater_fan
-  destination: klippy/extras/box_heater_fan.py
-  firmware: smart5-01.01.02.01
-  original_sha256: 8e9b3a8cb044dbfa905473e3410893fa636cc705053e7bbf1a23389a7a27e755
-  desired_sha256: 5a1a04215536aac669894cf332805dc6f44fbbeffeee5e30930af9739ffef206

@@ -30,20 +30,6 @@ Box heater targets can be set from Fluidd, up to 65 °C, the Box's advertised ma
 
 Each Box's processor temperature shows in Fluidd's temperature card as **Box1 MCU** through **Box4 MCU**. These sensors have no limits, so they never stop a print.
 
-### Automatic circulation
-
-In Valve Oil UI, each USB Box card shows the commanded speeds of both circulation fans and why they are running. These are not measured RPM: the stock fans do not report their speed. The Box board fan is controlled separately.
-
-Both circulation fans run at full speed while heating. After heating stops, air-temperature hysteresis and the run-on period determine when they stop. Motor activity also keeps circulation running.
-
-The default start threshold remains **35 °C**. The stop threshold is lower by the configured hysteresis; after reaching it, the fans retain the stock **60-second** run-on. This keeps small temperature fluctuations from repeatedly switching the fans on and off. If the Box cannot cool to the stop threshold, circulation continues: there is no forced-stop timer.
-
-Both heater-outlet temperatures are reported for observation; valid outlet readings do not set circulation thresholds or prevent settings changes. While Klipper is running, invalid or stale readings turn heating off and keep circulation active. A reading is invalid only outside the range `box.cfg` gives its sensor, −100 to 100 °C for the Box air and −100 to 130 °C for the outlets, so a Box in a room below 0 °C still heats. Box motor state that can't be read is handled the same way, and the Box card says which of these failed. During a Klipper shutdown, its normal output shutdown rules apply; the module does not bypass them.
-
-Under Box settings → **Air circulation**, set a threshold of **35–45 °C** and hysteresis of **0.2–2 °C** (default 0.5 °C). Raising the threshold increases the risk of filament softening; the slot's material does not select a threshold automatically. Settings can be changed only when printing, drying, heating, and motor activity are inactive and sensor readings are valid. Ordinary air-temperature circulation does not block changes; changing the threshold does not shorten the remaining run-on. There is no manual protection override.
-
-Settings belong to the physical USB Box, not its number: renumbering Boxes or connecting a different one does not transfer a raised threshold to another Box. Regenerating `box.cfg` when the connected Boxes change does not reset the settings. RS-485 Boxes are unaffected.
-
 ### Box heater switching speed
 
 To hold its target, the Box heater switches on and off 10 times a second, Klipper's default. If that makes lights on the same circuit flicker, it can switch faster, as `pwm_cycle_time` does for the bed and chamber heaters. QIDI's Box code takes no cycle time from `box.cfg`. In seconds, for every USB Box:
@@ -65,6 +51,17 @@ With this turned on, while a Box's heater has a target, during a print or not, e
 - It's off until you turn on **Turn spools while heating** in the QIDI Box card's settings in Fluidd, or run `SAVE_VARIABLE VARIABLE=vo_box_spool_roll VALUE=1`. `VALUE=0` turns it off again. The change applies at the next turn.
 
 `klippy.log` notes each turn, for example `vo_box_spool_roll: turning 1A's spool 25 mm`.
+
+### Box fans on a warm printer
+
+QIDI runs a USB Box's two circulation fans while the Box heats or a slot motor is on, while the Box air is above 35 °C, and for a minute after. A Box sitting near 35 °C, as on top of a printer with a hot chamber, kept switching its fans on and off. Once the air goes above 35 °C, the fans now keep running until it's 0.5 °C lower, then run their minute and stop.
+
+On a printer whose chamber keeps the Box warm, a higher temperature stops the fans running all print. Both settings apply to every USB Box within a second of saving, without a restart:
+
+- `SAVE_VARIABLE VARIABLE=vo_box_fan_threshold VALUE=40` starts the fans above 40 °C. From `35` to `45`. Some filaments soften in a warmer Box with no air moving.
+- `SAVE_VARIABLE VARIABLE=vo_box_fan_hysteresis VALUE=1` keeps them running until the air is 1 °C below that. From `0`, QIDI's behaviour, to `2`.
+
+Heating and slot motors still run the fans whatever these are set to. RS-485 Boxes are unchanged.
 
 ### Printing while a Box dries
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PrinterState } from './printer'
 import { QIDI_BOX_EXTERNAL_SLOT } from '../qidi/qidi-box'
-import { boxCommands, boxHeaterMax, circulationSettingValues, circulationSettingsBlocker, circulationSettingsValid, deriveBox, dryBlocker, slotActions, slotByIndex, type BoxState, type Lists, type SlotActions } from './box-model'
+import { boxCommands, boxHeaterMax, deriveBox, dryBlocker, slotActions, slotByIndex, type BoxState, type Lists, type SlotActions } from './box-model'
 
 type Status = PrinterState['status']
 
@@ -161,10 +161,6 @@ describe('Box tag, jog, tool, setting, and dryer commands', () => {
     expect(boxCommands.stopDry(2)).toBe('BOX_STOP_DRYING BOX=2')
   })
 
-  it('sets a Box circulation threshold and hysteresis with plain decimal G-code', () => {
-    expect(boxCommands.circulation(1, 35, 0.5)).toBe('VO_BOX_CIRCULATION BOX=1 THRESHOLD=35 HYSTERESIS=0.5')
-  })
-
   it('retries or stops a paused flow with QIDI’s commands, and cuts with Valve Oil’s', () => {
     expect(boxCommands.retry()).toBe('FLOW_RETRY')
     expect(boxCommands.stop()).toBe('FLOW_STOP')
@@ -199,65 +195,6 @@ describe('deriveBox', () => {
     const on = box({ variables })
     expect(on.toolButtons.map((t) => boxCommands.tool(t.tool))).toEqual(['T0', 'T1'])
     expect(box({ variables: { ...variables, enable_box: 0 } }).toolButtons).toEqual([])
-  })
-
-  it('does not present cached fan output as live after Klipper disconnects', () => {
-    const b = box({ klippy: 'disconnected', status: {
-      'box_heater_fan heater_fan_a_box1': { speed: 1 },
-      'box_heater_fan heater_fan_b_box1': { speed: 1 },
-      vo_box_circulation: { boxes: { 1: { reason: 'sensor_fault', outlet_a: 80, sensor_fault: 'temperature_unavailable', settings_error: 'persistence_unavailable', configurable: true } } },
-    } })
-    expect(b.circulation[0]).toMatchObject({ speedA: null, speedB: null, reason: null, outletA: null, sensorFault: null, settingsError: null, configurable: false })
-  })
-
-  it('keeps each fan’s commanded PWM separate from the manager’s actual reason', () => {
-    const b = box({
-      status: {
-        'box_heater_fan heater_fan_a_box1': { speed: 0.8, rpm: 1200 },
-        'box_heater_fan heater_fan_b_box1': { speed: 0.65, rpm: 1100 },
-        vo_box_circulation: { boxes: { 1: { threshold: 35, release_temperature: 34.5, hysteresis: 0.5, reason: 'run_on', run_on_remaining: 12, outlet_a: 34.2, outlet_b: null, sensor_fault: null, settings_error: null, configurable: true } } },
-      },
-    })
-    expect(b.circulation[0]).toMatchObject({ speedA: 0.8, speedB: 0.65, manager: true, threshold: 35, releaseTemperature: 34.5, hysteresis: 0.5, reason: 'run_on', runOnRemaining: 12, outletA: 34.2, outletB: null, configurable: true })
-    expect(b.circulation[1]).toMatchObject({ speedA: null, speedB: null, manager: false, reason: null })
-  })
-})
-
-describe('circulation settings', () => {
-  it('uses safe defaults only for invalid published values and validates the backend range', () => {
-    expect(circulationSettingValues({ threshold: null, hysteresis: 3 })).toEqual({ threshold: 35, hysteresis: 0.5 })
-    expect(circulationSettingsValid(35, 0.2)).toBe(true)
-    expect(circulationSettingsValid(45, 2)).toBe(true)
-    expect(circulationSettingsValid(34.9, 0.5)).toBe(false)
-    expect(circulationSettingsValid(35, Infinity)).toBe(false)
-  })
-
-  it.each<[string, Parameters<typeof box>[0], string]>([
-    ['while printing', { status: { vo_box_circulation: { boxes: { 1: { reason: 'off', configurable: true } } }, print_stats: { state: 'printing' } } }, 'printing'],
-    ['while any Box is heating', { status: { vo_box_circulation: { boxes: { 1: { reason: 'off', configurable: true } } }, 'heater_generic heater_box2': { target: 45 } } }, 'heating'],
-    ['with its sensor faulted', { status: { vo_box_circulation: { boxes: { 1: { reason: 'sensor_fault', sensor_fault: 'missing', configurable: true } } } } }, 'sensor_fault'],
-    ['while a Box motor is active', { status: { vo_box_circulation: { boxes: { 1: { reason: 'motor', configurable: true } } } } }, 'circulating'],
-  ])('blocks edits %s', (_: string, options: Parameters<typeof box>[0], blocker: string) => {
-    const b = box(options)
-    expect(circulationSettingsBlocker(b, b.circulation[0])).toBe(blocker)
-  })
-
-  it('keeps a healthy selected Box configurable when another Box has a sensor fault', () => {
-    const b = box({ status: { vo_box_circulation: { boxes: {
-      1: { reason: 'off', configurable: true },
-      2: { reason: 'sensor_fault', sensor_fault: 'missing', configurable: true },
-    } } } })
-    expect(circulationSettingsBlocker(b, b.circulation[0])).toBeNull()
-    expect(circulationSettingsBlocker(b, b.circulation[1])).toBe('sensor_fault')
-  })
-
-  it('keeps invalid saved settings repairable with safe defaults', () => {
-    const b = box({ status: { vo_box_circulation: { boxes: {
-      1: { threshold: null, hysteresis: 3, reason: 'off', settings_error: 'invalid_saved_settings', configurable: true },
-    } } } })
-    expect(circulationSettingValues(b.circulation[0])).toEqual({ threshold: 35, hysteresis: 0.5 })
-    expect(circulationSettingsBlocker(b, b.circulation[0])).toBeNull()
-    expect(b.circulation[0].settingsError).toBe('invalid_saved_settings')
   })
 })
 

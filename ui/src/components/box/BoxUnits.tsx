@@ -2,12 +2,12 @@
 // and brand, and a tag mark when the Box read the spool's RFID tag. The spool says whether the slot holds filament (drawn
 // or dashed) and whether it's loaded to the toolhead (a ring, and its tool badge filled); words appear only for the
 // states it can't show, at the hub and reading a tag.
-import { Droplet, Fan, Flame, RotateCw, Sun, Tag, Thermometer } from 'lucide-react'
+import { Droplet, Flame, RotateCw, Sun, Tag, Thermometer } from 'lucide-react'
 import { Spool } from '../Spool'
 import { useDryLeft } from '../../state/box-dry'
 import { fmtDuration } from '../../lib/format'
 import { useJobActive } from '../../state/job'
-import { QIDI_BOX_EXTERNAL_SLOT, slotStatus, type BoxCirculation, type BoxState, type QidiBoxSlot } from '../../state/box'
+import { QIDI_BOX_EXTERNAL_SLOT, slotStatus, type BoxState, type QidiBoxSlot } from '../../state/box'
 import { t, type MessageKey } from '../../i18n'
 
 type Handlers = { selected: number | null; onSelect: (slot: number) => void; onTool: (tool: number, slot: number) => void; onHeater: (box: number) => void }
@@ -102,7 +102,6 @@ function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; sl
 /** A Box's header line: its name, temperature, and humidity, and its heater as a button that shows what it's doing. */
 function ClimateRow({ box, unit, onHeater }: { box: BoxState; unit: number; onHeater: (box: number) => void }) {
   const c = box.climates.find((x) => x.box === unit)
-  const circulation = box.circulation.find((x) => x.box === unit)
   const timer = useDryLeft(c)
   const rolling = box.spoolRoll?.rolling
   const rollingHere = rolling != null && rolling.startsWith(String(unit))
@@ -129,7 +128,6 @@ function ClimateRow({ box, unit, onHeater }: { box: BoxState; unit: number; onHe
           <Droplet size={13} className={humidityLevel(c.humidity).cls} /> {c.humidity}%
         </span>
       )}
-      {circulation && <CirculationRow circulation={circulation} />}
       {rollingHere && (
         <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-2" title={t('box.settings.vo_box_spool_roll')}>
           <RotateCw size={12} className="spin" /> {rolling}
@@ -146,28 +144,6 @@ function ClimateRow({ box, unit, onHeater }: { box: BoxState; unit: number; onHe
         </span>
       ) : null)}
     </div>
-  )
-}
-
-const CIRCULATION_REASONS = new Set(['off', 'heating', 'temperature', 'run_on', 'sensor_fault', 'motor'])
-const CIRCULATION_FAULTS = new Set(['invalid_or_stale_temperature', 'temperature_unavailable', 'motor_unavailable'])
-
-function CirculationRow({ circulation }: { circulation: BoxCirculation }) {
-  if (!circulation.manager && circulation.speedA == null && circulation.speedB == null) return null
-  if (circulation.speedA === 0 && circulation.speedB === 0 && !circulation.sensorFault) return null
-  const speed = (value: number | null) => value == null ? '—' : `${Math.round(value * 100)}%`
-  const reason = circulation.reason && CIRCULATION_REASONS.has(circulation.reason) ? t(`box.circulation.reasons.${circulation.reason}` as MessageKey) : t('box.circulation.unknown_reason')
-  const outlets = [circulation.outletA, circulation.outletB].map((value) => value == null ? '—' : `${value.toFixed(1)} °C`)
-  return (
-    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-ink-2">
-      <span className="inline-flex items-center gap-1" title={t('box.circulation.commanded_speed')}>
-        <Fan size={13} className="text-ink-3" /> {t('box.circulation.fans', { a: speed(circulation.speedA), b: speed(circulation.speedB) })}
-      </span>
-      <span>{t('box.circulation.reason', { reason })}</span>
-      {(circulation.outletA != null || circulation.outletB != null) && <span>{t('box.circulation.outlets', { a: outlets[0], b: outlets[1] })}</span>}
-      {circulation.reason === 'run_on' && circulation.runOnRemaining > 0 && <span>{t('box.circulation.run_on_remaining', { seconds: Math.ceil(circulation.runOnRemaining) })}</span>}
-      {circulation.sensorFault && <span className="text-bad">{t('box.circulation.sensor_fault', { error: CIRCULATION_FAULTS.has(circulation.sensorFault) ? t(`box.circulation.faults.${circulation.sensorFault}` as MessageKey) : t('box.circulation.unknown_reason') })}</span>}
-    </span>
   )
 }
 

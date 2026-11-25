@@ -1,3 +1,2 @@
 installer/klipper/qidi/*.py -text whitespace=-trailing-space,cr-at-eol
-installer/klipper/qidi/stock/*.py -text whitespace=-trailing-space,cr-at-eol
 installer/tests/fixtures/source-patches/**/*.py -text whitespace=-trailing-space,cr-at-eol

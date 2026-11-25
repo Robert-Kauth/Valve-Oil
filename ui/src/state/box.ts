@@ -2,16 +2,15 @@
 // commands are in box-model.ts, which has no import-time side effects; this file adds the stores and hooks.
 import { useEffect } from 'react'
 import { createStore, useStore } from '../lib/store'
-import { client, onKlippyReady, printer, usePrinter, type Status } from './printer'
+import { client, onKlippyReady, printer, usePrinter } from './printer'
 import { QIDI_BOX_EXTERNAL_SLOT, parseQidiFilamentDatabase, parseQidiFilamentList, qidiBoxSlotLabel, type QidiBoxToolButton, type QidiBoxSlot, type QidiFilament } from '../qidi/qidi-box'
 import { qidiBoxTask } from '../qidi/qidi-box-task'
 import { deriveBox, type BoxState, type Lists } from './box-model'
-import { gcodeNumber } from '../components/control/gcode'
 
 export { QIDI_BOX_EXTERNAL_SLOT, qidiBoxSlotLabel }
 export type { QidiBoxSlot, QidiFilament, QidiBoxToolButton }
-export { CIRCULATION_THRESHOLD, CIRCULATION_HYSTERESIS, boxCommands, boxHeaterMax, boxHeatLimiters, circulationSettingValues, circulationSettingsBlocker, circulationSettingsValid, deriveBox, dryBlocker, reloadText, slotActions, slotByIndex, slotOverline, slotStatus } from './box-model'
-export type { BoxClimate, BoxCirculation, BoxSetting, BoxState, CirculationSettingsBlocker, SlotActions, SpoolRoll } from './box-model'
+export { boxCommands, boxHeaterMax, boxHeatLimiters, deriveBox, dryBlocker, reloadText, slotActions, slotByIndex, slotOverline, slotStatus } from './box-model'
+export type { BoxClimate, BoxSetting, BoxState, SlotActions, SpoolRoll } from './box-model'
 
 // ---- QIDI's filament lists, read through Moonraker's file API ----
 export const LEGACY_LIST_PATH = 'officiall_filas_list.cfg'
@@ -94,15 +93,4 @@ export function useBoxBusy() {
     const st = s.status
     return !!st.box_extras?.box_button_state || qidiBoxTask(st) != null
   })
-}
-
-/** Re-read the circulation manager after an edit: its reported values, not a local draft, remain authoritative. */
-export async function refreshBoxCirculation(boxNumber: number, threshold: number, hysteresis: number) {
-  const r = await client.call<{ status: Status }>('printer.objects.query', { objects: { vo_box_circulation: null } })
-  const actual = r.status.vo_box_circulation?.boxes?.[String(boxNumber)]
-  if (!actual) return false
-  printer.set((s) => ({ ...s, status: { ...s.status, ...r.status } }))
-  // The command sent each value as gcodeNumber wrote it, rounded to 6 decimals.
-  const sent = (value: number) => Number(gcodeNumber(value))
-  return actual.threshold === sent(threshold) && actual.hysteresis === sent(hysteresis)
 }
