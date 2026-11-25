@@ -102,6 +102,11 @@
     "run_on_remaining": "осталось {{seconds}} с",
     "sensor_fault": "Неисправность датчика: {{error}}",
     "unknown_reason": "Подробности доступны в диагностике",
+    "faults": {
+      "invalid_or_stale_temperature": "температура вне диапазона или не обновляется",
+      "temperature_unavailable": "не удаётся прочитать температуру",
+      "motor_unavailable": "не удаётся прочитать состояние моторов Box"
+    },
     "reasons": {
       "off": "Выключена",
       "heating": "Нагрев",

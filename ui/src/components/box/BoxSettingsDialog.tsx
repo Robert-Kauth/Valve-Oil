@@ -1,7 +1,7 @@
 // Whether prints use the Box, and QIDI's Box settings, saved variables its Box modules read, set to 1 or 0 as QIDI's Fluidd did; Valve Oil's turn
 // spools while heating when its module is installed; and the printer's own load and unload motion. Detection on insertion
 // goes through QIDI's own command where the printer has it, so RS-485 Boxes get it too (boxCommands.setting).
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Dialog, Toggle } from '../ui'
 import { attempt } from '../toast'
 import { boxCommands, type BoxSetting, type BoxState } from '../../state/box'
@@ -24,6 +24,10 @@ const row = (key: BoxSetting, value: boolean) => ({ key, title: t(`box.settings.
 
 export function BoxSettingsDialog({ box, open, onClose }: { box: BoxState; open: boolean; onClose: () => void }) {
   const [circulation, setCirculation] = useState<number | null>(null)
+  // The circulation dialog opens over this one and closes with it.
+  useEffect(() => {
+    if (!open) setCirculation(null)
+  }, [open])
   const variables = usePrinter((s) => s.status.save_variables?.variables ?? {})
   const ready = usePrinter((s) => s.klippy === 'ready')
   const hasMotion = usePrinter((s) => s.status.vo_box_feed_motion != null)
@@ -65,7 +69,7 @@ export function BoxSettingsDialog({ box, open, onClose }: { box: BoxState; open:
           </div>
         )}
       </Dialog>
-      {circulation != null && <CirculationSettingsDialog box={box} boxNumber={circulation} onClose={() => setCirculation(null)} />}
+      {open && circulation != null && <CirculationSettingsDialog box={box} boxNumber={circulation} onClose={() => setCirculation(null)} />}
     </>
   )
 }

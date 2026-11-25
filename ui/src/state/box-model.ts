@@ -150,8 +150,8 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
       runOnRemaining: Math.max(0, num(managed?.run_on_remaining) ?? 0),
       outletA: circulationLive ? num(managed?.outlet_a) : null,
       outletB: circulationLive ? num(managed?.outlet_b) : null,
-      sensorFault: stringValue(managed?.sensor_fault),
-      settingsError: stringValue(managed?.settings_error),
+      sensorFault: circulationLive ? stringValue(managed?.sensor_fault) : null,
+      settingsError: circulationLive ? stringValue(managed?.settings_error) : null,
       configurable: circulationLive && managed?.configurable === true,
     })
   }

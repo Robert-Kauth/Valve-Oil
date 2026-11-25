@@ -205,9 +205,9 @@ describe('deriveBox', () => {
     const b = box({ klippy: 'disconnected', status: {
       'box_heater_fan heater_fan_a_box1': { speed: 1 },
       'box_heater_fan heater_fan_b_box1': { speed: 1 },
-      vo_box_circulation: { boxes: { 1: { reason: 'heating', outlet_a: 80, configurable: true } } },
+      vo_box_circulation: { boxes: { 1: { reason: 'sensor_fault', outlet_a: 80, sensor_fault: 'temperature_unavailable', settings_error: 'persistence_unavailable', configurable: true } } },
     } })
-    expect(b.circulation[0]).toMatchObject({ speedA: null, speedB: null, reason: null, outletA: null, configurable: false })
+    expect(b.circulation[0]).toMatchObject({ speedA: null, speedB: null, reason: null, outletA: null, sensorFault: null, settingsError: null, configurable: false })
   })
 
   it('keeps each fan’s commanded PWM separate from the manager’s actual reason', () => {

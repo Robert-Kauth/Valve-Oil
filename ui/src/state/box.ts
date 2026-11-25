@@ -6,6 +6,7 @@ import { client, onKlippyReady, printer, usePrinter, type Status } from './print
 import { QIDI_BOX_EXTERNAL_SLOT, parseQidiFilamentDatabase, parseQidiFilamentList, qidiBoxSlotLabel, type QidiBoxToolButton, type QidiBoxSlot, type QidiFilament } from '../qidi/qidi-box'
 import { qidiBoxTask } from '../qidi/qidi-box-task'
 import { deriveBox, type BoxState, type Lists } from './box-model'
+import { gcodeNumber } from '../components/control/gcode'
 
 export { QIDI_BOX_EXTERNAL_SLOT, qidiBoxSlotLabel }
 export type { QidiBoxSlot, QidiFilament, QidiBoxToolButton }
@@ -101,5 +102,7 @@ export async function refreshBoxCirculation(boxNumber: number, threshold: number
   const actual = r.status.vo_box_circulation?.boxes?.[String(boxNumber)]
   if (!actual) return false
   printer.set((s) => ({ ...s, status: { ...s.status, ...r.status } }))
-  return actual.threshold === threshold && actual.hysteresis === hysteresis
+  // The command sent each value as gcodeNumber wrote it, rounded to 6 decimals.
+  const sent = (value: number) => Number(gcodeNumber(value))
+  return actual.threshold === sent(threshold) && actual.hysteresis === sent(hysteresis)
 }

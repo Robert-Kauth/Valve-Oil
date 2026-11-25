@@ -93,11 +93,6 @@ class LauncherTests(unittest.TestCase):
         def replace_same_size(path):
             path.write_bytes(bytes(byte ^ 1 for byte in path.read_bytes()))
 
-        def replace_same_size_and_mtime(path):
-            before = path.stat()
-            replace_same_size(path)
-            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
-
         cases = {
             # name: (change, selected, would_run, code, available)
             "chosen, and everything fits": (lambda: None, "valve_oil", "valve_oil", "selected", True),
@@ -126,9 +121,8 @@ class LauncherTests(unittest.TestCase):
             "a compiled copy of a module the tree has its own of": (
                 lambda: (self.qidi / "extras/heaters.cpython-39-aarch64-linux-gnu.so").write_bytes(b"heaters"),
                 "valve_oil", "valve_oil", "selected", True),
-            "a tree file changed with unchanged size and time": (
-                lambda: replace_same_size_and_mtime(self.tree / "klippy/klippy.py"),
-                "valve_oil", "qidi", "tree_changed", False),
+            "a tree file changed": (lambda: replace_same_size(self.tree / "klippy/klippy.py"), "valve_oil", "qidi",
+                                    "tree_changed", False),
             "a copied QIDI module removed": (lambda: (self.tree / "klippy/extras/box_stepper.so").unlink(), "valve_oil",
                                              "qidi", "tree_changed", False),
             "a tree file touched, its content the same": (lambda: touch_later(self.tree / "klippy/klippy.py"),
@@ -159,6 +153,20 @@ class LauncherTests(unittest.TestCase):
                                                "args": ["/home/qidi/klippy-env/bin/python", *QIDI_ARGS], "env": None,
                                                "cwd": self.paths["qidi_workdir"]})
                     self.assertIsNone(self.status()["launch_id"])
+
+    def test_a_start_reads_every_file_where_check_takes_size_and_time(self):
+        # A file replaced with its size and modification time kept: --check, which vo-status runs each minute, takes
+        # it as unchanged; the start, which reads each file's SHA-256, runs QIDI's Klipper.
+        for name, code in (("tree", "tree_changed"), ("qidi", "qidi_modules_changed")):
+            with self.subTest(name):
+                self.setUp()
+                path = self.tree / "klippy/klippy.py" if name == "tree" else self.qidi / "extras/box_stepper.so"
+                before = path.stat()
+                path.write_bytes(bytes(byte ^ 1 for byte in path.read_bytes()))
+                os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+                self.assertEqual(self.check()["code"], "selected")
+                self.start()
+                self.assertEqual((self.status()["running"], self.status()["code"]), ("qidi", code))
 
     def test_valve_oils_klipper_starts_from_its_tree_with_qidis_arguments(self):
         started = self.start()

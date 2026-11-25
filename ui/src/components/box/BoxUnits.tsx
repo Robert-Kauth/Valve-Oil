@@ -150,6 +150,7 @@ function ClimateRow({ box, unit, onHeater }: { box: BoxState; unit: number; onHe
 }
 
 const CIRCULATION_REASONS = new Set(['off', 'heating', 'temperature', 'run_on', 'sensor_fault', 'motor'])
+const CIRCULATION_FAULTS = new Set(['invalid_or_stale_temperature', 'temperature_unavailable', 'motor_unavailable'])
 
 function CirculationRow({ circulation }: { circulation: BoxCirculation }) {
   if (!circulation.manager && circulation.speedA == null && circulation.speedB == null) return null
@@ -165,7 +166,7 @@ function CirculationRow({ circulation }: { circulation: BoxCirculation }) {
       <span>{t('box.circulation.reason', { reason })}</span>
       {(circulation.outletA != null || circulation.outletB != null) && <span>{t('box.circulation.outlets', { a: outlets[0], b: outlets[1] })}</span>}
       {circulation.reason === 'run_on' && circulation.runOnRemaining > 0 && <span>{t('box.circulation.run_on_remaining', { seconds: Math.ceil(circulation.runOnRemaining) })}</span>}
-      {circulation.sensorFault && <span className="text-bad">{t('box.circulation.sensor_fault', { error: t('box.circulation.unknown_reason') })}</span>}
+      {circulation.sensorFault && <span className="text-bad">{t('box.circulation.sensor_fault', { error: CIRCULATION_FAULTS.has(circulation.sensorFault) ? t(`box.circulation.faults.${circulation.sensorFault}` as MessageKey) : t('box.circulation.unknown_reason') })}</span>}
     </span>
   )
 }

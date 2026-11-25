@@ -8,6 +8,7 @@ const NO_LISTS: Lists = { legacy: null, database: null, databaseError: false }
 
 const printerState = (boxes: Record<number, Record<string, unknown>>): PrinterState => ({
   conn: 'open',
+  connLost: false,
   klippy: 'ready',
   klippyMessage: '',
   objects: [],
@@ -102,6 +103,17 @@ describe('CirculationSettingsDialog', () => {
 
     await expect(refreshBoxCirculation(1, 36, 0.6)).resolves.toBe(true)
     expect(getPrinter().status.vo_box_circulation?.boxes?.[1]?.settings_error).toBeNull()
+    call.mockRestore()
+  })
+
+  it('compares the refreshed settings with the values the command sent, rounded to 6 decimals', async () => {
+    setPrinter(printerState({ 1: { threshold: 35, hysteresis: 0.5, reason: 'off', configurable: true } }))
+    const call = vi.spyOn(printerClient, 'call').mockResolvedValue({ status: { vo_box_circulation: { boxes: {
+      1: { threshold: 35.123457, hysteresis: 0.5, reason: 'off', settings_error: null, configurable: true },
+    } } } })
+
+    await expect(refreshBoxCirculation(1, 35.1234567, 0.5)).resolves.toBe(true)
+    await expect(refreshBoxCirculation(1, 35.2, 0.5)).resolves.toBe(false)
     call.mockRestore()
   })
 })

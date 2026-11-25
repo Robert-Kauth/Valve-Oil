@@ -102,6 +102,11 @@
     "run_on_remaining": "quedan {{seconds}} s",
     "sensor_fault": "Fallo del sensor: {{error}}",
     "unknown_reason": "Desconocido",
+    "faults": {
+      "invalid_or_stale_temperature": "temperatura fuera de rango o sin actualizarse",
+      "temperature_unavailable": "no se puede leer la temperatura",
+      "motor_unavailable": "no se puede leer el estado de los motores del Box"
+    },
     "reasons": {
       "off": "Apagada",
       "heating": "Calentando",

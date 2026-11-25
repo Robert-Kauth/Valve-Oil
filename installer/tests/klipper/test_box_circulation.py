@@ -80,6 +80,9 @@ class Command:
 
 
 class Heater:
+    # box.cfg: min_temp_heater_generic -100, max_temp_heater_generic 100.
+    min_temp, max_temp = -100., 100.
+
     def __init__(self):
         self.air, self.target, self.power = 30., 0., 0.
 
@@ -110,6 +113,9 @@ class MCUClock:
         pass
 
 class Sensor:
+    # box.cfg: min_temp_temperature_sensor_N -100, max_temp_temperature_sensor_N 130.
+    min_temp, max_temp = -100., 130.
+
     def __init__(self, adc_type):
         self.sensor = self
         # Use the real producer/accessor on both supported Klipper trees.
@@ -321,6 +327,8 @@ class BoxCirculationTests(unittest.TestCase):
                 with self.assertLogs(level="ERROR") as captured:
                     h.manager.boxes["1"].tick(h.printer.reactor.now)
                 self.assertTrue(any("source=" + source in line for line in captured.output))
+                self.assertEqual(h.manager.boxes["1"].fault,
+                                 "motor_unavailable" if source == "motor" else "temperature_unavailable")
                 self.assertEqual(h.reason(), "sensor_fault")
                 self.assertEqual(h.heaters["heater_box1"].target, 0.)
                 self.assertEqual([h.fans[k].fan.speed for k in ("1a", "1b")], [1., 1.])
@@ -445,7 +453,7 @@ class BoxCirculationTests(unittest.TestCase):
 
     def test_missing_stale_nan_and_outlier_shutdown_heat_not_circulation(self):
         for side in ("a", "b"):
-            for value in (None, float("nan"), float("inf"), -10., 135.):
+            for value in (None, float("nan"), float("inf"), -100.5, 130.5):
                 with self.subTest(side=side, value=value):
                     h = Harness()
                     h.heaters["heater_box1"].target = 38.
@@ -475,6 +483,47 @@ class BoxCirculationTests(unittest.TestCase):
             h.advance(1)
             self.assertEqual(h.reason(), "sensor_fault")
             self.assertEqual(heater.target, 0.)
+
+    def test_readings_below_freezing_are_valid_and_keep_the_heater_on(self):
+        h = Harness()
+        heater = h.heaters["heater_box1"]
+        heater.target = 38.
+        heater.air = -2.
+        for sensor in ("1a", "1b"):
+            h.sensors[sensor].value = -5.
+        h.advance(2)
+        self.assertIsNone(h.manager.boxes["1"].fault)
+        self.assertEqual(h.reason(), "heating")
+        self.assertEqual(heater.target, 38.)
+        status = h.manager.get_status(h.printer.reactor.now)["boxes"]["1"]
+        self.assertEqual((status["outlet_a"], status["outlet_b"]), (-5., -5.))
+
+    def test_air_outside_the_heaters_configured_range_is_a_fault(self):
+        for air in (-100.5, 100.5):
+            with self.subTest(air=air):
+                h = Harness()
+                heater = h.heaters["heater_box1"]
+                heater.target = 38.
+                heater.air = air
+                h.advance(1)
+                self.assertEqual(h.manager.boxes["1"].fault, "invalid_or_stale_temperature")
+                self.assertEqual(heater.target, 0.)
+
+    def test_unreadable_outlet_is_not_reported_with_its_last_temperature(self):
+        h = Harness()
+        h.sensors["1a"].value = 48.
+        h.advance(1)
+        self.assertEqual(h.manager.get_status(h.printer.reactor.now)["boxes"]["1"]["outlet_a"], 48.)
+
+        def outlet_failure(eventtime):
+            raise RuntimeError("outlet read failed")
+        h.sensors["1a"].get_temp = outlet_failure
+        with self.assertLogs(level="ERROR"):
+            h.advance(1)
+        status = h.manager.get_status(h.printer.reactor.now)["boxes"]["1"]
+        self.assertEqual(status["sensor_fault"], "temperature_unavailable")
+        self.assertIsNone(status["outlet_a"])
+        self.assertEqual(status["outlet_b"], 30.)
 
     def test_motor_circulation_keeps_native_timeout(self):
         h = Harness()
@@ -535,6 +584,19 @@ class BoxCirculationTests(unittest.TestCase):
                 with self.assertRaises(CommandError):
                     h.configure()
                 self.assertEqual(h.saved.writes, 0)
+
+    def test_settings_read_box_drying_as_the_dry_guard_does(self):
+        for boxes, allowed in (([{"dry_state": 2}], True), (["not a mapping"], False), ([None], False)):
+            with self.subTest(boxes=boxes):
+                h = Harness()
+                h.printer.objects["box_extras"].status["boxes"] = boxes
+                if allowed:
+                    h.configure()
+                    self.assertEqual(h.saved.writes, 1)
+                else:
+                    with self.assertRaises(CommandError):
+                        h.configure()
+                    self.assertEqual(h.saved.writes, 0)
 
     def test_editing_warm_idle_threshold_keeps_run_on_with_warm_outlets(self):
         h = Harness()

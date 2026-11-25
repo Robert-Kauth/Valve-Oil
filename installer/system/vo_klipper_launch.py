@@ -17,7 +17,8 @@ Valve Oil's Klipper writes printer_data/.vo_klipper_ready.json {"launch_id": ...
 error, it starts QIDI's command unchanged. Each start is recorded in printer_data/.vo_klipper_status.json.
 
 `--check` prints whether Valve Oil's Klipper can run here and what the next start would run, as JSON, and starts and
-writes nothing. Each `reason` is a sentence shown to operators as it is; `code` names it for programs.
+writes nothing. It takes a file whose size and modification time match the marker as unchanged, where a start reads
+every file's SHA-256 (about a second on the Max 4), so a file replaced with both kept is caught only at the start. Each `reason` is a sentence shown to operators as it is; `code` names it for programs.
 """
 import hashlib
 import json
@@ -63,12 +64,15 @@ def _safe(relative):
     return bool(parts) and not relative.startswith("/") and all(part not in ("", ".", "..") for part in parts)
 
 
-def _same(path, record):
-    """Whether the regular file has the size and SHA-256 recorded in the manifest."""
+def _same(path, record, quick=False):
+    """Whether the regular file has the size and SHA-256 recorded in the manifest; `quick` takes the recorded size
+    and modification time for it."""
     try:
         status = os.lstat(path)
         if not stat.S_ISREG(status.st_mode) or status.st_size != record["size"]:
             return False
+        if quick and status.st_mtime_ns == record["mtime_ns"]:
+            return True
         digest = hashlib.sha256()
         with open(path, "rb") as handle:
             for chunk in iter(lambda: handle.read(1 << 20), b""):
@@ -87,7 +91,7 @@ def _module_name(relative):
     return directory + "/" + stem if directory else stem
 
 
-def _qidi_modules_match(qidi_klippy, recorded, tree_files):
+def _qidi_modules_match(qidi_klippy, recorded, tree_files, quick=False):
     # The tree's own Python modules, checked against the marker by _tree_matches.
     own = {_module_name(relative[len("klippy/"):]) for relative in (tree_files if isinstance(tree_files, dict) else ())
            if relative.startswith("klippy/") and relative.endswith(".py")}
@@ -104,14 +108,15 @@ def _qidi_modules_match(qidi_klippy, recorded, tree_files):
                 continue
             found.add(relative)
     return (isinstance(recorded, dict) and bool(recorded) and found == set(recorded)
-            and all(_safe(relative) and _same(os.path.join(qidi_klippy, relative), record)
+            and all(_safe(relative) and _same(os.path.join(qidi_klippy, relative), record, quick)
                     for relative, record in recorded.items()))
 
 
-def _tree_matches(root, files):
+def _tree_matches(root, files, quick=False):
     if not isinstance(files, dict) or "klippy/klippy.py" not in files:
         return False
-    if not all(_safe(relative) and _same(os.path.join(root, relative), record) for relative, record in files.items()):
+    if not all(_safe(relative) and _same(os.path.join(root, relative), record, quick)
+               for relative, record in files.items()):
         return False
     # Klipper rebuilds c_helper.so when anything beside it is newer, and the printers have no compiler.
     chelper = os.path.join(root, "klippy", "chelper")
@@ -149,7 +154,7 @@ def _now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def _unavailable(paths, marker, soc):
+def _unavailable(paths, marker, soc, quick=False):
     """Why Valve Oil's Klipper can't run on this printer now, or None when it can."""
     for code, failed in (
         ("firmware_update_pending", lambda: os.path.lexists(os.path.join(paths["printer_data"], FIRMWARE_UPDATE))),
@@ -157,8 +162,8 @@ def _unavailable(paths, marker, soc):
         ("not_installed", lambda: marker is None),
         ("firmware_changed", lambda: soc is None or marker.get("soc") != soc),
         ("qidi_modules_changed", lambda: not _qidi_modules_match(paths["qidi_klippy"], marker.get("qidi_modules"),
-                                                                 marker.get("files"))),
-        ("tree_changed", lambda: not _tree_matches(paths["tree_root"], marker.get("files"))),
+                                                                 marker.get("files"), quick)),
+        ("tree_changed", lambda: not _tree_matches(paths["tree_root"], marker.get("files"), quick)),
         ("launcher_not_installed", lambda: not _dropin_active(paths["dropin"])),
     ):
         if failed():
@@ -192,7 +197,7 @@ def decide(paths=None, check=False):
                 "firmware": soc["version"] if soc else None, "version": marker.get("klipper_version") if marker else None,
                 "checked_at": _now()}
     if selected == "valve_oil" or check:
-        unavailable = _unavailable(paths, marker, soc)
+        unavailable = _unavailable(paths, marker, soc, quick=check)
         decision.update(available=unavailable is None, unavailable_code=unavailable)
     if selected != "valve_oil":
         if choice is None and os.path.lexists(choice_path):

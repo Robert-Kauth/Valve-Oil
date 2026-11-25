@@ -21,8 +21,9 @@ class OutletSample(NamedTuple):
     read_time: float
     print_time: float
 
-    def is_valid(self):
-        return (math.isfinite(self.temperature) and 0. < self.temperature < 130.
+    def is_valid(self, min_temp, max_temp):
+        # The sensor's own configured range; Klipper shuts down outside it.
+        return (math.isfinite(self.temperature) and min_temp <= self.temperature <= max_temp
                 and math.isfinite(self.read_time) and self.read_time > 0.
                 and math.isfinite(self.print_time)
                 and self.print_time - self.read_time <= SENSOR_TIMEOUT)
@@ -36,6 +37,7 @@ class OutletTemperature:
     """
     def __init__(self, sensor):
         self.sensor = sensor
+        self.min_temp, self.max_temp = sensor.min_temp, sensor.max_temp
         self.adc = sensor.sensor.mcu_adc
         self.mcu = self.adc.get_mcu()
         parameters = tuple(inspect.signature(self.adc.setup_adc_callback).parameters)
@@ -91,8 +93,6 @@ class CirculationState:
         if reason:
             self.until = now + self.run_on
         else:
-            if self.reason not in ("off", "run_on"):
-                self.until = now + self.run_on
             reason = "run_on" if now < self.until else "off"
         self.reason = reason
         return 0. if reason == "off" else 1.
@@ -149,7 +149,9 @@ class BoxCirculation:
         if extras is None:
             return True
         boxes = extras.get_status(now).get("boxes")
-        if not isinstance(boxes, list) or any(b.get("dry_state") for b in boxes):
+        # As vo_box_dry_guard reads it; an entry that isn't a mapping can't be shown idle.
+        if not isinstance(boxes, list) or any(
+                not hasattr(b, "get") or b.get("dry_state") == 1 for b in boxes):
             return True
         for box in self.boxes.values():
             status = box.heater.get_status(now)
@@ -250,7 +252,10 @@ class ControlledBox:
         try:
             air, target = self.heater.get_temp(eventtime)
             power = self.heater.get_status(eventtime)["power"]
-            if not (math.isfinite(air) and 0. < air < 120.
+            # Heater.get_temp returns exactly 0 when its sensor's reading is stale;
+            # any other reading within the heater's configured range is real, below 0 C too.
+            if not (math.isfinite(air) and air != 0.
+                    and self.heater.min_temp <= air <= self.heater.max_temp
                     and math.isfinite(target) and math.isfinite(power)):
                 fault = "invalid_or_stale_temperature"
                 failed_sources.add("heater")
@@ -267,9 +272,10 @@ class ControlledBox:
 
         for index, side in enumerate(("a", "b")):
             try:
-                sample = self.sensors[index].read(eventtime)
+                sensor = self.sensors[index]
+                sample = sensor.read(eventtime)
                 self.outlets[index] = sample.temperature
-                if not sample.is_valid():
+                if not sample.is_valid(sensor.min_temp, sensor.max_temp):
                     fault = fault or "invalid_or_stale_temperature"
                     source = "outlet_" + side
                     failed_sources.add(source)
@@ -279,6 +285,7 @@ class ControlledBox:
                             self.number, source)
             except Exception:
                 fault = fault or "temperature_unavailable"
+                self.outlets[index] = None
                 source = "outlet_" + side
                 failed_sources.add(source)
                 if source not in self.failed_sources:
@@ -290,7 +297,7 @@ class ControlledBox:
             motor = any(f.stepper_enable.lookup_enable(n).is_motor_enabled()
                         for f in self.pair.values() for n in f.stepper_names)
         except Exception:
-            fault = fault or "temperature_unavailable"
+            fault = fault or "motor_unavailable"
             motor = False
             failed_sources.add("motor")
             if "motor" not in self.failed_sources:
