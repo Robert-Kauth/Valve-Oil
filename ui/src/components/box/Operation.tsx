@@ -1,4 +1,4 @@
-// A running Box flow, or its failed step with Retry and Stop, at the top of the Box card.
+// A running Box flow, or its failed step with Retry and Stop, at the top of the Box card or the external spool's card.
 import { useState } from 'react'
 import { Box as BoxIcon, CircleAlert, LoaderCircle, RefreshCw, Square } from 'lucide-react'
 import { attempt } from '../toast'
@@ -15,10 +15,23 @@ export function Operation({ box }: { box: BoxState }) {
     await attempt(() => runGcode(g))
     setPending(false)
   }
-  const bad = box.flowPaused
+  const bad = box.flowPaused && !box.waitingForFilament
   return (
     <div className={`rounded-[14px] px-4 py-3 ${bad ? 'tone-bad' : 'tone-accent'}`} style={{ boxShadow: `inset 0 0 0 1px ${bad ? 'var(--crimson)' : 'color-mix(in srgb, var(--accent) 50%, transparent)'}` }}>
-      {bad ? (
+      {box.waitingForFilament ? (
+        <div className="flex items-start gap-2.5">
+          <LoaderCircle size={17} className="spin mt-0.5 flex-none text-accent-ink" />
+          <div className="min-w-0 flex-1">
+            <div className="font-bold text-ink">{t('box.operation.waiting_filament')}</div>
+            <div className="text-ink-2">{t('box.operation.waiting_filament_hint')}</div>
+            <div className="mt-2.5">
+              <button className="btn btn-sm" disabled={!ready || pending} onClick={() => send(boxCommands.stop())}>
+                <Square size={12} /> {t('box.operation.stop')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : bad ? (
         <div className="flex items-start gap-2.5">
           <CircleAlert size={18} className="mt-0.5 flex-none text-bad" />
           <div className="min-w-0 flex-1">
@@ -28,7 +41,7 @@ export function Operation({ box }: { box: BoxState }) {
                 {p}
               </div>
             ))}
-            <div className="mt-1 text-[12.5px] text-ink-3">{t('box.operation.retry_hint')}</div>
+            <div className="mt-1 text-[12.5px] text-ink-3">{box.boxCount > 0 ? t('box.operation.retry_hint') : t('box.operation.retry_hint_no_box')}</div>
             <div className="mt-2.5 flex flex-wrap gap-2">
               <button className="btn btn-sm btn-primary" disabled={!ready || pending} onClick={() => send(boxCommands.retry())}>
                 <RefreshCw size={13} /> {t('common.retry')}
@@ -43,10 +56,10 @@ export function Operation({ box }: { box: BoxState }) {
         <div className="flex items-center gap-2.5">
           <LoaderCircle size={17} className="spin flex-none text-accent-ink" />
           <span className="min-w-0 flex-1">
-            <span className="section-label mr-2">{t('box.operation.working')}</span>
+            {box.boxCount > 0 && <span className="section-label mr-2">{t('box.operation.working')}</span>}
             <span className="shimmer font-semibold">{box.taskText}</span>
           </span>
-          <BoxIcon size={16} className="flex-none text-ink-3" />
+          {box.boxCount > 0 && <BoxIcon size={16} className="flex-none text-ink-3" />}
         </div>
       )}
     </div>
