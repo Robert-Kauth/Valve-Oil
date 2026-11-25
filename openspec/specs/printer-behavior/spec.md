@@ -684,6 +684,11 @@ Valve Oil's configuration SHALL run the part fan at full speed from the first of
 - **THEN** the part fan runs at full speed from the first wipe through the dwells, chute moves, and later wipes until the flow ends
 - **AND** afterwards it returns to the speed it had before the first wipe, off outside a print
 
+#### Scenario: Cooling the nozzle after a flow between prints
+- **WHEN** such a flow ends while no print is running or paused, with the nozzle heater off and the nozzle at 170 °C or hotter
+- **THEN** the part fan stays at full speed until the nozzle is below 170 °C and then returns to its earlier speed, without holding up later commands, prints, or Box flows
+- **AND** heating the nozzle or starting a print returns it at once, and a part fan speed set by anything else is kept
+
 #### Scenario: Purge and wipe reported apart
 - **WHEN** QIDI's Box wipe step runs
 - **THEN** Valve Oil's status reports whether a chute wipe has started in the running flow, so Valve Oil UI and Fluidd show the purge before the wipe and the wipe after

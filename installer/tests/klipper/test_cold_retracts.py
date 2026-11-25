@@ -128,7 +128,9 @@ class Printer:
         return self.objects.get(name, default)
 
     def get_reactor(self):
-        return types.SimpleNamespace(monotonic=lambda: 0., pause=lambda waketime: waketime)
+        return types.SimpleNamespace(monotonic=lambda: 0., pause=lambda waketime: waketime, NEVER=9e15,
+                                     register_timer=lambda callback, waketime=9e15: callback,
+                                     update_timer=lambda timer, waketime: None)
 
     def is_shutdown(self):
         return self.shutdown

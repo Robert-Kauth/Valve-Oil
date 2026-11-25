@@ -164,7 +164,7 @@ EJECT_FILAMENT_CONTROL SLOT=1
 
 ## Nozzle wipes after loads and unloads
 
-After a load's purge, and at the end of an unload that heated the nozzle, QIDI's Box code turns the nozzle heater off and wipes the nozzle at the waste chute. The part fan goes to full speed at the first wipe, so the ooze cools and breaks off on the wiper, and stays there through the waits, chute moves, and later wipes until the load, unload, or tool change has finished. Then it goes back to the speed it had before, off outside a print. QIDI wiped with the fan as it was.
+After a load's purge, and at the end of an unload that heated the nozzle, QIDI's Box code turns the nozzle heater off and wipes the nozzle at the waste chute. The part fan goes to full speed at the first wipe, so the ooze cools and breaks off on the wiper, and stays there through the waits, chute moves, and later wipes until the load, unload, or tool change has finished. Between prints it keeps running until the nozzle is below 170 °C, as after a cancelled print, then goes back to the speed it had before, off outside a print. Nothing waits for it: you can unload, load, or start a print straight away. Heating the nozzle or starting a print puts the fan back at once, and a fan speed you set yourself stays. During a print's tool change it goes back as soon as the change has finished. QIDI wiped with the fan as it was.
 
 ## Moving a slot by hand
 

@@ -32,6 +32,19 @@ def part_fan_at_wipes(printer, before):
     return at_wipes, speed
 
 
+def part_fan(printer):
+    return printer.status("fan_generic cooling_fan")["speed"]
+
+
+def cool_nozzle(printer, below=170.):
+    """Let the clock run until the nozzle is below BELOW and the part fan cooldown's next check has run."""
+    give_up = printer.reactor.monotonic() + 900.
+    while printer.status("extruder")["temperature"] >= below:
+        assert printer.reactor.monotonic() < give_up, "the nozzle never cooled below %s" % below
+        printer.reactor.advance(printer.reactor.monotonic() + 5.)
+    printer.reactor.advance(printer.reactor.monotonic() + 2.)
+
+
 class BoxFlowTests(checks.FlowTestCase):
     def printer(self, printer_id, box, **idle):
         printer = FlowPrinter(printer_id, box=box)
@@ -50,8 +63,8 @@ class BoxFlowTests(checks.FlowTestCase):
         """With COLD=0, QIDI's unload (flow 3: BOX_HEAT, BOX_CUT, BOX_UNLOAD) heats to the top of the filament's
         range, cuts, pulls the filament back into the Box at the chute, and parks with the heater off, wiping first
         because it heated. Nothing may be pushed out of the nozzle anywhere. The wipe runs with the part fan at full
-        so the hot nozzle's ooze sets on the wiper (Plus 5, 2026-11-25: with the fan off it oozed), and the fan goes
-        back to its earlier speed when the flow ends."""
+        so the hot nozzle's ooze sets on the wiper (Plus 5, 2026-11-25: with the fan off it oozed), and the fan stays
+        at full after the flow until the nozzle is below 170 °C, then goes back to its earlier speed."""
         for printer_id in FIRMWARE:
             with self.subTest(printer=printer_id):
                 printer = self.printer(printer_id, BoxSetup(**LOADED))
@@ -59,10 +72,11 @@ class BoxFlowTests(checks.FlowTestCase):
                 printer.trace.clear()
                 printer.command("UNLOAD_FILAMENT_CONTROL SLOT=0 COLD=0")
                 checks.assert_no_errors(self, printer)
-                at_wipes, after = part_fan_at_wipes(printer, 0.4)
+                at_wipes, _ = part_fan_at_wipes(printer, 0.4)
                 self.assertEqual(at_wipes, [("WIPE_NOZZLE_DROP", 1.)])
-                self.assertAlmostEqual(after, 0.4, places=2)
-                self.assertAlmostEqual(printer.status("fan_generic cooling_fan")["speed"], 0.4, places=2)
+                self.assertEqual(part_fan(printer), 1.)
+                cool_nozzle(printer)
+                self.assertAlmostEqual(part_fan(printer), 0.4, places=2)
                 self.assert_parked_off(printer)
                 checks.assert_purges_only_at_the_chute(self, printer, 0, len(printer.toolhead.moves))
                 checks.assert_rear_moves_around_the_chute(self, printer)
@@ -263,7 +277,8 @@ class BoxFlowTests(checks.FlowTestCase):
         cell feels it, then its wipe (BOX_WIPE) pushes 100 mm through at the chute and drops the waste. Loading over
         another slot's filament (flow 2) cuts and unloads that first. Every gram has to go into the chute. From the
         wipe on the part fan runs at full, so the hot nozzle's ooze sets on the wiper (Plus 5, 2026-11-25: with the
-        fan off it oozed), until the flow ends, then goes back to its earlier speed."""
+        fan off it oozed), until the flow ends and the nozzle is below 170 °C, then goes back to its earlier
+        speed."""
         cases = (
             ("into an empty toolhead", BoxSetup(boxes=1, enable_box=1, tools={0: "slot0", 1: "slot1"},
                                                 loaded_slot=EMPTY_SLOT, hub=None), False, 0),
@@ -277,17 +292,51 @@ class BoxFlowTests(checks.FlowTestCase):
                     printer.trace.clear()
                     printer.command("LOAD_FILAMENT_CONTROL SLOT=1")
                     checks.assert_no_errors(self, printer)
-                    at_wipes, after = part_fan_at_wipes(printer, 0.)
+                    at_wipes, _ = part_fan_at_wipes(printer, 0.)
                     self.assertTrue(at_wipes)
                     self.assertEqual({speed for _, speed in at_wipes}, {1.})
-                    self.assertEqual(after, 0.)
-                    self.assertEqual(printer.status("fan_generic cooling_fan")["speed"], 0.)
+                    self.assertEqual(part_fan(printer), 1.)
+                    cool_nozzle(printer)
+                    self.assertEqual(part_fan(printer), 0.)
                     self.assert_parked_off(printer)
                     checks.assert_purges_only_at_the_chute(self, printer, 0, len(printer.toolhead.moves))
                     checks.assert_rear_moves_around_the_chute(self, printer)
                     self.assertEqual(checks.cuts(printer), cuts)
                     self.assertEqual(printer.variables()["last_load_slot"], "slot1")
                     self.assertEqual(printer.variables()["slot_sync"], "slot1")
+
+    def test_the_part_fan_cooldown_after_a_load_holds_nothing_up(self):
+        """The fan keeps cooling the nozzle after a load on a timer, so the operator can unload, heat, or start a
+        print at once (user, 2026-11-25). An unload during it runs straight away and leaves the fan cooling; heating
+        the nozzle puts the fan back; a speed set by anything else stays."""
+        box = BoxSetup(boxes=1, enable_box=1, tools={0: "slot0", 1: "slot1"}, loaded_slot=EMPTY_SLOT, hub=None)
+        for printer_id in FIRMWARE:
+            with self.subTest(printer=printer_id, then="unload"):
+                printer = self.printer(printer_id, box)
+                printer.set_filament_detected(False)
+                printer.command("LOAD_FILAMENT_CONTROL SLOT=1")
+                self.assertEqual(part_fan(printer), 1.)
+                started, targets = printer.reactor.monotonic(), len(printer.toolhead.extruder.heater.targets)
+                printer.command("UNLOAD_FILAMENT_CONTROL SLOT=1")
+                checks.assert_no_errors(self, printer)
+                self.assert_parked_off(printer)
+                self.assertEqual([t for t in printer.toolhead.extruder.heater.targets[targets:] if t > 0], [])
+                self.assertLess(printer.reactor.monotonic() - started, 60.)
+                self.assertGreaterEqual(printer.status("extruder")["temperature"], 170.)
+                self.assertEqual(part_fan(printer), 1.)
+                cool_nozzle(printer)
+                self.assertEqual(part_fan(printer), 0.)
+            for then, script, speed in (("heat", "M104 S200", 0.), ("fan set", "M106 S128", 128 / 255.)):
+                with self.subTest(printer=printer_id, then=then):
+                    printer = self.printer(printer_id, box)
+                    printer.set_filament_detected(False)
+                    printer.command("LOAD_FILAMENT_CONTROL SLOT=1")
+                    printer.command(script)
+                    printer.reactor.advance(printer.reactor.monotonic() + 2.)
+                    self.assertAlmostEqual(part_fan(printer), speed, places=2)
+                    printer.command("M104 S0")
+                    cool_nozzle(printer, below=50.)
+                    self.assertAlmostEqual(part_fan(printer), speed, places=2)
 
     def test_a_load_from_an_empty_slot_stops_and_flow_stop_turns_the_heater_off(self):
         """A load of a slot with nothing at its inlet stops with QDE_004_005 after the nozzle has heated, and nothing

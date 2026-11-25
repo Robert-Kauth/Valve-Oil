@@ -170,7 +170,14 @@
 # speed at the first wipe, so the ooze sets and breaks off on the wiper, and
 # stays there until the Box flow or tool change ends, through its dwells,
 # chute moves, and later wipes. Then it goes back to its earlier speed. A wipe
-# run on its own puts the fan back when the wipe ends. The module's status
+# run on its own puts the fan back when the wipe ends. Between prints, with the
+# nozzle heater off and the nozzle still at FAN_OFF_BELOW or hotter, the fan
+# stays at full until the nozzle cools below it, as after a cancelled print. A
+# timer checks once a second and holds nothing, so print starts, Box flows, and
+# other commands run meanwhile. Heating the nozzle or starting a print puts the
+# fan back at once; a fan speed set by anything else stays; a Box flow started
+# meanwhile takes the cooldown over and puts the fan back when it ends. The
+# module's status
 # says whether a wipe has started, so the Box card can tell the purge from
 # the wipe, which QIDI reports as one BOX_WIPE step.
 
@@ -201,6 +208,10 @@ COLD_STEPS = ("BOX_HEAT", "BOX_CUT", "BOX_UNLOAD", "BOX_EJECT")
 # QIDI's chute wipes in its Box flows, run with the part fan at full speed.
 CHUTE_WIPES = ("DROP_TRASH", "WIPE_NOZZLE_DROP")
 PART_FAN = "cooling_fan"
+# The part fan stays at full after a Box flow between prints until the nozzle
+# is below this, °C; the cancel cooldown's fan_off_below in cancel.cfg.
+FAN_OFF_BELOW = 170.
+COOLDOWN_CHECK = 1.
 # SHA-256 of QIDI's multi_color_controller.so builds whose external wipe
 # returns False after its script runs.
 EXTERNAL_WIPE_FALSE_BUILDS = frozenset((
@@ -515,6 +526,10 @@ class BoxFlowRecovery:
         # back when the last ends, once a wipe has turned the fan up.
         self._fan_scopes = 0
         self._fan_restore = None
+        # After a flow between prints, the fan speed to put back once the
+        # nozzle has cooled, and the timer that checks.
+        self._cooldown_restore = None
+        self._cooldown_timer = None
         # A chute wipe has started in the running Box flow or tool change.
         self._wiping = False
         # Klipper's exclude_object and its own test for a cancelled part.
@@ -578,6 +593,9 @@ class BoxFlowRecovery:
             self._wrap_command(name, handler)
         for name in CHUTE_WIPES:
             self._wrap_command(name, self._chute_wipe(name))
+        self._cooldown_timer = self.reactor.register_timer(self._check_cooldown)
+        self.gcode.register_command("_VO_CHUTE_FAN_COOLDOWN_END",
+                                    self.cmd_CHUTE_FAN_COOLDOWN_END)
         logging.info("vo_box_flow_recovery: active")
 
     def _wrap_command(self, name, handler):
@@ -1396,6 +1414,7 @@ class BoxFlowRecovery:
     def _fan_scope(self):
         """A Box flow or tool change, after which the part fan goes back to
         its speed from before the first wipe in it."""
+        self._take_over_cooldown()
         self._fan_scopes += 1
         try:
             yield
@@ -1409,9 +1428,89 @@ class BoxFlowRecovery:
         self.gcode.run_script_from_command(
             "SET_FAN_SPEED FAN=%s SPEED=%.3f" % (PART_FAN, speed))
 
+    def _part_fan_speed(self):
+        fan = self.printer.lookup_object("fan_generic " + PART_FAN, None)
+        if fan is None:
+            return None
+        return fan.get_status(self.reactor.monotonic()).get("speed", 0.) or 0.
+
+    def _nozzle(self):
+        """The nozzle's temperature and target, or None."""
+        extruder = self.printer.lookup_object("extruder", None)
+        if extruder is None:
+            return None
+        status = extruder.get_status(self.reactor.monotonic())
+        return status.get("temperature", 0.), status.get("target", 0.)
+
     def _restore_fan(self):
         before, self._fan_restore = self._fan_restore, None
-        if before is not None and not self.printer.is_shutdown():
+        if before is None or self.printer.is_shutdown():
+            return
+        nozzle = self._nozzle()
+        if self._cooldown_timer is not None and nozzle is not None \
+                and nozzle[0] >= FAN_OFF_BELOW and not nozzle[1] \
+                and self._print_state() not in ("printing", "paused"):
+            # Full until the nozzle has cooled, also where QIDI's own wipe
+            # turned it off (its external-spool flows do).
+            if abs((self._part_fan_speed() or 0.) - 1.) > .005:
+                self._set_part_fan(1.)
+            self._cooldown_restore = before
+            self.reactor.update_timer(
+                self._cooldown_timer,
+                self.reactor.monotonic() + COOLDOWN_CHECK)
+            return
+        self._set_part_fan(before)
+
+    def _take_over_cooldown(self):
+        """A Box flow starting during a cooldown puts the fan back itself."""
+        if self._cooldown_restore is None:
+            return
+        if self._fan_restore is None:
+            self._fan_restore = self._cooldown_restore
+        self._cooldown_restore = None
+        self.reactor.update_timer(self._cooldown_timer, self.reactor.NEVER)
+
+    def _cooldown_over(self):
+        """None while the cooldown goes on, else whether to put the fan
+        back."""
+        if self._cooldown_restore is None or self.printer.is_shutdown():
+            return False
+        speed = self._part_fan_speed()
+        if speed is None or abs(speed - 1.) > .005:
+            # Something else set the fan; its speed stays.
+            return False
+        nozzle = self._nozzle()
+        if nozzle is None or nozzle[0] < FAN_OFF_BELOW or nozzle[1] \
+                or self._print_state() in ("printing", "paused"):
+            return True
+        return None
+
+    def _check_cooldown(self, eventtime):
+        over = self._cooldown_over()
+        if over is None:
+            return eventtime + COOLDOWN_CHECK
+        if not over:
+            self._cooldown_restore = None
+            return self.reactor.NEVER
+        # Set the fan in G-code order, checking again once it's this turn.
+        try:
+            self.gcode.run_script("_VO_CHUTE_FAN_COOLDOWN_END")
+        except Exception:
+            logging.exception("vo_box_flow_recovery: ending the part fan "
+                              "cooldown failed")
+            self._cooldown_restore = None
+        return self.reactor.NEVER
+
+    def cmd_CHUTE_FAN_COOLDOWN_END(self, gcmd):
+        over = self._cooldown_over()
+        if over is None:
+            # Heating stopped again while this waited; keep checking.
+            self.reactor.update_timer(
+                self._cooldown_timer,
+                self.reactor.monotonic() + COOLDOWN_CHECK)
+            return
+        before, self._cooldown_restore = self._cooldown_restore, None
+        if over:
             self._set_part_fan(before)
 
     def _chute_wipe(self, name):
@@ -1419,6 +1518,7 @@ class BoxFlowRecovery:
             fan = self.printer.lookup_object("fan_generic " + PART_FAN, None)
             if fan is None:
                 return self.originals[name](gcmd)
+            self._take_over_cooldown()
             if self._fan_restore is None:
                 status = fan.get_status(self.reactor.monotonic())
                 self._fan_restore = status.get("speed", 0.) or 0.
