@@ -10,6 +10,26 @@ from installer.tests.gcode_flow.printer import FIRMWARE, FlowPrinter
 from installer.tests.gcode_flow.qidi import EMPTY_SLOT, BoxSetup
 
 LOADED = dict(boxes=1, enable_box=1, tools={0: "slot0"}, loaded_slot="slot0", current_tool=0)
+CHUTE_WIPES = ("DROP_TRASH", "WIPE_NOZZLE_DROP")
+
+
+def part_fan_at_wipes(printer, before):
+    """The part fan's speed when each chute wipe in the trace starts its own commands, and its speed at the end,
+    starting from BEFORE. The trace has a command before what it runs."""
+    speed, at_wipes, wipe = before, [], None
+    for command in printer.trace:
+        words = command.line.split()
+        if command.name == "SET_FAN_SPEED" and "FAN=cooling_fan" in words:
+            speed = float(next(w for w in words if w.startswith("SPEED=")).split("=")[1])
+            continue
+        if wipe is not None:
+            at_wipes.append((wipe, speed))
+            wipe = None
+        if command.name in CHUTE_WIPES:
+            wipe = command.name
+    if wipe is not None:
+        at_wipes.append((wipe, speed))
+    return at_wipes, speed
 
 
 class BoxFlowTests(checks.FlowTestCase):
@@ -26,15 +46,23 @@ class BoxFlowTests(checks.FlowTestCase):
         self.assertFalse(printer.status("stepper_enable")["steppers"]["extruder"])
         self.assertIsNone(printer.status("multi_color_controller")["task"]["flow_id"])
 
-    def test_an_unload_heats_cuts_pulls_back_and_parks_with_the_heater_off(self):
-        """QIDI's unload (flow 3: BOX_HEAT, BOX_CUT, BOX_UNLOAD) heats to the top of the filament's range, cuts,
-        pulls the filament back into the Box at the chute, and parks with the heater off, wiping first because it
-        heated. Nothing may be pushed out of the nozzle anywhere."""
+    def test_a_heated_unload_heats_cuts_pulls_back_and_parks_with_the_heater_off(self):
+        """With COLD=0, QIDI's unload (flow 3: BOX_HEAT, BOX_CUT, BOX_UNLOAD) heats to the top of the filament's
+        range, cuts, pulls the filament back into the Box at the chute, and parks with the heater off, wiping first
+        because it heated. Nothing may be pushed out of the nozzle anywhere. The wipe runs with the part fan at full
+        so the hot nozzle's ooze sets on the wiper (Plus 5, 2026-11-25: with the fan off it oozed), and the fan goes
+        back to its earlier speed when the flow ends."""
         for printer_id in FIRMWARE:
             with self.subTest(printer=printer_id):
                 printer = self.printer(printer_id, BoxSetup(**LOADED))
-                printer.command("UNLOAD_FILAMENT_CONTROL SLOT=0")
+                printer.command("SET_FAN_SPEED FAN=cooling_fan SPEED=0.4")
+                printer.trace.clear()
+                printer.command("UNLOAD_FILAMENT_CONTROL SLOT=0 COLD=0")
                 checks.assert_no_errors(self, printer)
+                at_wipes, after = part_fan_at_wipes(printer, 0.4)
+                self.assertEqual(at_wipes, [("WIPE_NOZZLE_DROP", 1.)])
+                self.assertAlmostEqual(after, 0.4, places=2)
+                self.assertAlmostEqual(printer.status("fan_generic cooling_fan")["speed"], 0.4, places=2)
                 self.assert_parked_off(printer)
                 checks.assert_purges_only_at_the_chute(self, printer, 0, len(printer.toolhead.moves))
                 checks.assert_rear_moves_around_the_chute(self, printer)
@@ -47,29 +75,34 @@ class BoxFlowTests(checks.FlowTestCase):
                 self.assertIn("// Flow completed successfully.", printer.responses.lines)
 
     def test_a_cold_unload_cuts_and_pulls_back_without_heating(self):
-        """UNLOAD_FILAMENT_CONTROL COLD=1 (Valve Oil) runs QIDI's unload with the nozzle cold: the cutter cuts cold
-        filament above the hotend, QIDI's unload and eject steps never read the nozzle temperature, and its
-        pull-backs pass Klipper's cold-extrusion check only while Valve Oil allows retracts. With no flow
-        temperature QIDI's completion skips its wipe. Afterwards the printer has to be as before: a cold retract
-        refused again, and M109, which the flow skipped, heating again."""
+        """Between prints a Box slot's unload runs QIDI's unload with the nozzle cold, whether it asks with COLD=1
+        (Valve Oil UI, Fluidd) or doesn't say, as QIDI's touchscreen never does (Plus 5, 2026-11-25: its unloads
+        heated to 280 °C). The cutter cuts cold filament above the hotend, QIDI's unload and eject steps never read
+        the nozzle temperature, and its pull-backs pass Klipper's cold-extrusion check only while Valve Oil allows
+        retracts. With no flow temperature QIDI's completion skips its wipe. Afterwards the printer has to be as
+        before: a cold retract refused again, and M109, which the flow skipped, heating again."""
         for printer_id in FIRMWARE:
-            with self.subTest(printer=printer_id):
-                printer = self.printer(printer_id, BoxSetup(**LOADED))
-                printer.command("UNLOAD_FILAMENT_CONTROL SLOT=0 COLD=1")
-                checks.assert_no_errors(self, printer)
-                self.assert_parked_off(printer)
-                self.assertEqual([t for t in printer.toolhead.extruder.heater.targets if t > 0], [])
-                self.assertEqual(checks.cuts(printer), 1)
-                self.assertNotIn("WIPE_NOZZLE_DROP", [c.name for c in printer.trace])
-                self.assertEqual(printer.variables()["last_load_slot"], EMPTY_SLOT)
+            for cold in (" COLD=1", ""):
+                with self.subTest(printer=printer_id, command="UNLOAD_FILAMENT_CONTROL SLOT=0" + cold):
+                    self.assert_cold_unload(printer_id, "UNLOAD_FILAMENT_CONTROL SLOT=0" + cold)
 
-                moves = len(printer.toolhead.moves)
-                with self.assertRaisesRegex(printer.command_error, "Extrude below minimum temp"):
-                    printer.command("M83\nG1 E-4 F1800")
-                self.assertEqual(len(printer.toolhead.moves), moves)
-                printer.command("M109 S240")
-                self.assertEqual(printer.status("extruder")["target"], 240.)
-                self.assertGreaterEqual(printer.status("extruder")["temperature"], 239.)
+    def assert_cold_unload(self, printer_id, command):
+        printer = self.printer(printer_id, BoxSetup(**LOADED))
+        printer.command(command)
+        checks.assert_no_errors(self, printer)
+        self.assert_parked_off(printer)
+        self.assertEqual([t for t in printer.toolhead.extruder.heater.targets if t > 0], [])
+        self.assertEqual(checks.cuts(printer), 1)
+        self.assertNotIn("WIPE_NOZZLE_DROP", [c.name for c in printer.trace])
+        self.assertEqual(printer.variables()["last_load_slot"], EMPTY_SLOT)
+
+        moves = len(printer.toolhead.moves)
+        with self.assertRaisesRegex(printer.command_error, "Extrude below minimum temp"):
+            printer.command("M83\nG1 E-4 F1800")
+        self.assertEqual(len(printer.toolhead.moves), moves)
+        printer.command("M109 S240")
+        self.assertEqual(printer.status("extruder")["target"], 240.)
+        self.assertGreaterEqual(printer.status("extruder")["temperature"], 239.)
 
     def test_a_retried_cold_unload_stays_cold(self):
         """A cold unload that stops, on caught filament or on a Box motor error raised out of QIDI's unload, pauses
@@ -158,7 +191,7 @@ class BoxFlowTests(checks.FlowTestCase):
             with self.subTest(printer=printer_id):
                 printer = self.printer(printer_id, BoxSetup(caught=True, **LOADED))
                 with self.assertRaisesRegex(printer.command_error, "Something is holding the filament"):
-                    printer.command("UNLOAD_FILAMENT_CONTROL SLOT=0")
+                    printer.command("UNLOAD_FILAMENT_CONTROL SLOT=0 COLD=0")
                 pulled = -sum(m.extrude for m in printer.toolhead.moves if m.extrude < 0 and "CUT_FILAMENT_1"
                               not in " ".join(m.stack))
                 self.assertLessEqual(pulled, 150. + 20.)
@@ -179,13 +212,13 @@ class BoxFlowTests(checks.FlowTestCase):
                 self.assertFalse(printer.is_shutdown())
 
     def test_flow_retry_finishes_an_unload_once_the_filament_is_free(self):
-        """After the operator frees caught filament, FLOW_RETRY heats to the flow's temperature again and reruns the
-        paused unload, which then finishes as an unload does."""
+        """After the operator frees caught filament, FLOW_RETRY of a heated unload heats to the flow's temperature
+        again and reruns the paused unload, which then finishes as an unload does."""
         for printer_id in FIRMWARE:
             with self.subTest(printer=printer_id):
                 printer = self.printer(printer_id, BoxSetup(caught=True, **LOADED))
                 with self.assertRaises(printer.command_error):
-                    printer.command("UNLOAD_FILAMENT_CONTROL SLOT=0")
+                    printer.command("UNLOAD_FILAMENT_CONTROL SLOT=0 COLD=0")
                 printer.vendor.caught = False
                 printer.responses.lines.clear()
                 printer.command("FLOW_RETRY")
@@ -228,7 +261,9 @@ class BoxFlowTests(checks.FlowTestCase):
     def test_a_load_purges_and_wipes_at_the_chute_and_parks_with_the_heater_off(self):
         """QIDI's Box load heats at the chute, pulls the slot's filament to the toolhead, extrudes until the load
         cell feels it, then its wipe (BOX_WIPE) pushes 100 mm through at the chute and drops the waste. Loading over
-        another slot's filament (flow 2) cuts and unloads that first. Every gram has to go into the chute."""
+        another slot's filament (flow 2) cuts and unloads that first. Every gram has to go into the chute. From the
+        wipe on the part fan runs at full, so the hot nozzle's ooze sets on the wiper (Plus 5, 2026-11-25: with the
+        fan off it oozed), until the flow ends, then goes back to its earlier speed."""
         cases = (
             ("into an empty toolhead", BoxSetup(boxes=1, enable_box=1, tools={0: "slot0", 1: "slot1"},
                                                 loaded_slot=EMPTY_SLOT, hub=None), False, 0),
@@ -239,8 +274,14 @@ class BoxFlowTests(checks.FlowTestCase):
                 with self.subTest(printer=printer_id, case=name):
                     printer = self.printer(printer_id, box)
                     printer.set_filament_detected(toolhead)
+                    printer.trace.clear()
                     printer.command("LOAD_FILAMENT_CONTROL SLOT=1")
                     checks.assert_no_errors(self, printer)
+                    at_wipes, after = part_fan_at_wipes(printer, 0.)
+                    self.assertTrue(at_wipes)
+                    self.assertEqual({speed for _, speed in at_wipes}, {1.})
+                    self.assertEqual(after, 0.)
+                    self.assertEqual(printer.status("fan_generic cooling_fan")["speed"], 0.)
                     self.assert_parked_off(printer)
                     checks.assert_purges_only_at_the_chute(self, printer, 0, len(printer.toolhead.moves))
                     checks.assert_rear_moves_around_the_chute(self, printer)

@@ -46,8 +46,21 @@ class MacroContractTests(unittest.TestCase):
         def commands(text):
             return [line.split("#")[0].strip() for line in text.splitlines() if line.split("#")[0].strip()]
 
+        def straight_to_entrance(lines):
+            # QIDI reaches the chute entrance at X116 Y383 in legs along one axis at a time (from the bed, Y373
+            # first); here it is one straight move, as on the other printers.
+            out = []
+            for line in lines:
+                if line.startswith("G1 Y383 F") and out and out[-1].startswith("G1 X116 F"):
+                    out.pop()
+                    if out[-1].startswith("G1 Y{km.park_y - 30}") and out[-2] == "{% else %}":
+                        out.pop()
+                    line = "G1 X116 Y383 F" + line.split(" F", 1)[1]
+                out.append(line)
+            return out
+
         def chute_path(lines):
-            # The run to the chute entrance is faster than QIDI's; the path and the push into the chute are QIDI's.
+            # The run to the chute entrance is faster than QIDI's; the entrance and the push into the chute are QIDI's.
             return [
                 line.replace("F{opt.trash_travel_speed_xy}", "F{km.travel_speed_xy}")
                 for line in lines
@@ -63,7 +76,7 @@ class MacroContractTests(unittest.TestCase):
 
         stock_chute = commands(self._section_gcode(stock_root / "qd_macro.cfg", "gcode_macro MOVE_TO_TRASH"))
         chute = commands(self._section_gcode(MAX4_MACRO_ROOT / "nozzle_motion.cfg", "gcode_macro MOVE_TO_TRASH"))
-        self.assertEqual(chute_path(chute), chute_path(stock_chute))
+        self.assertEqual(chute_path(chute), chute_path(straight_to_entrance(stock_chute)))
         accel = None
         for line in chute:
             if line.startswith("M204"):

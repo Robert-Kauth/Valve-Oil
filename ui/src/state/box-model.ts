@@ -185,7 +185,7 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
 }
 
 // Every step key qidiBoxStepText gives, each with a whole message for the running and the failed step.
-const STEP_KEYS = new Set(['heat', 'heat_slot', 'heat_external', 'heat_temp', 'heat_temp_slot', 'heat_temp_external', 'cut', 'wipe', 'bite', 'load', 'load_slot', 'load_external', 'unload', 'unload_slot', 'unload_external', 'eject', 'eject_slot', 'working'])
+const STEP_KEYS = new Set(['heat', 'heat_slot', 'heat_external', 'heat_temp', 'heat_temp_slot', 'heat_temp_external', 'cut', 'purge', 'wipe', 'bite', 'load', 'load_slot', 'load_external', 'unload', 'unload_slot', 'unload_external', 'eject', 'eject_slot', 'working'])
 
 function stepText(s: QidiBoxStepText, failed: boolean): string {
   const key = STEP_KEYS.has(s.key) ? s.key : 'working'

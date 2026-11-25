@@ -33,6 +33,8 @@
     "heat_temp_external_failed": "No se pudo calentar la boquilla a {{temp}} °C para la bobina externa",
     "cut": "Cortando el filamento",
     "cut_failed": "No se pudo cortar el filamento",
+    "purge": "Purgando",
+    "purge_failed": "No se pudo purgar",
     "wipe": "Limpiando la boquilla",
     "wipe_failed": "No se pudo limpiar la boquilla",
     "bite": "Sujetando el filamento de la bobina externa",

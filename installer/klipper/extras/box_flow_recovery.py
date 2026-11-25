@@ -45,7 +45,11 @@
 # positioning first, as G90 does; a print keeps its own.
 #
 # Cold unload and eject: UNLOAD_FILAMENT_CONTROL and EJECT_FILAMENT_CONTROL
-# with COLD=1, outside a print, run QIDI's flow without heating the nozzle.
+# of a Box slot, outside a print, run QIDI's flow without heating the nozzle.
+# That is the default, so QIDI's touchscreen, which never sends COLD, unloads
+# cold too; COLD=0 heats as QIDI does, and COLD=1 asks for cold and says why
+# when it can't be. The external spool's unload and anything run during a
+# print heat as usual, and so does every unload without vo_cold_cut.
 # The Max 4's cutter cuts cold filament and the extruder sits above it, so
 # the cut and the extruder's pull-back move only filament that never enters
 # the hotend. QIDI's flows never read the nozzle temperature: they heat with
@@ -158,6 +162,17 @@
 # flow." after the wipe had run, and the touchscreen then stopped the flow
 # instead of completing it. In those builds the step now reports success when
 # its script ran; an error still raises and pauses the flow as above.
+#
+# Chute wipes: QIDI's Box flows turn the nozzle heater off and then wipe the
+# nozzle at the waste chute, with DROP_TRASH after a load's purge and with
+# WIPE_NOZZLE_DROP in the flow's completion, with the part fan as it was, off
+# outside a print, so the hot nozzle oozed. The part fan now goes to full
+# speed at the first wipe, so the ooze sets and breaks off on the wiper, and
+# stays there until the Box flow or tool change ends, through its dwells,
+# chute moves, and later wipes. Then it goes back to its earlier speed. A wipe
+# run on its own puts the fan back when the wipe ends. The module's status
+# says whether a wipe has started, so the Box card can tell the purge from
+# the wipe, which QIDI reports as one BOX_WIPE step.
 
 import contextlib
 import hashlib
@@ -183,6 +198,9 @@ PARK_DISTANCE = 260. - RETRACT_PIECE
 SLOT_STATE_LOADED = 1
 # Steps a cold flow may run; heat steps only park once M109 is skipped.
 COLD_STEPS = ("BOX_HEAT", "BOX_CUT", "BOX_UNLOAD", "BOX_EJECT")
+# QIDI's chute wipes in its Box flows, run with the part fan at full speed.
+CHUTE_WIPES = ("DROP_TRASH", "WIPE_NOZZLE_DROP")
+PART_FAN = "cooling_fan"
 # SHA-256 of QIDI's multi_color_controller.so builds whose external wipe
 # returns False after its script runs.
 EXTERNAL_WIPE_FALSE_BUILDS = frozenset((
@@ -484,14 +502,21 @@ class BoxFlowRecovery:
         self.originals = {}
         # Greenlets running FLOW_STOP, which hold Klipper's G-code lock.
         self._locked = set()
-        # A COLD=1 unload or eject is starting its flow.
-        self._cold_requested = False
+        # An unload or eject starting its flow cold: "asked" for COLD=1,
+        # "default" for a command that didn't say, else None.
+        self._cold_requested = None
         # The flow a cold unload or eject left paused, for FLOW_RETRY.
         self._cold_task = None
         # QIDI's external wipe was checked, and wrapped if its build needs it.
         self._external_wipe_fixed = False
         # T_MANAGER is running a print's tool change.
         self._tool_change = False
+        # Box flows and tool changes running, and the part fan speed to put
+        # back when the last ends, once a wipe has turned the fan up.
+        self._fan_scopes = 0
+        self._fan_restore = None
+        # A chute wipe has started in the running Box flow or tool change.
+        self._wiping = False
         # Klipper's exclude_object and its own test for a cancelled part.
         self._exclude = None
         self._in_cancelled_part = None
@@ -551,6 +576,8 @@ class BoxFlowRecovery:
                 ("EJECT_FILAMENT_CONTROL", self.cmd_EJECT_FILAMENT_CONTROL),
                 ("T_MANAGER", self.cmd_T_MANAGER)):
             self._wrap_command(name, handler)
+        for name in CHUTE_WIPES:
+            self._wrap_command(name, self._chute_wipe(name))
         logging.info("vo_box_flow_recovery: active")
 
     def _wrap_command(self, name, handler):
@@ -564,6 +591,9 @@ class BoxFlowRecovery:
         return True
 
     # ------------------------------------------------------------------ state
+    def get_status(self, eventtime=None):
+        return {"wiping": self._wiping}
+
     def _print_state(self):
         print_stats = self.printer.lookup_object("print_stats", None)
         if print_stats is None:
@@ -630,18 +660,20 @@ class BoxFlowRecovery:
                 logging.exception("vo_box_flow_recovery: switching to "
                                   "absolute positioning failed")
             if name == "start_flow":
-                cold = self._cold_requested and self._cold_flow(
-                    args[0] if args else kwargs.get("flow_id"))
+                cold = self._cold_requested is not None and self._cold_flow(
+                    args[0] if args else kwargs.get("flow_id"),
+                    self._cold_requested == "asked")
                 self._cold_task = None
             else:
                 cold = self._cold_task is not None \
                     and self._task() is self._cold_task
             try:
-                if not cold:
-                    return original(*args, **kwargs)
-                self.manager.current_flow_temp = None
-                with self._cold():
-                    return original(*args, **kwargs)
+                with self._fan_scope():
+                    if not cold:
+                        return original(*args, **kwargs)
+                    self.manager.current_flow_temp = None
+                    with self._cold():
+                        return original(*args, **kwargs)
             except Exception as e:
                 try:
                     self._pause_after_error(e)
@@ -1214,10 +1246,14 @@ class BoxFlowRecovery:
             self._end_filament_change()
 
     # ------------------------------------------------------------- cold flows
-    def _cold_flow(self, flow_id):
-        """Whether flow FLOW_ID can run cold; says why not."""
+    def _cold_flow(self, flow_id, asked=True):
+        """Whether flow FLOW_ID can run cold; says why not when ASKED."""
         steps = (getattr(self.manager, "FLOW_MAP", None) or {}).get(flow_id)
         if steps is None:
+            if not asked:
+                logging.info("vo_box_flow_recovery: flow %s heats: not "
+                             "recognized", flow_id)
+                return False
             raise self.printer.command_error(
                 "Box flow %s not run: COLD=1 doesn't recognize it. Run the "
                 "command without COLD=1 to heat the nozzle." % (flow_id,))
@@ -1227,7 +1263,8 @@ class BoxFlowRecovery:
                        "unload and eject steps, not %s."
                        % (flow_id, ", ".join(others)))
             logging.info("vo_box_flow_recovery: %s", message)
-            self.gcode.respond_info(message)
+            if asked:
+                self.gcode.respond_info(message)
             return False
         logging.info("vo_box_flow_recovery: flow %s runs cold: %s",
                      flow_id, ", ".join(steps) or "no steps")
@@ -1338,7 +1375,8 @@ class BoxFlowRecovery:
         if self._print_state() in ("printing", "paused"):
             try:
                 self._start_moving("_tool_change")
-                return self.originals["T_MANAGER"](gcmd)
+                with self._fan_scope():
+                    return self.originals["T_MANAGER"](gcmd)
             except Exception as e:
                 if not self._pause_print_after_error(gcmd, e):
                     raise
@@ -1352,6 +1390,47 @@ class BoxFlowRecovery:
         logging.info("vo_box_flow_recovery: %s", message)
         gcmd.respond_info(message)
         return None
+
+    # ------------------------------------------------------------ chute wipes
+    @contextlib.contextmanager
+    def _fan_scope(self):
+        """A Box flow or tool change, after which the part fan goes back to
+        its speed from before the first wipe in it."""
+        self._fan_scopes += 1
+        try:
+            yield
+        finally:
+            self._fan_scopes -= 1
+            if not self._fan_scopes:
+                self._wiping = False
+                self._restore_fan()
+
+    def _set_part_fan(self, speed):
+        self.gcode.run_script_from_command(
+            "SET_FAN_SPEED FAN=%s SPEED=%.3f" % (PART_FAN, speed))
+
+    def _restore_fan(self):
+        before, self._fan_restore = self._fan_restore, None
+        if before is not None and not self.printer.is_shutdown():
+            self._set_part_fan(before)
+
+    def _chute_wipe(self, name):
+        def wipe(gcmd):
+            fan = self.printer.lookup_object("fan_generic " + PART_FAN, None)
+            if fan is None:
+                return self.originals[name](gcmd)
+            if self._fan_restore is None:
+                status = fan.get_status(self.reactor.monotonic())
+                self._fan_restore = status.get("speed", 0.) or 0.
+            self._wiping = True
+            self._set_part_fan(1.)
+            try:
+                return self.originals[name](gcmd)
+            finally:
+                if not self._fan_scopes:
+                    self._wiping = False
+                    self._restore_fan()
+        return wipe
 
     def _ran_out_slot(self, error):
         """The slot that ran out when QIDI's tool change hit its auto-reload
@@ -1426,16 +1505,7 @@ class BoxFlowRecovery:
 
     def _filament_command(self, action, gcmd):
         original = self.originals[action + "_FILAMENT_CONTROL"]
-        cold = gcmd.get_int("COLD", 0, minval=0, maxval=1)
-        if cold:
-            state = self._print_state()
-            if state in ("printing", "paused"):
-                raise gcmd.error("Box %s not run: COLD=1 runs only while no "
-                                 "print is running or paused, and a print is "
-                                 "%s." % (action.lower(), state))
-            if self.printer.lookup_object("vo_cold_cut", None) is None:
-                raise gcmd.error("Box %s not run: COLD=1 needs "
-                                 "vo_cold_cut." % (action.lower(),))
+        cold = self._cold_request(action, gcmd)
         try:
             plan = self._plan(action, gcmd)
         except Exception:
@@ -1443,13 +1513,13 @@ class BoxFlowRecovery:
                               action.lower())
             plan = None
         if plan is None:
-            if not cold:
+            if cold is None:
                 return original(gcmd)
-            self._cold_requested = True
+            self._cold_requested = cold
             try:
                 return original(gcmd)
             finally:
-                self._cold_requested = False
+                self._cold_requested = None
         kind, slot, detail = plan
         if kind == "refuse":
             self._refuse(action, slot, detail)
@@ -1461,6 +1531,29 @@ class BoxFlowRecovery:
             return None
         self._retract(action, slot, detail, gcmd, original)
         return None
+
+    def _cold_request(self, action, gcmd):
+        """The cold request: "asked" for COLD=1, "default" for a Box slot's unload or eject
+        with no COLD outside a print, None to heat as QIDI does."""
+        asked = gcmd.get_int("COLD", None, minval=0, maxval=1)
+        if asked == 0:
+            return None
+        state = self._print_state()
+        printing = state in ("printing", "paused")
+        cold_cut = self.printer.lookup_object("vo_cold_cut", None) is not None
+        if asked is None:
+            slot = gcmd.get_int("SLOT", None)
+            external = slot is None or "slot%d" % (slot,) == EXTERNAL_SLOT
+            return None if printing or not cold_cut or external \
+                else "default"
+        if printing:
+            raise gcmd.error("Box %s not run: COLD=1 runs only while no "
+                             "print is running or paused, and a print is "
+                             "%s." % (action.lower(), state))
+        if not cold_cut:
+            raise gcmd.error("Box %s not run: COLD=1 needs "
+                             "vo_cold_cut." % (action.lower(),))
+        return "asked"
 
     def _plan(self, action, gcmd):
         """None to run QIDI's command, ("refuse", slot, reason), or

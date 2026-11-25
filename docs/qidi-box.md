@@ -148,19 +148,23 @@ Every other cut works the same way at the cutter: `OPTIMIZED_CUT_FILAMENT` and `
 
 ### Unloading and ejecting cold
 
-QIDI's Box unload and eject first heat the nozzle to the top of the filament's printing range, 280 °C for some ASA, then cut and pull the filament back. With `COLD=1` they run the same steps without heating:
+QIDI's Box unload and eject first heat the nozzle to the top of the filament's printing range, 280 °C for some ASA, then cut and pull the filament back. Between prints, Valve Oil runs the same steps without heating, from the touchscreen, Valve Oil UI, Fluidd, or the console:
 
 ```gcode
-UNLOAD_FILAMENT_CONTROL SLOT=1 COLD=1
-EJECT_FILAMENT_CONTROL SLOT=1 COLD=1
+UNLOAD_FILAMENT_CONTROL SLOT=1
+EJECT_FILAMENT_CONTROL SLOT=1
 ```
 
-**Unload** and **Eject** on the QIDI Box card send `COLD=1` unless a print is paused. The toolhead parks over the waste chute, homing X and Y first if needed, then the filament is cut and pulled back as usual. The nozzle heater stays off, and with no heat there's no ooze, so QIDI's 5 second wait and nozzle wipe at the end are skipped. Only pull-backs are allowed with the nozzle cold, as for the cut.
+`COLD=1` asks for a cold unload and says why when it can't be one; `COLD=0` heats the nozzle as QIDI does. **Unload** and **Eject** on the QIDI Box card send `COLD=1` unless a print is paused. The toolhead parks over the waste chute, homing X and Y first if needed, then the filament is cut and pulled back as usual. The nozzle heater stays off, and with no heat there's no ooze, so QIDI's 5 second wait and nozzle wipe at the end are skipped. Only pull-backs are allowed with the nozzle cold, as for the cut.
 
-- `COLD=1` is refused while a print is running or paused.
+- While a print is running or paused, unloads heat as QIDI's do, and `COLD=1` is refused.
 - If a step fails, **Retry** (`FLOW_RETRY`) runs it cold again.
-- An unload that would also unload the external spool still heats, and the console says so.
-- If a cold unload keeps failing, for example because the cut didn't go all the way through, **Stop** it, then unload from the console without `COLD=1` to heat the nozzle as QIDI does.
+- The external spool's unload, and an unload that would also unload it, still heat; with `COLD=1` the console says so.
+- If a cold unload keeps failing, for example because the cut didn't go all the way through, **Stop** it, then unload from the console with `COLD=0` to heat the nozzle as QIDI does.
+
+## Nozzle wipes after loads and unloads
+
+After a load's purge, and at the end of an unload that heated the nozzle, QIDI's Box code turns the nozzle heater off and wipes the nozzle at the waste chute. The part fan goes to full speed at the first wipe, so the ooze cools and breaks off on the wiper, and stays there through the waits, chute moves, and later wipes until the load, unload, or tool change has finished. Then it goes back to the speed it had before, off outside a print. QIDI wiped with the fan as it was.
 
 ## Moving a slot by hand
 

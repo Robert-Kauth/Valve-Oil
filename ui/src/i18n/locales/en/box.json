@@ -33,6 +33,8 @@
     "heat_temp_external_failed": "Heating nozzle to {{temp}} °C for the external spool failed",
     "cut": "Cutting filament",
     "cut_failed": "Cutting filament failed",
+    "purge": "Purging",
+    "purge_failed": "Purging failed",
     "wipe": "Wiping nozzle",
     "wipe_failed": "Wiping nozzle failed",
     "bite": "Gripping the external spool's filament",
