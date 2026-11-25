@@ -219,6 +219,7 @@ install:
       - "box_slot_jog.cfg"
       - "box_spool_roll.cfg"
       - "print_guard.cfg"
+      - "box_circulation.cfg"
       - "box_rfid.cfg"
       - "box_flow_recovery.cfg"
       - "box_watch.cfg"
@@ -292,6 +293,9 @@ install:
       destination: "klippy/extras/vo_print_guard.py"
       replaces:
         - "klippy/extras/vo_box_dry_guard.py"
+    - id: box_circulation
+      source: "klipper/extras/box_circulation.py"
+      destination: "klippy/extras/vo_box_circulation.py"
     - id: box_rfid
       source: "klipper/extras/box_rfid.py"
       destination: "klippy/extras/vo_box_rfid.py"

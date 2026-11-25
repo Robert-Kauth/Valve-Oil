@@ -23,6 +23,8 @@ Before 26.11.18.2 these were named `tltg_` instead of `vo_`, for example `tltg_k
 | [`vo_step_loss_recovery`](tools.md#correcting-the-position-after-a-slip) | `0` | With the step-loss monitor on, `1` corrects the toolhead position after a print's first slip and keeps printing instead of pausing. Max 4 only. |
 | [`vo_resonance_sweep`](tools.md#input-shaper-calibration) | `1` | `0` runs QIDI's resonance test for input shaper calibration instead of the newer sweeping one. |
 | [`vo_box_spool_roll`](qidi-box.md#turning-spools-while-the-box-heats) | `0` | `1` turns the spools of empty QIDI Box slots every 5 minutes while the Box heater is on. |
+| [`vo_box_fan_threshold`](qidi-box.md#box-fans-on-a-warm-printer) | `35` | Box air temperature in °C, from `35` to `45`, above which USB QIDI Box circulation fans run. |
+| [`vo_box_fan_hysteresis`](qidi-box.md#box-fans-on-a-warm-printer) | `0.5` | How far in °C, from `0` to `2`, the Box air falls below `vo_box_fan_threshold` before the fans start their minute's run-on. |
 | [`vo_box_heater_pwm_cycle_time`](qidi-box.md#box-heater-switching-speed) | `0.1` | Seconds per on-off cycle of each USB QIDI Box heater, from `0.01` to `0.1`. Shorter can stop lights flickering. Takes effect when Klipper next restarts. |
 
 ## Commands

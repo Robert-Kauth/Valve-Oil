@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PrinterState } from './printer'
 import { QIDI_BOX_EXTERNAL_SLOT } from '../qidi/qidi-box'
-import { boxCommands, boxHeaterMax, deriveBox, dryBlocker, slotActions, slotByIndex, type BoxState, type Lists, type SlotActions } from './box-model'
+import { boxCommands, boxHeaterMax, deriveBox, dryBlocker, slotActions, slotByIndex, slotOverline, type BoxState, type Lists, type SlotActions } from './box-model'
 
 type Status = PrinterState['status']
 
@@ -259,6 +259,72 @@ describe('slotActions', () => {
       expect(offered(b, SLOT_2A)).toEqual(['eject', 'unload'])
       expect(offered(b, SLOT_2B)).toEqual(['eject', 'unload'])
     })
+  })
+})
+
+describe('the external spool with no Box', () => {
+  // Every supported firmware has QIDI's controller, which runs the external spool's flows without a Box.
+  const toolhead = (detected: boolean | undefined): Status =>
+    detected === undefined ? {} : { 'filament_switch_sensor filament_switch_sensor': { filament_detected: detected } }
+  const noBox = (detected: boolean | undefined, options: Parameters<typeof box>[0] = {}) =>
+    box({ commands: VALVE_OIL_COMMANDS, lists: DATABASE, ...options, variables: { box_count: 0, slot_sync: 'slot16', ...options.variables }, status: { ...toolhead(detected), ...options.status } })
+
+  it('loads into an empty toolhead and unloads what the toolhead sensor detects', () => {
+    expect(offered(noBox(false), QIDI_BOX_EXTERNAL_SLOT)).toEqual(['cut', 'edit', 'load'])
+    expect(offered(noBox(true), QIDI_BOX_EXTERNAL_SLOT)).toEqual(['cut', 'edit', 'unload'])
+  })
+
+  it('offers neither without a toolhead sensor reading, or without QIDI’s controller', () => {
+    expect(offered(noBox(undefined), QIDI_BOX_EXTERNAL_SLOT)).toEqual(['cut', 'edit'])
+    expect(offered(noBox(true, { controller: false }), QIDI_BOX_EXTERNAL_SLOT)).not.toContain('unload')
+  })
+
+  it.each<[string, Parameters<typeof box>[0]]>([
+    ['a print is running', { status: { print_stats: { state: 'printing' } } }],
+    ['Klipper is not ready', { klippy: 'shutdown' }],
+    ['a flow is running', { status: { multi_color_controller: { task: { current_queue: ['EXT_UNLOAD'], current_step: 'EXT_UNLOAD', is_paused: false } } } }],
+  ])('offers neither while %s', (_, options) => {
+    expect(offered(noBox(true, options), QIDI_BOX_EXTERNAL_SLOT)).not.toContain('unload')
+    expect(offered(noBox(false, options), QIDI_BOX_EXTERNAL_SLOT)).not.toContain('load')
+  })
+
+  it('still unloads and loads while a print is paused, for a spool that ran out', () => {
+    expect(offered(noBox(true, { status: { print_stats: { state: 'paused' } } }), QIDI_BOX_EXTERNAL_SLOT)).toContain('unload')
+    expect(offered(noBox(false, { status: { print_stats: { state: 'paused' } } }), QIDI_BOX_EXTERNAL_SLOT)).toContain('load')
+  })
+
+  it('reads nothing into a hub sensor reading, which needs a Box', () => {
+    const b = noBox(false, { status: { box_extras: { b_endstop_state: 0 }, multi_color_controller: { task: { current_queue: ['EXT_UNLOAD'], current_step: 'EXT_UNLOAD', is_paused: true } } } })
+    expect(b.strandedRecovery).toBe(false)
+    expect(slotActions(b, slotByIndex(b, QIDI_BOX_EXTERNAL_SLOT)!).hint).toBeNull()
+  })
+
+  it('leaves the external spool to the Box’s flows when a Box is connected', () => {
+    const b = box({ commands: VALVE_OIL_COMMANDS, lists: DATABASE, status: toolhead(false) })
+    expect(offered(b, QIDI_BOX_EXTERNAL_SLOT)).toEqual(['cut', 'edit'])
+  })
+
+  it('sends QIDI’s controller commands for slot 16, and never unloads it cold', () => {
+    const b = noBox(true)
+    expect(boxCommands.load(b, QIDI_BOX_EXTERNAL_SLOT)).toBe('LOAD_FILAMENT_CONTROL SLOT=16')
+    expect(boxCommands.unload(b, QIDI_BOX_EXTERNAL_SLOT)).toBe('UNLOAD_FILAMENT_CONTROL SLOT=16')
+    expect(boxCommands.unload(box({ commands: VALVE_OIL_COMMANDS }), SLOT_2B)).toBe('UNLOAD_FILAMENT_CONTROL SLOT=5 COLD=1')
+  })
+
+  it('shows the external spool loaded exactly while the toolhead sensor detects filament', () => {
+    expect(noBox(true).loadedSlot).toBe(QIDI_BOX_EXTERNAL_SLOT)
+    expect(noBox(false).loadedSlot).toBeNull()
+    expect(slotOverline(noBox(true), slotByIndex(noBox(true), QIDI_BOX_EXTERNAL_SLOT)!)).toBe('Loaded to the toolhead')
+    expect(slotOverline(noBox(false), slotByIndex(noBox(false), QIDI_BOX_EXTERNAL_SLOT)!)).toBe('Not loaded')
+  })
+
+  it('waits, rather than failing, while the load’s grip or load step has no filament at the toolhead', () => {
+    const at = (step: string, detected: boolean) =>
+      noBox(detected, { status: { multi_color_controller: { task: { current_queue: [step, 'EXT_WIPE'], current_step: step, is_paused: true } } } })
+    expect(at('EXT_BITE', false).waitingForFilament).toBe(true)
+    expect(at('EXT_LOAD', false).waitingForFilament).toBe(true)
+    expect(at('EXT_BITE', true).waitingForFilament).toBe(false)
+    expect(at('EXT_WIPE', false).waitingForFilament).toBe(false)
   })
 })
 

@@ -52,6 +52,17 @@ With this turned on, while a Box's heater has a target, during a print or not, e
 
 `klippy.log` notes each turn, for example `vo_box_spool_roll: turning 1A's spool 25 mm`.
 
+### Box fans on a warm printer
+
+QIDI runs a USB Box's two circulation fans while the Box heats or a slot motor is on, while the Box air is above 35 °C, and for a minute after. A Box sitting near 35 °C, as on top of a printer with a hot chamber, kept switching its fans on and off. Once the air goes above 35 °C, the fans now keep running until it's 0.5 °C lower, then run their minute and stop.
+
+On a printer whose chamber keeps the Box warm, a higher temperature stops the fans running all print. Both settings apply to every USB Box within a second of saving, without a restart:
+
+- `SAVE_VARIABLE VARIABLE=vo_box_fan_threshold VALUE=40` starts the fans above 40 °C. From `35` to `45`. Some filaments soften in a warmer Box with no air moving.
+- `SAVE_VARIABLE VARIABLE=vo_box_fan_hysteresis VALUE=1` keeps them running until the air is 1 °C below that. From `0`, QIDI's behaviour, to `2`.
+
+Heating and slot motors still run the fans whatever these are set to. RS-485 Boxes are unchanged.
+
 ### Printing while a Box dries
 
 A print doesn't start while QIDI's timed drying runs on a USB Box, whether it was started from the touchscreen, Fluidd, or Valve Oil UI. The print start stops with `Box 2 is drying. Stop drying before starting a print.` Stop drying, then start the print again. Drying can't start during a print either, paused or not: it stops with `Box drying can't start during a print. Set the Box heater target instead.` To keep the Box warm through the print, set its heater target (Valve Oil UI's **Heat**). That holds the temperature without QIDI's spool turns, and [Turning spools while the Box heats](#turning-spools-while-the-box-heats) can turn the empty slots' spools without pausing the print.
