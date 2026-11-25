@@ -63,18 +63,19 @@ async function actionHarness(state: LiveCase) {
   return { actions, call }
 }
 
-async function runAction(action: ActionCase, state: LiveCase) {
+async function runAction(action: ActionCase, state: LiveCase, goAheadUnchecked = false) {
   const { actions, call } = await actionHarness(state)
-  if (action === 'klipper service start') await actions.dispatchServiceAction('klipper', 'start', 'idle')
-  else if (action === 'klipper service stop') await actions.dispatchServiceAction('klipper', 'stop', 'idle')
-  else if (action === 'klipper service restart') await actions.dispatchServiceAction('klipper', 'restart', 'idle')
-  else if (action === 'moonraker service start') await actions.dispatchServiceAction('moonraker', 'start', 'idle')
-  else if (action === 'moonraker service restart') await actions.dispatchServiceAction('moonraker', 'restart', 'idle')
-  else if (action === 'Klipper restart') await actions.dispatchKlipperAction('restart', 'idle')
-  else if (action === 'firmware restart') await actions.dispatchKlipperAction('firmware-restart', 'idle')
-  else if (action === 'Klipper service recovery') await actions.dispatchKlipperAction('service-restart', 'idle')
-  else if (action === 'host reboot') await actions.dispatchHostPowerAction('reboot', 'idle')
-  else await actions.dispatchHostPowerAction('shutdown', 'idle')
+  const unchecked = vi.fn().mockResolvedValue(goAheadUnchecked)
+  if (action === 'klipper service start') await actions.dispatchServiceAction('klipper', 'start', 'idle', unchecked)
+  else if (action === 'klipper service stop') await actions.dispatchServiceAction('klipper', 'stop', 'idle', unchecked)
+  else if (action === 'klipper service restart') await actions.dispatchServiceAction('klipper', 'restart', 'idle', unchecked)
+  else if (action === 'moonraker service start') await actions.dispatchServiceAction('moonraker', 'start', 'idle', unchecked)
+  else if (action === 'moonraker service restart') await actions.dispatchServiceAction('moonraker', 'restart', 'idle', unchecked)
+  else if (action === 'Klipper restart') await actions.dispatchKlipperAction('restart', 'idle', unchecked)
+  else if (action === 'firmware restart') await actions.dispatchKlipperAction('firmware-restart', 'idle', unchecked)
+  else if (action === 'Klipper service recovery') await actions.dispatchKlipperAction('service-restart', 'idle', unchecked)
+  else if (action === 'host reboot') await actions.dispatchHostPowerAction('reboot', 'idle', unchecked)
+  else await actions.dispatchHostPowerAction('shutdown', 'idle', unchecked)
   const expectedMethod = action === 'Klipper restart' ? 'printer.restart'
     : action === 'firmware restart' ? 'printer.firmware_restart'
       : action === 'host reboot' ? 'machine.reboot'
@@ -85,7 +86,7 @@ async function runAction(action: ActionCase, state: LiveCase) {
   const expectedService = action === 'moonraker service start' || action === 'moonraker service restart' ? 'moonraker'
     : action === 'klipper service start' || action === 'klipper service stop' || action === 'klipper service restart' || action === 'Klipper service recovery' ? 'klipper'
       : null
-  return call.mock.calls.filter(([method, params]) => method === expectedMethod && (expectedService == null || params?.service === expectedService))
+  return { sent: call.mock.calls.filter(([method, params]) => method === expectedMethod && (expectedService == null || params?.service === expectedService)), asked: unchecked.mock.calls.length }
 }
 
 afterEach(() => vi.unstubAllGlobals())
@@ -93,12 +94,23 @@ afterEach(() => vi.unstubAllGlobals())
 describe('consequential actions', () => {
   const actions: ActionCase[] = ['klipper service start', 'klipper service stop', 'klipper service restart', 'moonraker service start', 'moonraker service restart', 'Klipper restart', 'firmware restart', 'Klipper service recovery', 'host reboot', 'host shutdown']
 
-  it.each(actions)('dispatches %s once after a fresh idle read', async (action) => {
-    expect(await runAction(action, 'idle')).toHaveLength(1)
+  const unknownStates: LiveCase[] = ['network failure', 'HTTP failure', 'timeout', 'malformed payload', 'stale cache']
+
+  it.each(actions)('dispatches %s once after a fresh idle read, without asking', async (action) => {
+    expect(await runAction(action, 'idle')).toEqual({ sent: [expect.anything()], asked: 0 })
   })
 
-  it.each(actions.flatMap((action) => (['running', 'network failure', 'HTTP failure', 'timeout', 'malformed payload', 'stale cache'] as LiveCase[]).map((state) => [action, state] as const)))('does not dispatch %s while the live state is %s', async (action, state) => {
-    expect(await runAction(action, state)).toHaveLength(0)
+  it.each(actions)('does not dispatch %s, or offer to, while an update runs', async (action) => {
+    expect(await runAction(action, 'running', true)).toEqual({ sent: [], asked: 0 })
+  })
+
+  it.each(actions.flatMap((action) => unknownStates.map((state) => [action, state] as const)))('asks before %s when the live state is %s, and holds it when declined', async (action, state) => {
+    expect(await runAction(action, state, false)).toEqual({ sent: [], asked: 1 })
+  })
+
+  // Restarting Klipper or rebooting is how an operator recovers a status service that doesn't answer.
+  it.each(actions.flatMap((action) => unknownStates.map((state) => [action, state] as const)))('dispatches %s once when the operator goes ahead with the live state %s', async (action, state) => {
+    expect(await runAction(action, state, true)).toEqual({ sent: [expect.anything()], asked: 1 })
   })
 })
 

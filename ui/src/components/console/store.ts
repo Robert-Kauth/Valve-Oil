@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { createStore, useStore } from '../../lib/store'
-import { client, printer, pushConsole, replaceConsoleHistory, runGcode, useConnected, usePrinter, type ConsoleLine } from '../../state/printer'
+import { client, hostClockOffset, printer, pushConsole, replaceConsoleHistory, runGcode, useConnected, usePrinter, type ConsoleLine } from '../../state/printer'
 import { FLUIDD, useDbItem } from '../../state/database'
 import { CONSOLE_RETENTION, EXTRA_KNOWN, addToHistory, fromStore, normalizeFilter, visibleEntries, type ConsoleEntry, type ConsoleFilter } from './model'
 
@@ -23,8 +23,10 @@ type ConsoleLifecycle = {
 }
 
 let lifecycle: ConsoleLifecycle | null = null
-// Moonraker timestamps stored lines but sends live responses as text only, so receive time bounds the overlap.
+// Moonraker timestamps stored lines but sends live responses as text only, so receive time bounds the overlap. Both are
+// in the printer's time: the browser's clock, shifted by the difference Moonraker's host statistics measure.
 const EVENT_TIME_TOLERANCE_SECONDS = 1
+const printerNow = () => Date.now() / 1000 + hostClockOffset()
 
 function mergeSnapshot(entries: ConsoleEntry[], pending: PendingEntry[], startedAt: number) {
   const matched = new Map<number, number>()
@@ -76,7 +78,7 @@ function finishPending(active: ConsoleLifecycle) {
 async function loadStore(active: ConsoleLifecycle) {
   finishPending(active)
   const loadRevision = ++active.loadRevision
-  const startedAt = Date.now() / 1000
+  const startedAt = printerNow()
   const pending: PendingEntry[] = []
   active.pending = pending
   try {
@@ -97,7 +99,7 @@ async function loadStore(active: ConsoleLifecycle) {
 
 function onResponse(active: ConsoleLifecycle, params: unknown[]) {
   const message = String(params[0] ?? '')
-  const time = Date.now() / 1000
+  const time = printerNow()
   pushConsole(message, message.startsWith('!!') ? 'error' : 'response')
   if (active.pending) active.pending.push({ message, time, type: 'response' })
   else append([{ message, time, type: 'response' }])
@@ -114,12 +116,14 @@ function mirrorPrinterConsole(active: ConsoleLifecycle, prev: { lines: ConsoleLi
   const fresh = s.console.filter((l) => l.id > lastSeen && l.origin === 'live')
   lastSeen = Math.max(lastSeen, ...s.console.map((l) => l.id))
   const now = Date.now()
+  const offset = hostClockOffset()
   const recent = [...consoleStore.get().entries.slice(-30), ...(active.pending ?? [])]
   const add: Omit<ConsoleEntry, 'id'>[] = []
   for (const l of fresh) {
     if (now - l.time > 5000) continue
-    if (l.kind === 'command') add.push({ message: l.text, time: l.time / 1000, type: 'command' })
-    else if (l.kind === 'error' && !l.text.startsWith('!!') && !recent.some((e) => e.message === `!! ${l.text}` && now / 1000 - e.time < 10)) add.push({ message: `!! ${l.text}`, time: l.time / 1000, type: 'response' })
+    const time = l.time / 1000 + offset
+    if (l.kind === 'command') add.push({ message: l.text, time, type: 'command' })
+    else if (l.kind === 'error' && !l.text.startsWith('!!') && !recent.some((e) => e.message === `!! ${l.text}` && now / 1000 + offset - e.time < 10)) add.push({ message: `!! ${l.text}`, time, type: 'response' })
   }
   if (active.pending) active.pending.push(...add)
   else append(add)

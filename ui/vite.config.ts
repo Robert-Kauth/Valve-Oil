@@ -2,7 +2,7 @@
 import { build, defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { fileURLToPath } from 'node:url'
@@ -11,6 +11,39 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // The installer bundle passes the package version; local builds use package.json's.
 const appVersion: string = process.env.VO_UI_VERSION || pkg.version
 const statusTarget = process.env.VO_PRINTER || 'http://localhost:7125'
+
+// The document language script, built once and again only when its sources change, not on every page load.
+const languageSources = ['./src/i18n/document-language.ts', './src/i18n/preference.ts'].map((path) => fileURLToPath(new URL(path, import.meta.url)))
+let languageScript: { key: string; code: Promise<string> } | null = null
+function documentLanguageScript(): Promise<string> {
+  const key = languageSources.map((path) => statSync(path).mtimeMs).join(':')
+  if (languageScript?.key === key) return languageScript.code
+  const code = buildDocumentLanguageScript()
+  languageScript = { key, code }
+  // A failed build is tried again on the next request instead of being kept.
+  code.catch(() => languageScript?.code === code && (languageScript = null))
+  return code
+}
+
+async function buildDocumentLanguageScript(): Promise<string> {
+  const result = await build({
+    configFile: false,
+    logLevel: 'silent',
+    build: {
+      write: false,
+      target: 'es2015',
+      rolldownOptions: {
+        input: languageSources[0],
+        output: { format: 'iife' },
+      },
+    },
+  })
+  const bundles = Array.isArray(result) ? result : [result]
+  const script = bundles.flatMap((bundle) => 'output' in bundle ? bundle.output : [])
+    .find((file) => file.type === 'chunk' && file.isEntry)
+  if (!script || script.type !== 'chunk') throw new Error('Document language script was not built')
+  return script.code
+}
 
 // Relative base so the build works from any sub-path the web server mounts it on.
 export default defineConfig({
@@ -25,23 +58,7 @@ export default defineConfig({
       transformIndexHtml: {
         order: 'pre',
         async handler() {
-          const result = await build({
-            configFile: false,
-            logLevel: 'silent',
-            build: {
-              write: false,
-              target: 'es2015',
-              rolldownOptions: {
-                input: fileURLToPath(new URL('./src/i18n/document-language.ts', import.meta.url)),
-                output: { format: 'iife' },
-              },
-            },
-          })
-          const bundles = Array.isArray(result) ? result : [result]
-          const script = bundles.flatMap((bundle) => 'output' in bundle ? bundle.output : [])
-            .find((file) => file.type === 'chunk' && file.isEntry)
-          if (!script || script.type !== 'chunk') throw new Error('Document language script was not built')
-          return [{ tag: 'script', attrs: { id: 'vo-document-language' }, children: script.code, injectTo: 'head' }]
+          return [{ tag: 'script', attrs: { id: 'vo-document-language' }, children: await documentLanguageScript(), injectTo: 'head' }]
         },
       },
     },

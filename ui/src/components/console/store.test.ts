@@ -15,6 +15,7 @@ const fake = vi.hoisted(() => ({
   printerSubscribers: new Set<() => void>(),
   projected: [] as { message: string; time: number; type: 'command' | 'response' }[][],
   lineId: 0,
+  clockOffset: 0,
 }))
 
 vi.mock('../../state/printer', () => ({
@@ -37,6 +38,7 @@ vi.mock('../../state/printer', () => ({
     },
     gcode: vi.fn(),
   },
+  hostClockOffset: () => fake.clockOffset,
   printer: {
     get: () => fake.printer,
     set: (next: PrinterState | ((state: PrinterState) => PrinterState)) => {
@@ -103,6 +105,7 @@ beforeEach(() => {
   fake.printerSubscribers.clear()
   fake.projected.length = 0
   fake.lineId = 0
+  fake.clockOffset = 0
 })
 afterEach(() => vi.useRealTimers())
 
@@ -122,6 +125,25 @@ it('preserves repeated events while merging the snapshot/live overlap once', asy
 
   expect(consoleStore.get().entries.map((entry) => entry.message)).toEqual(['A', 'A', 'B'])
   expect(fake.projected.at(-1)?.map((entry) => entry.message)).toEqual(['A', 'A', 'B'])
+})
+
+it('merges the overlap once when the printer clock is far from the browser clock', async () => {
+  const { consoleStore } = await load()
+  // The printer is 90 s behind, as a LAN-only printer without time sync can be.
+  fake.clockOffset = -90
+  setConnection('open')
+  emit('notify_gcode_response', ['A'])
+  emit('notify_gcode_response', ['B'])
+  take('server.gcode_store').resolve({
+    gcode_store: [
+      { message: 'old', time: Date.now() / 1000 - 95, type: 'response' },
+      { message: 'A', time: Date.now() / 1000 - 90, type: 'response' },
+    ],
+  })
+  await settle()
+
+  expect(consoleStore.get().entries.map((entry) => entry.message)).toEqual(['old', 'A', 'B'])
+  expect(fake.projected.at(-1)?.map((entry) => entry.message)).toEqual(['old', 'A', 'B'])
 })
 
 it('does not treat an older identical snapshot message as the pending event', async () => {

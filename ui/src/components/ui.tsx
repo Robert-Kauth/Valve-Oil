@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from 'lucide-react'
 import { t } from '../i18n'
 
@@ -63,24 +63,27 @@ export function HoldButton({ onHold, children, holdMs = 1200, className = '', di
   )
 }
 
-export function Dialog({ open, onClose, title, children, footer, size }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; size?: 'wide' | 'full' }) {
-  const dialogRef = useRef<HTMLDivElement>(null)
+/**
+ * Makes an open surface modal for the keyboard: focus moves into it, Tab stays inside, Escape closes it, and focus
+ * goes back to what opened it. Only the topmost of stacked surfaces takes keys. `opener` names what opened it when
+ * that isn't the focused element, as after a mouse press in Safari, which doesn't focus buttons.
+ */
+export function useModalFocus(open: boolean, surfaceRef: RefObject<HTMLElement | null>, onClose: () => void, opener?: RefObject<HTMLElement | null>) {
   const triggerRef = useRef<HTMLElement | null>(null)
   const onCloseRef = useRef(onClose)
-  const titleId = useId()
   onCloseRef.current = onClose
-  // Capture the opener before React commits an autoFocus field inside this dialog.
-  if (open && !triggerRef.current && document.activeElement instanceof HTMLElement) triggerRef.current = document.activeElement
+  // Capture the opener before React commits an autoFocus field inside the surface.
+  if (open && !triggerRef.current) triggerRef.current = opener?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null)
 
   useEffect(() => {
     if (!open) return
-    const dialog = dialogRef.current
-    if (!dialog) return
-    dialogStack.push(dialog)
-    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => !el.matches(':disabled') && el.getAttribute('tabindex') !== '-1' && !el.hasAttribute('hidden') && el.getClientRects().length > 0)
-    if (!dialog.contains(document.activeElement)) (focusable()[0] ?? dialog).focus()
+    const surface = surfaceRef.current
+    if (!surface) return
+    dialogStack.push(surface)
+    const focusable = () => Array.from(surface.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => !el.matches(':disabled') && el.getAttribute('tabindex') !== '-1' && !el.hasAttribute('hidden') && el.getClientRects().length > 0)
+    if (!surface.contains(document.activeElement)) (focusable()[0] ?? surface).focus()
     const onKey = (e: KeyboardEvent) => {
-      if (dialogStack[dialogStack.length - 1] !== dialog) return
+      if (dialogStack[dialogStack.length - 1] !== surface) return
       if (e.key === 'Escape') {
         e.preventDefault()
         onCloseRef.current()
@@ -91,12 +94,12 @@ export function Dialog({ open, onClose, title, children, footer, size }: { open:
       const controls = focusable()
       if (!controls.length) {
         e.preventDefault()
-        dialog.focus()
+        surface.focus()
         return
       }
       const first = controls[0]
       const last = controls[controls.length - 1]
-      if (!dialog.contains(document.activeElement) || (e.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+      if (!surface.contains(document.activeElement) || (e.shiftKey ? document.activeElement === first : document.activeElement === last)) {
         e.preventDefault()
         const target = e.shiftKey ? last : first
         target.focus()
@@ -105,16 +108,22 @@ export function Dialog({ open, onClose, title, children, footer, size }: { open:
     window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('keydown', onKey)
-      dialogStack.splice(dialogStack.lastIndexOf(dialog), 1)
-      // StrictMode re-runs this effect with the dialog still on the page; only a real close returns focus to the opener.
+      dialogStack.splice(dialogStack.lastIndexOf(surface), 1)
+      // StrictMode re-runs this effect with the surface still on the page; only a real close returns focus to the opener.
       queueMicrotask(() => {
-        if (dialog.isConnected) return
+        if (surface.isConnected) return
         const trigger = triggerRef.current
         triggerRef.current = null
         if (trigger?.isConnected) trigger.focus()
       })
     }
   }, [open])
+}
+
+export function Dialog({ open, onClose, title, children, footer, size }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; size?: 'wide' | 'full' }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  useModalFocus(open, dialogRef, onClose)
 
   if (!open) return null
   return (
@@ -377,10 +386,11 @@ export function MenuButton({ button, items, align = 'right', className = 'iconbt
     <div
       className="relative inline-flex"
       ref={ref}
-      onBlur={() => {
-        requestAnimationFrame(() => {
-          if (!ref.current?.contains(document.activeElement)) setOpen(false)
-        })
+      // Close when focus moves on to something else (Tab). Safari and Firefox on macOS drop focus to the page when an
+      // item is pressed, before its click lands, so a blur to nothing leaves closing to the outside pointerdown.
+      onBlur={(e) => {
+        const next = e.relatedTarget
+        if (next instanceof Node && !ref.current?.contains(next)) setOpen(false)
       }}
     >
       <button

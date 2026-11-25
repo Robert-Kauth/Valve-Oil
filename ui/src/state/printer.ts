@@ -23,6 +23,8 @@ export type HostStats = {
 
 export type PrinterState = {
   conn: ConnectionState
+  /** The connection has dropped or failed since it was last open, so a new attempt isn't a first load. */
+  connLost: boolean
   klippy: KlippyState
   klippyMessage: string
   objects: string[]
@@ -50,6 +52,7 @@ export const client = new MoonrakerClient(resolveMoonrakerOrigin())
 
 export const printer = createStore<PrinterState>({
   conn: 'closed',
+  connLost: false,
   klippy: 'unknown',
   klippyMessage: '',
   objects: [],
@@ -280,7 +283,9 @@ async function initKlippy() {
     const sub: Record<string, string[] | null> = {}
     for (const o of objects) if (FIELDS[o]) sub[o] = FIELDS[o]
     else if (wanted(o)) sub[o] = null
-    // Status and safety settings are independent reads; neither history nor client identification gates readiness.
+    // Status and Klipper's settings are independent reads; neither history nor client identification gates readiness.
+    // The settings (heater limits, known commands) don't gate it either: Klipper enforces its own limits, and a query
+    // that keeps failing would otherwise hold every screen at Loading. They load in the background until they arrive.
     const [, q] = await Promise.all([
       client.call<{ status: Status }>('printer.objects.subscribe', { objects: sub }).then((res) => {
         if (stale()) return
@@ -288,29 +293,20 @@ async function initKlippy() {
         queued = null
         printer.set((s) => ({ ...s, objects, status: res.status }))
       }),
-      client.call<{ status: Status }>('printer.objects.query', { objects: { gcode: ['commands'], configfile: ['settings'] } }),
+      querySettings().catch(() => null),
     ])
     if (stale()) return
-    const settings = q.status.configfile?.settings ?? {}
-    const commands = Object.keys(q.status.gcode?.commands ?? {}).map((c) => c.toUpperCase())
-    const heaterSettings: PrinterState['heaterSettings'] = {}
-    for (const [k, v] of Object.entries(settings)) if (k === 'extruder' || k === 'heater_bed' || k.startsWith('heater_generic ')) heaterSettings[k] = v as PrinterState['heaterSettings'][string]
     const temps = Object.fromEntries(objects.filter(isTempObject).map((o) => [o, { temperatures: [], ...(typeof printer.get().status[o]?.target === 'number' ? { targets: [] } : {}) }]))
-    printer.set((s) => ({ ...s, klippy: 'ready', klippyMessage: '', temps, commands, heaterSettings, settings }))
+    printer.set((s) => ({ ...s, klippy: 'ready', klippyMessage: '', temps, ...(q ? settingsFrom(q) : { commands: [], heaterSettings: {}, settings: {} }) }))
+    if (!q) retrySettings(stale)
 
     void client.call<Record<string, TempSeries>>('server.temperature_store', { include_monitors: false }).then((store) => {
       if (stale()) return
+      // Moonraker's store already holds every sample taken since ready, so it replaces the live series rather than
+      // being joined to them.
       printer.set((s) => {
         const temps = { ...s.temps }
-        for (const [name, history] of Object.entries(store)) {
-          if (!isTempObject(name)) continue
-          const live = s.temps[name]
-          temps[name] = {
-            temperatures: [...history.temperatures, ...(live?.temperatures ?? [])].slice(-TEMP_POINTS),
-            targets: history.targets ? [...history.targets, ...(live?.targets ?? [])].slice(-TEMP_POINTS) : live?.targets,
-            end: history.temperatures.length + (live?.end ?? 0),
-          }
-        }
+        for (const [name, history] of Object.entries(store)) if (isTempObject(name)) temps[name] = history
         return { ...s, temps }
       })
     }).catch(() => {})
@@ -327,10 +323,39 @@ async function initKlippy() {
   }
 }
 
+// Large, rarely-changing fields are queried once per Klipper start rather than subscribed.
+const querySettings = () => client.call<{ status: Status }>('printer.objects.query', { objects: { gcode: ['commands'], configfile: ['settings'] } })
+
+function settingsFrom(q: { status: Status }): Pick<PrinterState, 'commands' | 'heaterSettings' | 'settings'> {
+  const settings = q.status.configfile?.settings ?? {}
+  const commands = Object.keys(q.status.gcode?.commands ?? {}).map((c) => c.toUpperCase())
+  const heaterSettings: PrinterState['heaterSettings'] = {}
+  for (const [k, v] of Object.entries(settings)) if (k === 'extruder' || k === 'heater_bed' || k.startsWith('heater_generic ')) heaterSettings[k] = v as PrinterState['heaterSettings'][string]
+  return { commands, heaterSettings, settings }
+}
+
+/** Retries Klipper's settings every 2 s until they arrive or this Klipper session ends. */
+function retrySettings(stale: () => boolean) {
+  setTimeout(() => {
+    if (stale()) return
+    querySettings().then(
+      (q) => !stale() && printer.set((s) => ({ ...s, ...settingsFrom(q) })),
+      () => retrySettings(stale),
+    )
+  }, 2000)
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ProcStat = Record<string, any>
+// The printer's clock minus this browser's, in seconds. Moonraker stamps its stored console lines with the printer's
+// time; its live host statistics carry that time as they're sent, which measures the difference.
+let hostClockOffsetSeconds = 0
+export const hostClockOffset = () => hostClockOffsetSeconds
+
 function applyHost(p: ProcStat, initial: boolean) {
   const mr = initial ? p.moonraker_stats?.[p.moonraker_stats.length - 1] : p.moonraker_stats
+  // A stored sample can be a second old; only a live one is sent when it's taken.
+  if (!initial && typeof mr?.time === 'number') hostClockOffsetSeconds = mr.time - Date.now() / 1000
   printer.set((s) => ({
     ...s,
     host: {
@@ -358,7 +383,7 @@ export function startPrinterConnection() {
     ++klippyLoad
     if (klippyPoll) clearTimeout(klippyPoll)
     queued = null
-    printer.set((s) => ({ ...s, conn, klippy: 'unknown', klippyMessage: '' }))
+    printer.set((s) => ({ ...s, conn, connLost: conn === 'open' ? false : conn === 'closed' ? true : s.connLost, klippy: 'unknown', klippyMessage: '' }))
     if (conn === 'open') {
       client
         .call('server.connection.identify', { client_name: 'Valve Oil UI', version: __APP_VERSION__, type: 'web', url: 'https://github.com/thelegendtubaguy/Valve-Oil' })

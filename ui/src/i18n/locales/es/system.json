@@ -109,6 +109,9 @@
     "title": "Servicios",
     "none": "Moonraker no mostró ningún servicio.",
     "locked": "Klipper y Moonraker no se pueden reiniciar mientras Valve Oil actualiza la impresora.",
+    "unchecked_title": "No se sabe si Valve Oil está actualizando",
+    "unchecked_body": "El servicio de estado de Valve Oil no respondió, así que no se sabe si hay una actualización en curso. Interrumpir una actualización puede dejar la impresora a medio actualizar. Continúa solo si no hay ninguna actualización en curso.",
+    "unchecked_confirm": "Continuar",
     "about": {
       "klipper": "Controla la impresora",
       "moonraker": "El servidor API de Klipper, con el que hablan Fluidd y Valve Oil UI",

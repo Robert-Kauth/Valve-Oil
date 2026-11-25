@@ -145,14 +145,18 @@ it.each(['closed', 'disconnected', 'shutdown'])('discards delayed optional state
   expect(printer.get().console).toEqual([])
 })
 
-it('retains live temperature samples while delayed temperature history arrives', async () => {
+it('takes delayed temperature history in place of the live samples it already holds', async () => {
   const { printer, pushConsole } = await load()
   await subscribe()
   await answer('printer.objects.query', SETTINGS)
   pushConsole('live reply', 'response')
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(printer.get().temps.extruder.temperatures).toEqual([22, 22, 22])
+  // Moonraker sampled the same three seconds; joining them would chart those seconds twice.
+  await answer('server.temperature_store', { extruder: { temperatures: [20, 21, 22, 22, 22], targets: [0, 0, 0, 0, 0] } })
+  expect(printer.get().temps.extruder).toEqual({ temperatures: [20, 21, 22, 22, 22], targets: [0, 0, 0, 0, 0] })
   await vi.advanceTimersByTimeAsync(1000)
-  await answer('server.temperature_store', { extruder: { temperatures: [20, 21], targets: [0, 0] } })
-  expect(printer.get().temps.extruder).toEqual({ temperatures: [20, 21, 22], targets: [0, 0, 0], end: 3 })
+  expect(printer.get().temps.extruder).toEqual({ temperatures: [20, 21, 22, 22, 22, 22], targets: [0, 0, 0, 0, 0, 0], end: 6 })
   expect(printer.get().console.map((l) => [l.text, l.origin])).toEqual([['live reply', 'live']])
 })
 
@@ -176,7 +180,7 @@ it.each(['error', 'shutdown', 'disconnected', 'startup'])('shows confirmed %s be
   expect(printer.get().klippyMessage).toBe('Klipper detail')
 })
 
-it.each(['server.info', 'printer.objects.list', 'printer.objects.subscribe', 'printer.objects.query'])('retries a failed required %s without claiming readiness', async (method) => {
+it.each(['server.info', 'printer.objects.list', 'printer.objects.subscribe'])('retries a failed required %s without claiming readiness', async (method) => {
   const { printer } = await load()
   if (method !== 'server.info') await answer('server.info', READY_INFO)
   if (method !== 'server.info' && method !== 'printer.objects.list') await answer('printer.objects.list', { objects: [] })
@@ -186,6 +190,34 @@ it.each(['server.info', 'printer.objects.list', 'printer.objects.subscribe', 'pr
   expect(printer.get().klippyMessage).toBe('request failed')
   await vi.advanceTimersByTimeAsync(2000)
   expect(fake.calls.some((c) => c.method === 'server.info')).toBe(true)
+})
+
+it('goes ready without Klipper settings that fail to load, and loads them in the background', async () => {
+  const { printer } = await load()
+  await subscribe()
+  take('printer.objects.query').reject(new Error('timed out'))
+  await tick()
+  expect(printer.get().klippy).toBe('ready')
+  expect(printer.get().heaterSettings).toEqual({})
+  await vi.advanceTimersByTimeAsync(2000)
+  take('printer.objects.query').reject(new Error('timed out'))
+  await vi.advanceTimersByTimeAsync(2000)
+  await answer('printer.objects.query', SETTINGS)
+  expect(printer.get().klippy).toBe('ready')
+  expect(printer.get().commands).toEqual(['M104'])
+  expect(printer.get().heaterSettings).toEqual({ extruder: { max_temp: 280 } })
+  expect(fake.calls.some((c) => c.method === 'server.info')).toBe(false)
+})
+
+it('stops loading Klipper settings for a Klipper session that has ended', async () => {
+  const { printer } = await load()
+  await subscribe()
+  take('printer.objects.query').reject(new Error('timed out'))
+  await tick()
+  fake.onState?.('closed')
+  await vi.advanceTimersByTimeAsync(5000)
+  expect(fake.calls.some((c) => c.method === 'printer.objects.query')).toBe(false)
+  expect(printer.get().settings).toEqual({})
 })
 
 it('does not retry or accept an initialization response after the socket closes', async () => {

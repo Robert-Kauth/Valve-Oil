@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useRef, useState, type ReactNode } from 'react'
 import {
   Cpu,
   Ellipsis,
@@ -25,7 +25,7 @@ import { useWarnings } from './state/warnings'
 import { Toasts, attempt } from './components/toast'
 import { UploadsPanel } from './components/Upload'
 import { BedScrewsDialog, ManualProbeDialog } from './components/tune/HelperDialogs'
-import { AskHost, Loading, confirm } from './components/ui'
+import { AskHost, Loading, confirm, useModalFocus } from './components/ui'
 import { LogoMark } from './components/Logo'
 import { NotificationsButton } from './components/Notifications'
 import { HealthButton } from './components/Panels'
@@ -167,40 +167,12 @@ function MobileNav({ nav, route }: { nav: NavItem[]; route: Route }) {
   const rest = [...nav.filter((n) => !n.mobile), ...NAV_END]
   const inRest = rest.some((n) => n.route === route)
   const cls = (on: boolean) => `grid justify-items-center gap-1 px-2 text-[10.5px] font-semibold ${on ? 'text-accent-ink' : 'text-ink-3'}`
-  const closeMore = (restoreFocus = true) => {
-    setMore(false)
-    if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus())
-  }
-  useEffect(() => {
-    if (!more) return
-    const focusable = () => Array.from(panelRef.current?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)') ?? [])
-    focusable()[0]?.focus()
-    const keys = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        closeMore()
-        return
-      }
-      if (e.key !== 'Tab') return
-      const items = focusable()
-      const first = items[0]
-      const last = items[items.length - 1]
-      if (!first || !last) return
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-    window.addEventListener('keydown', keys)
-    return () => window.removeEventListener('keydown', keys)
-  }, [more])
+  // The More panel is modal for the keyboard, as a dialog is; focus goes back to More when it closes.
+  useModalFocus(more, panelRef, () => setMore(false), triggerRef)
   return (
     <>
       {more && (
-        <div className="fixed inset-0 z-40 md:hidden" onClick={() => closeMore()}>
+        <div className="fixed inset-0 z-40 md:hidden" onClick={() => setMore(false)}>
           <div
             ref={panelRef}
             role="dialog"
@@ -233,7 +205,7 @@ function MobileNav({ nav, route }: { nav: NavItem[]; route: Route }) {
         <button
           ref={triggerRef}
           className={`border-0 bg-transparent ${cls(inRest || more)}`}
-          onClick={() => (more ? closeMore() : setMore(true))}
+          onClick={() => setMore(!more)}
           aria-expanded={more}
           aria-haspopup="dialog"
         >
@@ -278,8 +250,10 @@ function StatusPill() {
   const conn = usePrinter((s) => s.conn)
   const klippy = usePrinter((s) => s.klippy)
   const busy = useBoxBusy()
+  const connLost = usePrinter((s) => s.connLost)
   const idle = usePrinter((s) => s.status.idle_timeout?.state as string | undefined)
-  if (conn === 'connecting' || (conn === 'open' && klippy === 'unknown')) return <span className="pill">{t('common.loading')}</span>
+  // Reconnect attempts after a drop stay Offline until one succeeds; only the first connection is loading.
+  if ((conn === 'connecting' && !connLost) || (conn === 'open' && klippy === 'unknown')) return <span className="pill">{t('common.loading')}</span>
   if (conn !== 'open') return <span className="pill tone-bad">{t('app.status.offline')}</span>
   if (klippy !== 'ready') return <span className="pill tone-bad">{klippyPill(klippy)}</span>
   if (job.state === 'printing') return <span className="pill tone-accent">{t('app.status.printing', { pct: Math.floor(jobProgress(job) * 100) })}</span>
@@ -378,6 +352,11 @@ function TopBar() {
           <span className="hidden min-w-0 truncate font-semibold text-ink-2 xl:inline">{name}</span>
         </>
       )}
+      {/* Status text must not displace the controls: on a phone it wraps onto its own row below them. */}
+      <div className="topbar-state order-last flex w-full min-w-0 flex-wrap items-center gap-2 empty:hidden max-md:[&:not(:empty)]:mt-2 md:order-none md:w-auto md:flex-initial [&_.pill]:max-w-full [&_.pill]:whitespace-normal [&_.pill]:[overflow-wrap:anywhere]">
+        <StatusPill />
+        <SaveConfigButton />
+      </div>
       <div className="flex-1" />
       <MiniTemps />
       <HealthButton />
@@ -398,11 +377,6 @@ function TopBar() {
         <X size={14} /> <span className="hidden lg:inline">{t('app.topbar.estop')}</span>
         <span className="lg:hidden">{t('app.topbar.estop_short')}</span>
       </button>
-      {/* Status text must not displace the controls. */}
-      <div className="topbar-state flex w-full min-w-0 flex-wrap items-center gap-2 empty:hidden [&:not(:empty)]:mt-2 [&_.pill]:max-w-full [&_.pill]:whitespace-normal [&_.pill]:[overflow-wrap:anywhere]">
-        <StatusPill />
-        <SaveConfigButton />
-      </div>
     </div>
   )
 }

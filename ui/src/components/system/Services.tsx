@@ -36,11 +36,30 @@ type ActionDispatch = 'dispatched' | 'blocked' | 'failed'
 const updateSensitiveService = (name: string) => name === 'klipper' || name === 'moonraker'
 const printSensitiveService = (name: string, action: ServiceAction) => name === 'klipper' || (name === 'klipper-mcu' && action !== 'start')
 
-export async function dispatchServiceAction(name: string, action: ServiceAction, confirmedPrintState: ConfirmedPrintState): Promise<ActionDispatch> {
-  if (updateSensitiveService(name) && (await readLiveUpdateState()) !== 'idle') {
-    toast(t('system.services.locked'), 'error')
-    return 'blocked'
-  }
+/**
+ * Asks whether to go ahead when Valve Oil's status service can't say whether an update runs. Restarting Klipper or
+ * rebooting is how an operator recovers a stuck status service, so an unanswered check asks instead of refusing.
+ */
+export type UncheckedUpdate = () => Promise<boolean>
+const askUnchecked: UncheckedUpdate = () =>
+  confirm({ title: t('system.services.unchecked_title'), body: t('system.services.unchecked_body'), confirm: t('system.services.unchecked_confirm'), danger: true })
+
+/** Whether an update allows the action now: refused while one runs, asked about when the status service can't say. */
+async function updateAllows(lockedMessage: string, unchecked: UncheckedUpdate): Promise<boolean> {
+  const state = await readLiveUpdateState()
+  if (state === 'idle') return true
+  if (state === 'unknown' && (await unchecked()) && !updateRunningNow()) return true
+  if (state === 'running' || updateRunningNow()) toast(lockedMessage, 'error')
+  return false
+}
+
+// The same checks run when the operator confirms and again just before the action is sent.
+const serviceBlocked = (name: string, action: ServiceAction, printing: boolean) =>
+  updateSensitiveService(name) && updateRunningNow() ? t('system.services.locked') : !printing && jobActiveNow() && printSensitiveService(name, action) ? printStops() : null
+const printerBlocked = (lockedMessage: string, printing: boolean) => (updateRunningNow() ? lockedMessage : !printing && jobActiveNow() ? printStops() : null)
+
+export async function dispatchServiceAction(name: string, action: ServiceAction, confirmedPrintState: ConfirmedPrintState, unchecked = askUnchecked): Promise<ActionDispatch> {
+  if (updateSensitiveService(name) && !(await updateAllows(t('system.services.locked'), unchecked))) return 'blocked'
   if (confirmedPrintState === 'idle' && jobActiveNow() && printSensitiveService(name, action)) {
     toast(printStops(), 'error')
     return 'blocked'
@@ -48,11 +67,8 @@ export async function dispatchServiceAction(name: string, action: ServiceAction,
   return (await attempt(async () => (await client.call(`machine.services.${action}`, { service: name }, 90000), true))) ? 'dispatched' : 'failed'
 }
 
-export async function dispatchKlipperAction(action: KlipperAction, confirmedPrintState: ConfirmedPrintState): Promise<ActionDispatch> {
-  if ((await readLiveUpdateState()) !== 'idle') {
-    toast(t('system.services.locked'), 'error')
-    return 'blocked'
-  }
+export async function dispatchKlipperAction(action: KlipperAction, confirmedPrintState: ConfirmedPrintState, unchecked = askUnchecked): Promise<ActionDispatch> {
+  if (!(await updateAllows(t('system.services.locked'), unchecked))) return 'blocked'
   if (confirmedPrintState === 'idle' && jobActiveNow()) {
     toast(printStops(), 'error')
     return 'blocked'
@@ -66,11 +82,8 @@ export async function dispatchKlipperAction(action: KlipperAction, confirmedPrin
   return sent ? 'dispatched' : 'failed'
 }
 
-export async function dispatchHostPowerAction(what: HostPowerAction, confirmedPrintState: ConfirmedPrintState): Promise<ActionDispatch> {
-  if ((await readLiveUpdateState()) !== 'idle') {
-    toast(t('system.services.host.update_locked'), 'error')
-    return 'blocked'
-  }
+export async function dispatchHostPowerAction(what: HostPowerAction, confirmedPrintState: ConfirmedPrintState, unchecked = askUnchecked): Promise<ActionDispatch> {
+  if (!(await updateAllows(t('system.services.host.update_locked'), unchecked))) return 'blocked'
   if (confirmedPrintState === 'idle' && jobActiveNow()) {
     toast(printStops(), 'error')
     return 'blocked'
@@ -95,7 +108,7 @@ export function Services() {
         ) : (
           <div className="grid grid-cols-1 gap-2">
             {services.map(([name, st]) => (
-              <ServiceRow key={name} name={name} active={st.active_state} sub={st.sub_state} printing={printing} locked={updating && (name === 'klipper' || name === 'moonraker')} />
+              <ServiceRow key={name} name={name} active={st.active_state} sub={st.sub_state} printing={printing} locked={updating && updateSensitiveService(name)} />
             ))}
           </div>
         )}
@@ -115,7 +128,7 @@ const order = (n: string) => (FIRST.includes(n) ? FIRST.indexOf(n) : FIRST.lengt
 function ServiceRow({ name, active, sub, printing, locked }: { name: string; active: string; sub: string; printing: boolean; locked: boolean }) {
   const [busy, setBusy] = useState<string | null>(null)
   const stopped = active === 'inactive' || active === 'failed'
-  const act = async (action: 'start' | 'stop' | 'restart') => {
+  const act = async (action: ServiceAction) => {
     if (!(await ask(name, action, printing))) return
     setBusy(action)
     const result = await dispatchServiceAction(name, action, printing ? 'active' : 'idle')
@@ -151,23 +164,19 @@ function ServiceRow({ name, active, sub, printing, locked }: { name: string; act
   )
 }
 
-function ask(name: string, action: 'start' | 'stop' | 'restart', printing: boolean): Promise<boolean> {
+function ask(name: string, action: ServiceAction, printing: boolean): Promise<boolean> {
   const bodies: ReactNode[] = []
   if (name === 'klipper' && action !== 'start') bodies.push(action === 'stop' ? t('system.services.ask.klipper_stop') : t('system.services.ask.klipper_restart'))
   if (name === 'moonraker') bodies.push(t('system.services.ask.moonraker'))
   if (name === 'qidi-client') bodies.push(action === 'stop' ? t('system.services.ask.qidi_stop') : t('system.services.ask.qidi_restart'))
-  if (printing && (name === 'klipper' || (name === 'klipper-mcu' && action !== 'start'))) bodies.push(printStops())
+  if (printing && printSensitiveService(name, action)) bodies.push(printStops())
   if (action === 'start' && !printing) return Promise.resolve(true)
   return confirm({
     title: t(`system.services.ask.${action}_title`, { name }),
     body: bodies.length ? bodies.join(' ') : t(`system.services.ask.${action}_body`, { name }),
     confirm: t(`system.services.${action}`),
     danger: action !== 'start',
-    validate: () => {
-      if ((name === 'klipper' || name === 'moonraker') && updateRunningNow()) return t('system.services.locked')
-      if (!printing && jobActiveNow() && (name === 'klipper' || (name === 'klipper-mcu' && action !== 'start'))) return printStops()
-      return null
-    },
+    validate: () => serviceBlocked(name, action, printing),
   })
 }
 
@@ -183,10 +192,7 @@ function KlipperCard({ printing }: { printing: boolean }) {
         body: printing ? `${body} ${printStops()}` : body,
         confirm: label,
         danger: true,
-        validate: () => {
-          if (updateRunningNow()) return t('system.services.locked')
-          return !printing && jobActiveNow() ? printStops() : null
-        },
+        validate: () => printerBlocked(t('system.services.locked'), printing),
       }))
     )
       return
@@ -225,10 +231,7 @@ function HostPowerCard({ printing, updating }: { printing: boolean; updating: bo
       body: `${reboot ? t('system.services.host.reboot_body') : t('system.services.host.shutdown_body')}${printing ? ` ${printStops()}` : ''}`,
       confirm: reboot ? t('system.services.host.reboot') : t('system.services.host.shutdown'),
       danger: true,
-      validate: () => {
-        if (updateRunningNow()) return t('system.services.host.update_locked')
-        return !printing && jobActiveNow() ? printStops() : null
-      },
+      validate: () => printerBlocked(t('system.services.host.update_locked'), printing),
     })
     if (!ok) return
     await dispatchHostPowerAction(what, printing ? 'active' : 'idle')

@@ -33,9 +33,12 @@ export function setTheme(choice: ThemePreference) {
 
 if (typeof document !== 'undefined') apply(initial)
 if (typeof window !== 'undefined') {
-  system?.addEventListener('change', () => {
+  const followSystem = () => {
     if (theme.get().preference === 'system') apply('system')
-  })
+  }
+  // Safari before 14 has only the older addListener.
+  if (system?.addEventListener) system.addEventListener('change', followSystem)
+  else system?.addListener?.(followSystem)
   window.addEventListener('storage', (e) => {
     if (e.key === KEY || e.key === null) apply(preference(e.newValue))
   })

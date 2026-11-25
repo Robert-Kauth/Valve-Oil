@@ -31,6 +31,7 @@ function box({
 }: { controller?: boolean; variables?: Record<string, unknown>; status?: Status; commands?: string[]; objects?: string[]; klippy?: PrinterState['klippy']; lists?: Lists } = {}): BoxState {
   const printer: PrinterState = {
     conn: 'open',
+    connLost: false,
     klippy,
     klippyMessage: '',
     objects,
