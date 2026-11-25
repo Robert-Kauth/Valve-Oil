@@ -193,7 +193,7 @@ Forbidden patterns:
 
 Condition: `the cut itself; the strike and its move off the cutter are _VO_CUTTER_STRIKE's`
 
-Source: `installer/klipper/printers/max4/nozzle_motion.cfg:141-154`
+Source: `installer/klipper/printers/max4/nozzle_motion.cfg:138-151`
 
 Direct visible macro calls in branch slice:
 
@@ -220,7 +220,7 @@ Forbidden patterns:
 
 Condition: `the move to the chute from anywhere on or behind the bed`
 
-Source: `installer/klipper/printers/max4/nozzle_motion.cfg:160-188`
+Source: `installer/klipper/printers/max4/nozzle_motion.cfg:157-182`
 
 Direct visible macro calls in branch slice:
 

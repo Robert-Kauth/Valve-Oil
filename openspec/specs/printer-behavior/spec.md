@@ -653,10 +653,10 @@ Valve Oil's cut and the stock-named cutter macro SHALL let their post-cut retrac
 - **THEN** the toolhead still moves off the cutter to the cut's normal exit position before the error is reported
 
 ### Requirement: QIDI Box unload and eject with the nozzle cold
-Valve Oil's configuration SHALL let `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` with `COLD=1`, while no print is running or paused, run the vendor Box flow without heating the hotend, when that flow consists only of Box heat, cut, unload, and eject steps. Its extruder retracts SHALL pass the cold-extrusion check as during a cold cut, extrusion below `min_extrude_temp` SHALL still be refused, and without `COLD=1` the commands SHALL be unchanged.
+Valve Oil's configuration SHALL run a Box slot's `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` without heating the hotend while no print is running or paused, with `COLD=1` or no `COLD`, when the vendor flow has only Box heat, cut, unload, and eject steps; `COLD=0` SHALL leave them unchanged. Cold extruder retracts SHALL pass as during a cold cut, and extrusion below `min_extrude_temp` SHALL still be refused.
 
 #### Scenario: A cold unload or eject
-- **WHEN** a Box unload or eject runs with `COLD=1` and the nozzle below `min_extrude_temp`
+- **WHEN** a Box slot's unload or eject runs with `COLD=1` or no `COLD`, no print is running or paused, and the nozzle is below `min_extrude_temp`
 - **THEN** the vendor flow parks, cuts, retracts, and unloads or ejects without any `M109`, and finishes with the hotend off and without the vendor's post-heat dwell and wipe
 - **AND** afterwards extruder moves below `min_extrude_temp` are refused again
 
@@ -666,11 +666,36 @@ Valve Oil's configuration SHALL let `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMEN
 
 #### Scenario: A flow with other steps
 - **WHEN** the vendor chooses a flow with steps other than Box heat, cut, unload, and eject, such as an external-spool unload
-- **THEN** the flow runs and heats as the vendor's does, and the console says why it heats
+- **THEN** the flow runs and heats as the vendor's does, and with `COLD=1` the console says why it heats
+
+#### Scenario: A heated unload or eject
+- **WHEN** a Box unload or eject runs with `COLD=0`, during a print, for the external spool, or without `vo_cold_cut`, and gives no `COLD=1`
+- **THEN** the vendor flow runs and heats as the vendor's does
 
 #### Scenario: Cold during a print
 - **WHEN** `COLD=1` is given while a print is running or paused
 - **THEN** the command refuses without moving, and the console says why
+
+### Requirement: QIDI Box chute wipes cool the nozzle
+Valve Oil's configuration SHALL run the part fan at full speed from the first of QIDI's Box chute wipes, `DROP_TRASH` and `WIPE_NOZZLE_DROP`, in a Box flow or tool change until that flow or tool change ends, and SHALL then put the part fan back to its speed from before the first wipe.
+
+#### Scenario: Wipes after a load or unload
+- **WHEN** QIDI's Box code wipes the nozzle at the chute after a load's purge or at the end of an unload that heated
+- **THEN** the part fan runs at full speed from the first wipe through the dwells, chute moves, and later wipes until the flow ends
+- **AND** afterwards it returns to the speed it had before the first wipe, off outside a print
+
+#### Scenario: Cooling the nozzle after a flow between prints
+- **WHEN** such a flow ends while no print is running or paused, with the nozzle heater off and the nozzle at 170 °C or hotter
+- **THEN** the part fan stays at full speed until the nozzle is below 170 °C and then returns to its earlier speed, without holding up later commands, prints, or Box flows
+- **AND** heating the nozzle or starting a print returns it at once, and a part fan speed set by anything else is kept
+
+#### Scenario: Purge and wipe reported apart
+- **WHEN** QIDI's Box wipe step runs
+- **THEN** Valve Oil's status reports whether a chute wipe has started in the running flow, so Valve Oil UI and Fluidd show the purge before the wipe and the wipe after
+
+#### Scenario: A wipe on its own
+- **WHEN** a chute wipe runs outside a Box flow or tool change
+- **THEN** the part fan runs at full speed during the wipe and returns to its earlier speed when it ends
 
 ### Requirement: QIDI Box flow stop
 Valve Oil's configuration SHALL let a vendor Box flow stop, from `FLOW_STOP` or the vendor's flow-stop endpoint, end the flow and return without blocking later G-code, SHALL turn the hotend off after stopping a flow only when no print is running or paused, and SHALL leave `FLOW_RETRY` unchanged. A vendor Box flow step that raises an error instead of failing SHALL leave the flow paused on that step, as a failed step does, so `FLOW_RETRY` and `FLOW_STOP` apply.
@@ -1615,6 +1640,10 @@ On the Plus 5, Valve Oil's macros SHALL use the Plus 5's homing sequence, positi
 #### Scenario: Plus 5 chute approach is fast up to the chute entrance
 - **WHEN** QIDI's or Valve Oil's move to the waste chute runs on a Plus 5
 - **THEN** from the bed the toolhead moves in one travel move straight to the chute entrance at Y 320 at the package's chute travel speed and acceleration, then pushes from Y 320 into the chute
+
+#### Scenario: Max 4 chute approach is one straight move to the chute entrance
+- **WHEN** QIDI's or Valve Oil's move to the waste chute runs on a Max 4 from the bed
+- **THEN** the toolhead moves in one travel move straight to the chute entrance at X 116 Y 383 at the package's chute travel speed and acceleration, then goes into the chute as QIDI's Max 4 macros do
 
 #### Scenario: Plus 5 mainboard fan runs with the X/Y motors
 - **WHEN** any X, Y, or Z motor is on on a Plus 5
