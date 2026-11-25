@@ -48,7 +48,7 @@ from .auto_update import KIND_ENV, LOCK_HELD_ENV, TIMER_NAME, current_user
 from .backup import build_install_backup_label, create_config_backup, utc_now
 from .board_firmware import NEEDS_IMAGE, UNREAD, load_board_admission, record_board_admission
 from .box_firmware import usb_path_for_serial
-from . import closed_loop_firmware
+from . import closed_loop_firmware, klipper_tree
 from .closed_loop_firmware import DriverUpdateFailed, KlipperAPI, klipper_api_path
 from .errors import (ActivePrintError, FirmwareDetectionError, HeaterOnError, InstallerError, KlipperNotReadyError,
                      PrinterStateError)
@@ -1640,12 +1640,30 @@ def _end_succeeded(ctx: _Run, status_run) -> int:
     notes.append((ctx.record.get("calibration_result") or {}).get("summary", ""))
     # The install's host changes that need a reboot get it here, whoever follows the update: a session may have
     # ended, and an automatic update has none.
-    if schedule_reboot_after_firmware_update(ctx.paths, password=ctx.password, run=ctx.run,
-                                             reporter=ctx.reporter, environ=ctx.environ):
+    rebooting = schedule_reboot_after_firmware_update(ctx.paths, password=ctx.password, run=ctx.run,
+                                                      reporter=ctx.reporter, environ=ctx.environ)
+    if rebooting:
         notes.append("The printer restarts in a few seconds, once it is idle.")
     message = " ".join(note for note in notes if note)
     valve_oil_status.clear_pending(ctx.paths, kind=valve_oil_status.FIRMWARE)
-    return _end(ctx, status_run, state=SUCCEEDED, message=message, keep=False)
+    held = _klipper_held_for_update(ctx.paths)
+    code = _end(ctx, status_run, state=SUCCEEDED, message=message, keep=False)
+    if held and not rebooting:
+        # Valve Oil's launcher starts QIDI's Klipper while this update's record exists, and the install's restart came
+        # before the record went: start the Klipper the operator chose, once the printer is idle.
+        from .interaction import restart_klipper_unattended
+        restart_klipper_unattended(paths=ctx.paths, reporter=ctx.reporter, urlopen=ctx.urlopen)
+    return code
+
+
+def _klipper_held_for_update(paths) -> bool:
+    """Whether Valve Oil's Klipper is chosen but QIDI's runs because this update was in progress."""
+    try:
+        status = json.loads((paths.printer_data_root / klipper_tree.STATUS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return (isinstance(status, dict) and status.get("code") == "firmware_update_pending"
+            and status.get("selected") == "valve_oil")
 
 
 def _end_not_started(ctx: _Run, status_run, stop: _NotStarted, previous_run) -> int:
