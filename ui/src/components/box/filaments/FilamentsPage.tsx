@@ -5,7 +5,7 @@ import { Check, Copy, Download, Pencil, Plus, RefreshCw, Search, Trash2, Triangl
 import { Card, confirm, Empty, Loading } from '../../ui'
 import { attempt, toast } from '../../toast'
 import { readText, writeText } from '../../../state/files'
-import { client } from '../../../state/printer'
+import { client, usePrinter } from '../../../state/printer'
 import { useJobActive } from '../../../state/job'
 import { errorText, saveBlob } from '../../../lib/browser'
 import { useBox } from '../../../state/box'
@@ -46,6 +46,11 @@ type Imported = { config: QidiFilamentConfig; items: QidiFilamentImportItem[] }
 export function FilamentsPage() {
   const box = useBox()
   const printing = useJobActive()
+  // The printer's nozzle limit, which QIDI's flushes and Box flows heat up to; unknown while Klipper isn't ready.
+  const maxTemp = usePrinter((s) => {
+    const v = Number(s.settings.extruder?.max_temp)
+    return s.settings.extruder?.max_temp != null && Number.isFinite(v) ? v : null
+  })
   const [uiSettings] = useDbItem<{ general?: { instanceName?: string } }>(FLUIDD, 'uiSettings', {})
   const [config, setConfig] = useState<QidiFilamentConfig | null>(null)
   const [loading, setLoading] = useState(true)
@@ -109,7 +114,7 @@ export function FilamentsPage() {
   // The copy's name goes into QIDI's filament list, which the touchscreen shows: keep it English. i18n-ignore
   const duplicate = ({ key, ...draft }: QidiFilamentRow) => config && setEditor({ draft: { ...draft, name: `${draft.name} (copy)`, id: nextQidiFilamentId(config, draft.id) ?? '' }, sourceKey: key })
   const save = async ({ draft, previousKey, baseKey }: FilamentSave) => {
-    if (await update((c) => setQidiFilament(c, draft, { previousKey, baseKey }))) setEditor(null)
+    if (await update((c) => setQidiFilament(c, draft, { previousKey, baseKey, maxTemp }))) setEditor(null)
   }
   const remove = async (row: QidiFilamentRow) => {
     const slots = box.slots.filter((s) => s.filamentId === row.id).map((s) => s.label)
@@ -135,14 +140,14 @@ export function FilamentsPage() {
     try {
       const parsed = parseQidiFilamentConfig(await f.text())
       if (!parsed) return toast(t('box.filaments.not_a_list'), 'error')
-      setImported({ config: parsed, items: diffQidiFilamentImport(await readConfig(), parsed) })
+      setImported({ config: parsed, items: diffQidiFilamentImport(await readConfig(), parsed, maxTemp) })
     } catch {
       toast(t('box.filaments.unavailable'), 'error')
     }
   }
   const doImport = async (keys: string[]) => {
     const imp = imported
-    if (imp && (await update((c) => applyQidiFilamentImport(c, imp.config, keys)))) setImported(null)
+    if (imp && (await update((c) => applyQidiFilamentImport(c, imp.config, keys, maxTemp)))) setImported(null)
   }
 
   // Klipper and the touchscreen read the filament list only when they start.
@@ -286,8 +291,8 @@ export function FilamentsPage() {
         )}
       </Card>
       <input ref={file} type="file" accept={/iPad|iPhone|iPod/.test(navigator.userAgent) ? undefined : '.json'} hidden onChange={(e) => (importFile(e.target.files?.[0]), (e.target.value = ''))} />
-      {config && editor && <FilamentEditDialog config={config} initial={editor.draft} previousKey={editor.previousKey} sourceKey={editor.sourceKey} busy={busy} onSave={save} onClose={() => setEditor(null)} />}
-      {imported && <FilamentImportDialog items={imported.items} busy={busy} onImport={doImport} onClose={() => setImported(null)} />}
+      {config && editor && <FilamentEditDialog config={config} initial={editor.draft} previousKey={editor.previousKey} sourceKey={editor.sourceKey} maxTemp={maxTemp} busy={busy} onSave={save} onClose={() => setEditor(null)} />}
+      {imported && <FilamentImportDialog items={imported.items} maxTemp={maxTemp} busy={busy} onImport={doImport} onClose={() => setImported(null)} />}
     </div>
   )
 }
