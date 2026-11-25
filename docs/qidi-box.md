@@ -213,6 +213,10 @@ Bambu Lab's are listed under QIDI's **Bambu** vendor, next to QIDI's own Bambu P
 
 Their IDs start with `QFX` (Anycubic), `QFY` (Elegoo), `QFZ` (Bambu Lab), and `QFW` (Creality), letters QIDI doesn't use. Uninstall leaves them in the list, since Box slots may use them.
 
+It also adds Polymaker ASA under QIDI's own ID for it, `QFL23`, which QIDI's spools and slicer use but QIDI's list on the printer leaves out, with QIDI ASA's settings (240–280 °C). Without it, a slot holding it shows as Unknown, and QIDI's print start flushes it at 240 °C. If QIDI's list ever has it, QIDI's entry is kept.
+
+When a Box slot or the external spool holds a filament whose ID isn't in the printer's list, a printer warning in Fluidd and Valve Oil UI names the slot and the ID, and the console repeats it at startup and after every home. Choose the slot's filament again to clear it.
+
 ### Writing spool tags
 
 With the Valve Oil Box firmware, you can write a filament to a spool's RFID tag, so the Box sets the slot from it whenever that spool is loaded, like a QIDI spool. Use it for spools with no tag, for blank tags you stick on yourself, or to reuse an empty QIDI spool's tag: MIFARE Classic 1K, NTAG213, NTAG215, or NTAG216.

@@ -26,6 +26,14 @@
 # Also says when Valve Oil's Klipper is chosen but QIDI's runs, and why, from
 # vo_klipper (installer/klipper/extras/klipper_switch.py).
 #
+# Also says when a Box slot or the external spool holds a filament whose ID
+# isn't in the printer's filament list (QIDI firmware that publishes each
+# slot's resolved filament, Max 4 01.01.07.01 on). QIDI then names it Unknown
+# with no type or temperatures, and its print-start flush (EXTRUSION_AND_FLUSH,
+# from 01.01.07.02 and Plus 5 01.01.02.02) heats it to 240 C whatever it is,
+# too cold for ASA, ABS, PC, or nylon. Checked at most every FILAMENT_POLL
+# seconds.
+#
 # Also says when a USB Box connected or disconnected while the printer was
 # busy: Valve Oil's Box monitor (installer/system/vo_box_monitor.py) then
 # leaves box.cfg and Klipper as they are until the printer is idle, and says so
@@ -72,6 +80,8 @@ FINISH_IT = "Finish it with Update now or by running the Valve Oil installer."
 CONTINUE_IT = ("Continue it with Update now or by running the Valve Oil"
                " installer.")
 BOOT_ID = "/proc/sys/kernel/random/boot_id"
+FILAMENT_POLL = 5.
+SLOT_LETTERS = "ABCD"
 
 
 def _version_key(version):
@@ -116,6 +126,8 @@ class PrinterWarnings:
         self.enrolled = False
         self.run_active = False
         self.box_change = False
+        self.filament_next = 0.
+        self.unknown_filaments = []
 
     def _read(self, name):
         try:
@@ -241,6 +253,55 @@ class PrinterWarnings:
             "message": "Its bootloader or firmware isn't supported yet, so it"
                        " keeps the firmware it has.",
         }, name, report) for number, name, report in self.box_reports]
+
+    def _unknown_slots(self, eventtime):
+        """(where, filament ID) for each slot whose filament QIDI resolved
+        to nothing: an ID with no type and no temperatures."""
+        def unknown(info):
+            filament_id = info.get("filament_id") if isinstance(info, dict) else None
+            return (isinstance(filament_id, str) and filament_id.strip()
+                    and not info.get("filament_type") and not info.get("max_temp"))
+        found = []
+        extras = self.printer.lookup_object("box_extras", None)
+        if extras is not None:
+            boxes = extras.get_status(eventtime).get("boxes")
+            for number, box in enumerate(boxes if isinstance(boxes, list) else [], 1):
+                infos = box.get("filament_info") if isinstance(box, dict) else None
+                for position, info in enumerate(infos if isinstance(infos, list) else []):
+                    index = info.get("index", position) if isinstance(info, dict) else position
+                    if unknown(info) and index in range(len(SLOT_LETTERS)):
+                        found.append(("slot %d%s" % (number, SLOT_LETTERS[index]),
+                                      info["filament_id"].strip()))
+        controller = self.printer.lookup_object("multi_color_controller", None)
+        if controller is not None:
+            extra = controller.get_status(eventtime).get("extra")
+            info = extra.get("filament_info") if isinstance(extra, dict) else None
+            if unknown(info):
+                found.append(("the external spool", info["filament_id"].strip()))
+        return found
+
+    def _unknown_filament(self, eventtime):
+        if eventtime is None or eventtime >= self.filament_next:
+            self.filament_next = (eventtime or 0.) + FILAMENT_POLL
+            self.unknown_filaments = self._unknown_slots(eventtime)
+        found = self.unknown_filaments
+        if not found:
+            return []
+        places = [where for where, _ in found]
+        ids = sorted({filament_id for _, filament_id in found})
+        joined = (places[0] if len(places) == 1 else
+                  ", ".join(places[:-1]) + " and " + places[-1])
+        return [{
+            "id": "unknown_filament",
+            "level": "warning",
+            "title": "The printer doesn't know the filament in %s." % joined,
+            "message": "Its filament ID (%s) isn't in the printer's filament"
+                       " list, so the touchscreen and Fluidd show it as"
+                       " Unknown, and QIDI's print start flushes it at"
+                       " 240 \u00b0C whatever it is, too cold for ASA, ABS, PC,"
+                       " or nylon. Choose the filament again in Fluidd or on"
+                       " the touchscreen." % ", ".join(ids),
+        }]
 
     def _klipper(self, eventtime):
         switch = self.printer.lookup_object("vo_klipper", None)
@@ -488,6 +549,7 @@ class PrinterWarnings:
         try:
             warnings = (self._step_loss() + self._input_shaper()
                         + self._box_firmware() + self._klipper(eventtime)
+                        + self._unknown_filament(eventtime)
                         + self._pending_work(eventtime))
         except Exception:
             if not self.failed:

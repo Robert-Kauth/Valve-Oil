@@ -157,6 +157,26 @@ class PrinterWarningsTest(unittest.TestCase):
         (log_dir / "vo_box_firmware_box2.json").unlink()
         self.assertEqual(self.warnings(calibrated, log_dir=log_dir), [])
 
+    def test_a_slot_whose_filament_the_printer_cannot_resolve_is_named(self) -> None:
+        # Guards the Plus 5 case of 2026-11-25: Polymaker ASA saved as QFL23, which QIDI's list lacks, so QIDI's
+        # print-start flush on 01.01.02.02 / 01.01.07.02 purged it at 240 C.
+        calibrated = {"loaded": True, "unshaped_axes": "", "saved": True}
+        known = {"index": 1, "filament_id": "QFB01", "filament_type": "ASA", "max_temp": 280}
+        unknown = {"index": 0, "filament_id": "QFL23", "filament_str": "Unknown", "filament_type": "",
+                   "min_temp": 0, "max_temp": 0}
+        empty = {"index": 3, "filament_id": "", "filament_type": "", "max_temp": 0}
+        boxes = [{"filament_info": [unknown, known, dict(unknown, index=2), empty]}, {"filament_info": [known]}]
+        extras = _Status({"boxes": boxes})
+        external = _Status({"extra": {"filament_info": dict(unknown, filament_id="QFX99")}})
+        warning, = self.warnings(calibrated, extra={"box_extras": extras, "multi_color_controller": external})
+        self.assertEqual(warning["id"], "unknown_filament")
+        self.assertIn("slot 1A, slot 1C and the external spool", warning["title"])
+        self.assertIn("QFL23, QFX99", warning["message"])
+        # Resolved slots, and firmware that publishes no resolved filament, raise nothing.
+        resolved = _Status({"boxes": [{"filament_info": [known]}]})
+        self.assertEqual(self.warnings(calibrated, extra={"box_extras": resolved}), [])
+        self.assertEqual(self.warnings(calibrated, extra={"box_extras": _Status({"boxes": [{}]})}), [])
+
     def test_unsupported_thr_and_mainboard_reports_carry_their_issue_links(self) -> None:
         calibrated = {"loaded": True, "unshaped_axes": "", "saved": True}
         log_dir = temp_path("printer-warnings-")
