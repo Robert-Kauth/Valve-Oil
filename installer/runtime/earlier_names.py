@@ -18,11 +18,11 @@ import shutil
 import subprocess
 from contextlib import suppress
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 from .errors import InstallerError
 from .fs_atomic import atomic_write_text, fsync_directory
-from .models import RuntimePaths
+from .models import ExtraModuleSpec, RuntimePaths
 from .naming import BUNDLE_ROOT_NAME, LEGACY_BUNDLE_ROOT_NAME, has_marker
 from .sudo import run_sudo
 
@@ -462,27 +462,25 @@ def _map(root: Path, absolute: str) -> Path:
 
 
 # ---- Klipper modules -------------------------------------------------------------------------------------------------
-def remove_earlier_klipper_modules(paths: RuntimePaths, module_destinations: list[str], *, journal) -> list[Path]:
-    """Remove replaced installer-owned modules once their new config sections are in place.
-
-    Includes the old tltg names and the two admission guards replaced by vo_print_guard.
-    The install journal restores removed files if installing the replacement fails.
-    """
+def remove_earlier_klipper_modules(
+    paths: RuntimePaths, modules: Iterable[ExtraModuleSpec], *, journal
+) -> list[Path]:
+    """Remove legacy tltg modules and manifest-declared predecessors once replacements are in place."""
     removed = []
-    for destination in module_destinations:
+    for module in modules:
+        destination = module.destination
         directory, _, name = destination.rpartition("/")
-        if directory != "klippy/extras" or not name.startswith("vo_"):
-            continue
-        predecessors = [f"tltg_{name[len('vo_'):]}"]
-        if name == "vo_print_guard.py":
-            predecessors.extend(("vo_box_dry_guard.py", "vo_update_guard.py", "tltg_box_dry_guard.py"))
-        for candidate in [entry for predecessor in predecessors for entry in (predecessor, predecessor + "c")]:
-            target = paths.managed_klipper_root / directory / candidate
-            if target.is_file() and not target.is_symlink():
-                journal.track_file(target)
-                journal.note_write()
-                target.unlink()
-                removed.append(target)
+        predecessors = list(module.replaces)
+        if directory == "klippy/extras" and name.startswith("vo_"):
+            predecessors.insert(0, f"{directory}/tltg_{name[len('vo_'):]}")
+        for predecessor in predecessors:
+            for candidate in (predecessor, predecessor + "c"):
+                target = paths.managed_klipper_root / candidate
+                if target.is_file() and not target.is_symlink():
+                    journal.track_file(target)
+                    journal.note_write()
+                    target.unlink()
+                    removed.append(target)
     return removed
 
 

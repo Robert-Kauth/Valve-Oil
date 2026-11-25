@@ -638,10 +638,9 @@ def _execute_install(
             required_files=manifest.managed_tree.required_files,
         )
         install_counters["managed_trees"][0] = 1
-        # The same modules under the names releases before 26.11.22.3 gave them, which no config section loads now
-        # that the macros above are in place.
+        # Remove declared predecessors and historical names after installing their replacements.
         for removed in earlier_names.remove_earlier_klipper_modules(
-            paths, [module.destination for module in manifest.install.extra_modules], journal=journal
+            paths, manifest.install.extra_modules, journal=journal
         ):
             reporter.debug(event="install.earlier_module.removed", path=removed)
         reporter.emit_install_counters(**_freeze_counters(install_counters))

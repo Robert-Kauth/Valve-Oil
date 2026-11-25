@@ -313,6 +313,7 @@ class ExtraModuleSpec:
     id: str
     source: str
     destination: str
+    replaces: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

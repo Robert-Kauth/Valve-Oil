@@ -290,6 +290,8 @@ install:
     - id: print_guard
       source: "klipper/extras/print_guard.py"
       destination: "klippy/extras/vo_print_guard.py"
+      replaces:
+        - "klippy/extras/vo_box_dry_guard.py"
     - id: box_rfid
       source: "klipper/extras/box_rfid.py"
       destination: "klippy/extras/vo_box_rfid.py"
